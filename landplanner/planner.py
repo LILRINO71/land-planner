@@ -327,6 +327,24 @@ class LandPlanner:
                       fetched={name: r[2] for name, r in results.items()})
         return answer
 
+    def ground(self, city_id, apns, fresh=False):
+        """The ground heights under a site (one parcel or several as one block) and the plan drawn on it, for the
+        3D view. The heights come from a slow service the first time, so this is asked for on its own."""
+        out, plans, _, site, anchor = self._forecast(city_id, apns, None, False)
+        city = self.city(city_id)
+        surface, state, fetched = self._part(city, anchor, "surface", fresh)
+        if surface and site["one_plan"] and len(site["apns"]) > 1:
+            # the block's plan again, now that its ground is known (drainage goes to the low ground)
+            facts, _, _ = self._plan_facts(city, anchor)
+            plans = [P.make_plan(self._decorate(city, anchor, self.zone_names(city)), facts, None, city.zoning_kind)]
+        whole = plans[0] if len(plans) == 1 else None
+        return {"city": city.id, "apns": out["apns"], "answered": state, "fetched": fetched, "surface": surface,
+                "one_plan": bool(whole),
+                "parcel": {"apn": anchor["apn"], "acres": site["acres"], "centre": anchor["centre"],
+                           "outline": anchor["outline"], "size_feet": anchor.get("size_feet")},
+                "plan": {"uses": whole.get("uses"), "drawing": whole.get("drawing"), "acres": whole.get("acres"),
+                         "street_lines": whole.get("street_lines")} if whole else None}
+
     def _forecast(self, city_id, apns, settings, forget):
         """(the forecast, the plans it used, the facts it read, the site, the parcel standing in for the site)."""
         city = self.city(city_id)
@@ -383,7 +401,13 @@ class LandPlanner:
                          "colour": named.get(piece.get("use"), {}).get("colour")}
                         for piece in (p.get("drawing") or {}).get("pieces") or []],
              "streets": (p.get("drawing") or {}).get("streets") or [],
+             "front": (p.get("drawing") or {}).get("front"),
              "why": (p.get("drawing") or {}).get("why") or [], "street_lines": p.get("street_lines") or []} for p in plans]
+        # where traffic enters and leaves, and the signals around the site, from the plans
+        moving = [p.get("traffic") or {} for p in plans]
+        out["traffic"]["entrances"] = [e for m in moving for e in m.get("entrances") or []]
+        out["traffic"]["signals_to_study"] = sum(m.get("signals_to_study") or 0 for m in moving)
+        out["traffic"]["existing_signals"] = (moving[0].get("existing_signals") or []) if moving else []
         if not site["together"]:
             out["limits"].insert(0, "These parcels are not next to each other. The forecast is worked out around the point "
                                     "between them, so it fits each one less well than a forecast of its own.")

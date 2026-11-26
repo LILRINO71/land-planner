@@ -43,6 +43,8 @@ export const api = {
   forecastReset: (city, apns) => call("DELETE", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") })),
   // the wider picture for the same site: the city's economy by year, weather, hazards, what is close by, the
   // typical resident and the steps to take (slower the first time, so it is asked for after the forecast)
+  // the ground heights under the site and the plan drawn on it, for the 3D view (slow the first time)
+  ground: (city, apns, fresh) => call("GET", `/api/cities/${city}/ground` + query({ apns: apns.join(","), fresh: fresh ? 1 : undefined })),
   outlook: (city, apns, fresh) => call("GET", `/api/cities/${city}/outlook` + query({ apns: apns.join(","), fresh: fresh ? 1 : undefined })),
 };
 
