@@ -4,6 +4,7 @@ get_json goes through tools/menifee.py's get_json, the app's one JSON network fu
 replay covers these readers too. get_bytes is for sources that publish a file (a spreadsheet, a text table):
 it refuses anything bigger than `limit`, because the app must stay light on the computer it runs on.
 """
+import http.client
 import time
 import urllib.error
 import urllib.parse
@@ -38,7 +39,9 @@ def get_bytes(url, params=None, timeout=30, tries=2, limit=6_000_000, first_byte
             if len(body) > limit:
                 raise SourceError(f"{url}: the file is larger than {limit // 1_000_000} MB, so it is not read")
             return body
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+        # a reply cut short (IncompleteRead) or a broken one (BadStatusLine, RemoteDisconnected...) is an
+        # http.client.HTTPException, which is not an OSError: it is a network failure like the rest
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException) as e:
             last = f"{url}: {type(e).__name__}: {e}"
             time.sleep(0.6 * (attempt + 1))
     raise SourceError(last[:300])

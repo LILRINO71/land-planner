@@ -4,7 +4,8 @@
 
   - A copy younger than `max_age` is returned without asking anyone.
   - Otherwise `load()` is called. If it fails and an older copy exists, the older copy is returned and
-    meta["stale"] is True, so the page can say "showing the copy from <date>".
+    meta["stale"] is True, so the page can say "showing the copy from <date>". With `retry_after` the failure is
+    remembered, and the source is not asked again for that many seconds (the older copy is served meanwhile).
   - Two requests for the same thing at the same moment ask the service once, not twice.
 
 meta is {"fetched": <seconds since 1970 when the answer was read>, "stale": bool}.
@@ -24,6 +25,7 @@ class Cache:
         self.clock = clock
         self._memory = {}
         self._locks = {}
+        self._failed = {}     # key -> when its source last failed while an older copy was served
         self._guard = threading.Lock()
 
     def _path(self, key):
@@ -60,23 +62,31 @@ class Cache:
             pass  # a cache that cannot be written is only slower, not wrong
         return entry
 
-    def get(self, key, max_age, load, fresh=False):
-        """(value, meta). `fresh=True` asks the source even when a young copy exists."""
+    def get(self, key, max_age, load, fresh=False, retry_after=0):
+        """(value, meta). `fresh=True` asks the source even when a young copy exists. `retry_after` (seconds)
+        is how long a source that just failed is left alone while an older copy is served in its place: the
+        failure is remembered, so the older copy does not cost a new question on every request."""
         with self._lock(key):
             saved = self.peek(key)
             if saved and not fresh and self.clock() - saved[1] < max_age:
                 return saved[0], {"fetched": saved[1], "stale": False}
+            failed = self._failed.get(key)
+            if saved and not fresh and failed is not None and self.clock() - failed < retry_after:
+                return saved[0], {"fetched": saved[1], "stale": True}
             try:
                 value = load()
             except Exception:
                 if saved:
+                    self._failed[key] = self.clock()
                     return saved[0], {"fetched": saved[1], "stale": True}
                 raise
+            self._failed.pop(key, None)
             value, fetched = self.put(key, value)
             return value, {"fetched": fetched, "stale": False}
 
     def forget(self, key):
         self._memory.pop(key, None)
+        self._failed.pop(key, None)
         try:
             self._path(key).unlink()
         except OSError:

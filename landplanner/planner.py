@@ -215,7 +215,7 @@ class LandPlanner:
         if recent and not fresh:
             return None, "did not answer", None
         try:
-            value, meta = self.cache.get(key, ttl, load, fresh)
+            value, meta = self.cache.get(key, ttl, load, fresh, retry_after=RETRY_AFTER)
         except DOWN:
             with self._guard:
                 self._failed[key] = self.clock()

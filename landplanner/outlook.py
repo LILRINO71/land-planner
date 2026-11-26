@@ -5,11 +5,15 @@ Like forecast.py this is plain arithmetic on facts other modules read (landplann
 a block whose source did not answer is marked not available, and every sentence carries the figure it rests on.
 The checklist is a starting list drawn from those facts by simple rules. The city decides what it requires.
 """
+import re
+
 from .forecast import HORIZON, SCENARIOS, money, yearly
 
 ECONOMY_PARTS = ("population", "permits", "sales", "work", "borrowing", "prices")
 PLACE_PARTS = ("climate", "hazards", "nearby", "residents")
-WET_ZONES = ("A", "V")     # FEMA zone letters for land a 1-in-100-year flood covers
+BIG_SITE_ACRES = 10        # the state's quick exemption for infill sites stops at 5 acres; at twice that the review is certain
+WET_ZONE = re.compile(r"[AV](E|H|O|R|\d{1,2}(-\d{1,2})?)?")   # FEMA zones A, AE, AH, AO, AR, A99, A1-30, V, VE...: land a 1-in-100-year flood covers
+NOT_MAPPED_ZONES = ("AREA NOT INCLUDED",)                       # FEMA's word for land its flood map leaves out (not a flood zone)
 MONTHS = {"Jan": "January", "Feb": "February", "Mar": "March", "Apr": "April", "Jun": "June", "Jul": "July", "Aug": "August",
           "Sep": "September", "Oct": "October", "Nov": "November", "Dec": "December"}
 
@@ -21,6 +25,25 @@ def _rows(part):
 def _avg(values):
     values = [v for v in values if v is not None]
     return sum(values) / len(values) if values else None
+
+
+def _and(items):
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _zone_codes(zones):
+    """The flood zone codes in a list of zones, each once, in order: "AE (high hazard)" and "AE" are the same zone."""
+    out = []
+    for z in zones:
+        code = str(z).split(" (")[0].strip() if z is not None else ""
+        if code and code.lower() != "none" and code.upper() not in {c.upper() for c in out}:
+            out.append(code)
+    return out
+
+
+def _is_wet_zone(code):
+    return bool(WET_ZONE.fullmatch(code.upper()))
 
 
 def economy(parts, forecast, place_name):
@@ -52,9 +75,14 @@ def economy(parts, forecast, place_name):
         a, b = people[min(people)], people[max(people)]
         r = yearly(a.get("people"), b.get("people"), max(people) - min(people))
         if r is not None:
-            facts.append(f"{place_name} had {a['people']:,} people in {min(people)} and {b['people']:,} in {max(people)}: "
-                         f"{100 * r:.1f}% more each year. Homes went from {a['homes']:,} to {b['homes']:,}.")
-    whole = [r for r in permits.values() if (r.get("months_reported") or 12) >= 12 and r.get("homes") is not None]
+            rate = round(100 * abs(r), 1)
+            move = ("about the same from one year to the next" if rate == 0
+                    else f"{rate:.1f}% {'more' if r > 0 else 'fewer'} each year")
+            facts.append(f"{place_name} had {a['people']:,} people in {min(people)} and {b['people']:,} in {max(people)}: {move}."
+                         + (f" Homes went from {a['homes']:,} to {b['homes']:,}." if a.get("homes") is not None and b.get("homes") is not None else ""))
+    # a permit year counts as whole only when all 12 months were reported; a year with no month reported (0) is not a whole year
+    # (a year whose months_reported is missing altogether is taken as whole, as the source gives no partial-year marker then)
+    whole = [r for r in permits.values() if (12 if r.get("months_reported") is None else r["months_reported"]) >= 12 and r.get("homes") is not None]
     if whole:
         recent = sorted(whole, key=lambda r: r["year"])[-5:]
         multi = _avg([100 * r["multi_family"] / r["homes"] for r in recent if r.get("homes") and r.get("multi_family") is not None])
@@ -98,19 +126,32 @@ def economy(parts, forecast, place_name):
                      + f"; the low of the last years was {low['rate_pct']:g}% in {low['year']}. Dearer loans slow home sales, "
                        "which is why building comes in waves.")
     # shop sales ahead: this year's sales per home, times the homes the forecast expects in the city's market ring
-    ahead = []
+    ahead, ahead_note, gap = [], None, ""
     ring = next((r for r in forecast.get("rings") or [] if r.get("miles") == max(x["miles"] for x in forecast["rings"]) and r.get("rows")), None) \
         if forecast.get("rings") else None
     if full and ring:
         base_sales, base_year = full[-1]["sales_usd"], full[-1]["year"]
-        at = {r["year"]: r["homes"] for r in ring["rows"]}
-        start = at.get(base_year) or at.get(forecast["year"])
-        if start:
+        at = {r["year"]: r["homes"] for r in ring["rows"] if isinstance(r.get("homes"), dict)}
+        # the sales are grown from the homes of the year they were measured in. When the forecast has no count for that year
+        # (its rows begin later), the first year it does count is the start, and the basis says so: homes that grew in between
+        # are not in the figures, so they may run low
+        start_year = base_year if at.get(base_year) else forecast["year"] if at.get(forecast["year"]) else min(at, default=None)
+        start = at.get(start_year) or {}
+        if not all(isinstance(start.get(s), (int, float)) and start[s] > 0 for s in SCENARIOS):
+            ahead_note = (f"Shop sales ahead are left out: the forecast counts no homes near the site in {start_year or base_year}, "
+                          "so there is nothing to grow the sales from.")
+        else:
+            if start_year != base_year:
+                gap = (f" The forecast counts homes from {start_year}, not from {base_year}, the year of these sales, so any growth in "
+                       "homes between the two years is not in the figures and they may run low.")
             for y in forecast["years"][2:]:
-                ahead.append({"year": y, "shop_sales_usd": {s: round(base_sales * at[y][s] / start[s], -5) for s in SCENARIOS}})
+                homes = at.get(y) or {}
+                if all(isinstance(homes.get(s), (int, float)) for s in SCENARIOS):
+                    ahead.append({"year": y, "shop_sales_usd": {s: round(base_sales * homes[s] / start[s], -5) for s in SCENARIOS}})
     return {"available": True, "place": place_name, "rows": rows, "facts": facts, "sales_ahead": ahead,
+            "sales_ahead_note": ahead_note,
             "sales_ahead_basis": ("The city's last full year of shop and restaurant sales, grown with the homes the forecast "
-                                  f"expects within {ring['miles']} miles. Today's prices; no inflation added.") if ahead else None,
+                                  f"expects within {ring['miles']} miles. Today's prices; no inflation added." + gap) if ahead else None,
             "measured_sales_per_home_usd": measured_per_home,
             "sources": [{"name": p, "source": (parts.get(p) or {}).get("source"), "answered": bool(parts.get(p))} for p in ECONOMY_PARTS],
             "did_not_answer": [p for p in ECONOMY_PARTS if not parts.get(p)]}
@@ -125,7 +166,8 @@ def climate(part, year):
     months = part.get("months") or []
     if t.get("mean_f") is not None:
         hot = max(months, key=lambda m: m.get("high_f") or -99) if months else None
-        out["facts"].append(f"A typical year averages {t['mean_f']:.0f} degrees F with about {t.get('rain_in', 0):.1f} inches of rain"
+        rain = f" with about {t['rain_in']:.1f} inches of rain" if t.get("rain_in") is not None else ""
+        out["facts"].append(f"A typical year averages {t['mean_f']:.0f} degrees F{rain}"
                             + (f"; the hottest month is {MONTHS.get(hot['month'], hot['month'])}, with afternoons around {hot['high_f']:.0f} degrees." if hot and hot.get("high_f") else "."))
     if trend.get("mean_f_per_decade") is not None:
         ten = trend["mean_f_per_decade"] * HORIZON / 10
@@ -134,7 +176,7 @@ def climate(part, year):
         out["facts"].append(f"The yearly average has moved {trend['mean_f_per_decade']:+.1f} degrees F each ten years since {trend.get('from_year')}. "
                             f"If that simply continues, {year + HORIZON} is about {ten:+.1f} degrees from today: more cooling load, more shade "
                             "and water-wise planting to plan for.")
-    if trend.get("rain_in_per_decade") is not None and t.get("rain_in"):
+    if trend.get("rain_in_per_decade") is not None and t.get("rain_in") is not None:
         out["facts"].append(f"Rain has moved {trend['rain_in_per_decade']:+.1f} inches each ten years; it swings far more from year to year "
                             "than that trend, so drainage is sized for the wet years, not the average.")
     return out
@@ -151,14 +193,28 @@ def hazards(part):
 
     flood = part.get("flood")
     if flood:
-        zones = [z for z in ([flood.get("zone")] + list(flood.get("zones_on_site") or [])) if z]
-        wet = flood.get("special_hazard_area") or any(str(z).upper().startswith(WET_ZONES) for z in zones)
-        add("Flood", "work" if wet else "clear",
-            (f"Part of the site is in FEMA flood zone {', '.join(sorted(set(map(str, zones))))}: building there needs a flood study and raised pads."
-             if wet else f"FEMA flood zone {flood.get('zone')}, "
-                         f"{str(flood.get('meaning') or 'outside the mapped flood areas').strip().rstrip('.').lower()}.")
-            + (f" Map panel {flood['panel']}, in force since {flood['effective']}." if flood.get("panel") and flood.get("effective") else ""),
-            "FEMA National Flood Hazard Layer")
+        # the point's zone and the site's zones (place.py labels these "AE (high hazard)"): each zone once, by its code
+        codes = _zone_codes([flood.get("zone")] + list(flood.get("zones_on_site") or []))
+        wet_codes = [c for c in codes if _is_wet_zone(c)]
+        wet = bool(flood.get("special_hazard_area")) or bool(wet_codes)
+        mapped = [c for c in codes if c.upper() not in NOT_MAPPED_ZONES]
+        panel = (f" Map panel {flood['panel']}, in force since {flood['effective']}." if flood.get("panel") and flood.get("effective") else "")
+        if wet:
+            shown = wet_codes or mapped
+            where = f"FEMA flood zone{'s' if len(shown) > 1 else ''} {_and(shown)}" if shown else "a FEMA special flood hazard area"
+            add("Flood", "work", f"Part of the site is in {where}: building there needs a flood study and raised pads." + panel,
+                "FEMA National Flood Hazard Layer")
+        elif mapped:
+            meaning = str(flood.get("meaning") or "outside the mapped flood areas").strip().rstrip(".").lower()
+            at_point = flood.get("zone") and str(flood["zone"]).strip().upper() not in NOT_MAPPED_ZONES
+            lead = f"FEMA flood zone {mapped[0]}" + ("" if at_point else " on the site")
+            add("Flood", "clear", f"{lead}, {meaning}." + panel, "FEMA National Flood Hazard Layer")
+        else:
+            # no zone at all: FEMA has published no flood map here (or leaves the area out of it). That is "not known", not "no risk"
+            meaning = str(flood.get("meaning") or "").strip() if not flood.get("zone") else ""
+            meaning = meaning or ("FEMA's flood map leaves this spot out, so it names no flood zone for it." if flood.get("zone")
+                                  else "FEMA has not published a flood map for this spot.")
+            add("Flood", "note", (meaning if meaning.endswith(".") else meaning + ".") + panel, "FEMA National Flood Hazard Layer")
     fire = part.get("fire")
     if fire:
         levels = [x for x in ([fire.get("level")] + list(fire.get("levels_on_site") or [])) if x]
@@ -210,11 +266,11 @@ def hazards(part):
     habitat = part.get("habitat")
     if habitat and habitat.get("in_plan"):
         surveys = habitat.get("survey_areas") or []
-        add("Protected habitat", "work" if habitat.get("in_criteria_cell") or surveys else "note",
-            f"The site is inside the Western Riverside County habitat plan ({habitat.get('area_plan') or 'area plan not named'}). "
+        text = (f"The site is inside the Western Riverside County habitat plan ({habitat.get('area_plan') or 'area plan not named'}). "
             + ("It lies in a cell the plan marks for possible conservation: the project is reviewed with the conservation authority. "
                if habitat.get("in_criteria_cell") else "It is not in a cell marked for conservation. ")
-            + (f"Surveys asked for here: {', '.join(surveys).lower()}. They are done in season, before any grading." if surveys else ""),
+            + (f"Surveys asked for here: {', '.join(surveys).lower()}. They are done in season, before any grading." if surveys else ""))
+        add("Protected habitat", "work" if habitat.get("in_criteria_cell") or surveys else "note", text.strip(),
             "Western Riverside County Regional Conservation Authority")
     if part.get("dam_flooding"):
         add("Dam failure flooding", "note", "The city maps the site inside the area a dam failure would flood.", "City dam inundation map")
@@ -250,9 +306,13 @@ def resident(part):
         years = 9      # between the middles of the two survey periods (2010-2014 and 2019-2023)
         r = yearly(then["home_value_usd"], t["home_value_usd"], years)
         out["home_value_rise_pct_a_year"] = round(100 * r, 1) if r is not None else None
-        out["facts"].append(f"The typical home is valued at {money(t['home_value_usd'])}, up from {money(then['home_value_usd'])} in the "
-                            f"{then.get('years') or 'earlier'} survey (about {100 * r:.1f}% a year)"
-                            + (f"; typical rent is {money(t['rent_usd'])} a month, up from {money(then['rent_usd'])}." if t.get("rent_usd") and then.get("rent_usd") else "."))
+        move = "up from" if t["home_value_usd"] >= then["home_value_usd"] else "down from"
+        rate = (f"about {abs(100 * r):.1f}% " + ("a year" if r >= 0 else "less each year")) if r is not None else None
+        out["facts"].append(f"The typical home is valued at {money(t['home_value_usd'])}, {move} {money(then['home_value_usd'])} in the "
+                            f"{then.get('years') or 'earlier'} survey" + (f" ({rate})" if rate else "")
+                            + (f"; typical rent is {money(t['rent_usd'])} a month, "
+                               f"{'up from' if t['rent_usd'] >= then['rent_usd'] else 'down from'} {money(then['rent_usd'])}."
+                               if t.get("rent_usd") and then.get("rent_usd") else "."))
     return out
 
 
@@ -275,7 +335,10 @@ def steps(site, forecast, plans, hazard, place):
     trips = (forecast.get("programme") or {}).get("trips_at_build_out") or 0
     homes = sum(u.get("homes") or 0 for u in uses)
     signals = sum(((p.get("traffic") or {}).get("signals_to_study")) or 0 for p in plans or [])
-    add(1, 1, "city", "Meet the city's planners before applying", f"To hear early what the city will ask for on these {site.get('acres'):g} acres.", planning)
+    acres = site.get("acres") or 0
+    size = f"{acres:g} acre{'' if acres == 1 else 's'}" if acres > 0 else "the site"
+    add(1, 1, "city", "Meet the city's planners before applying",
+        f"To hear early what the city will ask for on these {acres:g} acres." if acres > 0 else "To hear early what the city will ask for on this site.", planning)
     if change:
         add(1, max(2, ready), "city", f"Ask for a general plan amendment and a zone change for: {', '.join(change).lower()}",
             f"The zoning today ({zoning}) is not meant for this use. The Planning Commission and the City Council decide.", planning)
@@ -285,11 +348,15 @@ def steps(site, forecast, plans, hazard, place):
     if len({u["id"] for u in uses}) > 1 or (site.get("acres") or 0) >= 5:
         add(1, max(1, ready), "city", "File the map that divides the land into the pieces to be sold",
             "Each piece sold to a builder has to be a legal lot with street access and utilities shown.", planning + " and the city engineer")
+    with_trips = size + (f" and about {trips:,} trips a day when built" if trips else "")
     add(1, max(1, ready), "study", "Environmental review under state law (the city leads it)",
-        f"{site.get('acres'):g} acres" + (f" and about {trips:,} trips a day when built" if trips else "") + " is far past the size that is exempt.", planning)
+        f"{with_trips} is far past the size that is exempt." if acres >= BIG_SITE_ACRES else
+        f"{with_trips}: the city decides whether a site this size can be exempt, so ask at the first meeting." if acres > 0 else
+        "The city decides whether the site can be exempt, so ask at the first meeting.", planning)
     if trips >= 1000 or signals:
         add(1, max(1, ready), "study", "Traffic study",
-            f"About {trips:,} trips a day at build-out" + (f", and {signals} new signal(s) to study at the entrances." if signals else "."),
+            (f"About {trips:,} trips a day at build-out" if trips else "The trips a day at build-out are not known")
+            + (f", and {signals} new signal(s) to study at the entrances." if signals else "."),
             "The city's traffic engineer" + (" and Caltrans for the highway ramps" if (forecast.get("traffic") or {}).get("highway") else ""))
     add(1, max(1, ready), "study", "Soils and geology report", "Needed for the map and the grading plan on any site.", "A licensed soils engineer")
     for f in (hazard or {}).get("findings") or []:

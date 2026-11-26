@@ -24,6 +24,7 @@ today; a change of use goes through the city (general plan amendment, zone chang
 are the assessor's drawing, not a boundary survey.
 """
 import argparse
+import http.client
 import json
 import math
 import re
@@ -88,7 +89,8 @@ def get_json(url, params=None, timeout=30, tries=2, post=False):
             if isinstance(data, dict) and data.get("error"):
                 raise SourceError(f"{url}: {data['error'].get('message') or data['error']}")
             return data
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+        # http.client.HTTPException (a reply cut short, a connection closed halfway) is not an OSError: it is a network failure too
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError, http.client.HTTPException) as e:
             last = f"{url}: {type(e).__name__}: {e}"
             time.sleep(0.6 * (attempt + 1))
     raise SourceError(last[:300])
