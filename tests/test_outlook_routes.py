@@ -233,9 +233,10 @@ class WhatTheAddressMustHave(OnTown):
         e = self.problem(self.app, "GET", PATH, q("100000001", "999999999"))
         self.assertEqual((e.status, e.code), (404, "no-such-parcel"))
 
-    def test_something_that_is_not_a_parcel_number_is_a_404(self):
+    def test_a_number_with_the_wrong_number_of_digits_is_a_400(self):
         e = self.problem(self.app, "GET", PATH, q("12"))
-        self.assertEqual((e.status, e.code), (404, "no-such-parcel"))
+        self.assertEqual((e.status, e.code), (400, "bad-request"))
+        self.assertIn("not a parcel number", e.message)
 
     def test_thirteen_parcels_are_too_many(self):
         e = self.problem(self.app, "GET", PATH, q(*[f"3600000{i:02d}" for i in range(13)]))

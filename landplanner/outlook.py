@@ -8,6 +8,8 @@ The checklist is a starting list drawn from those facts by simple rules. The cit
 import re
 
 from .forecast import HORIZON, SCENARIOS, money, yearly
+from .sources.place import paleo_words
+from .words import counted
 
 ECONOMY_PARTS = ("population", "permits", "sales", "work", "borrowing", "prices")
 PLACE_PARTS = ("climate", "hazards", "nearby", "residents")
@@ -233,17 +235,17 @@ def hazards(part):
         near, planned = service.get("nearest_station") or {}, service.get("planned_station")
         add("Fire service", "note",
             "The site is in an area the city maps as a gap in fire station coverage"
-            + (f"; the nearest station is {near['name']}, {near['miles_away']:g} miles away" if near.get("name") else "")
-            + (f". A new station is planned {planned.get('miles_away'):g} miles away ({planned.get('name')})." if planned and planned.get("miles_away") is not None else "."),
+            + (f"; the nearest station is {near['name']}, {counted(near['miles_away'], 'mile')} away" if near.get("name") else "")
+            + (f". A new station is planned {counted(planned.get('miles_away'), 'mile')} away ({planned.get('name')})." if planned and planned.get("miles_away") is not None else "."),
             "City fire coverage maps")
     faults = part.get("faults")
     if faults:
         add("Earthquake faults", "work" if faults.get("in_fault_zone") else "clear",
             "The site is inside a state earthquake fault zone: a fault study is required before building."
             if faults.get("in_fault_zone") else
-            (f"No mapped fault zone on the site; the nearest mapped fault is {faults['nearest_miles']:g} miles away."
+            (f"No mapped fault zone on the site; the nearest mapped fault is {counted(faults['nearest_miles'], 'mile')} away."
              if faults.get("nearest_miles") is not None else
-             f"No mapped fault or fault zone within {faults.get('searched_miles', 3):g} miles."), "California Geological Survey")
+             f"No mapped fault or fault zone within {counted(faults.get('searched_miles', 3), 'mile')}."), "California Geological Survey")
     ground = part.get("ground")
     if ground:
         unmapped = "not mapped" in str(ground.get("liquefaction") or "")
@@ -260,9 +262,9 @@ def hazards(part):
             (f"The national wetlands map shows {len(on)} mapped water feature{'s' if len(on) != 1 else ''} on the site or at its edge "
              f"({', '.join(sorted(set(str(w.get('type')).lower() for w in on)))}). A biologist maps it on the ground, and building in it "
              "needs state and federal permits."
-             if on else f"None mapped on the site. The nearest is a {str(near.get('type')).lower()} feature of {near.get('acres'):g} acres, "
-                        f"{near.get('miles_away'):g} miles away." if near else
-             f"None mapped on the site or within {wet.get('searched_miles', 0.3):g} miles."), "U.S. Fish and Wildlife Service, National Wetlands Inventory")
+             if on else f"None mapped on the site. The nearest is a {str(near.get('type')).lower()} feature of {counted(near.get('acres'), 'acre')}, "
+                        f"{counted(near.get('miles_away'), 'mile')} away." if near else
+             f"None mapped on the site or within {counted(wet.get('searched_miles', 0.3), 'mile')}."), "U.S. Fish and Wildlife Service, National Wetlands Inventory")
     habitat = part.get("habitat")
     if habitat and habitat.get("in_plan"):
         surveys = habitat.get("survey_areas") or []
@@ -274,9 +276,16 @@ def hazards(part):
             "Western Riverside County Regional Conservation Authority")
     if part.get("dam_flooding"):
         add("Dam failure flooding", "note", "The city maps the site inside the area a dam failure would flood.", "City dam inundation map")
-    if part.get("fossils") and str(part["fossils"]).lower() not in ("low", "none"):
-        add("Fossils", "note", f"The city rates the chance of fossils in the ground here as {str(part['fossils']).lower()}: "
-                               "a monitor may be asked for during grading.", "City paleontological map")
+    fossils = paleo_words(part.get("fossils"))     # an old saved answer may still hold the city's bare code
+    if fossils and fossils.lower() not in ("low", "none"):
+        if fossils.startswith("not rated"):
+            code = fossils[fossils.index("(code ") + 6:-1]
+            add("Fossils", "note", f"The city's fossil map marks this ground with the code {code} but does not say in words what it "
+                                   "means. Ask the city's planning staff whether a monitor may be asked for during grading.",
+                "City paleontological map")
+        else:
+            add("Fossils", "note", f"The city rates the chance of fossils in the ground here as {fossils[0].lower() + fossils[1:]}: "
+                                   "a monitor may be asked for during grading.", "City paleontological map")
     return {"available": True, "findings": found, "evacuation_zone": part.get("evacuation_zone"),
             "work": sum(1 for f in found if f["level"] == "work"), "did_not_answer": part.get("did_not_answer") or [],
             "not_covered": ["Airport noise and height zones (March Air Reserve Base): only the county serves them, behind a robot check",
@@ -290,7 +299,7 @@ def resident(part):
     out = {"available": True, **part, "facts": []}
     bits = []
     if t.get("median_age") is not None:
-        bits.append(f"is about {t['median_age']:.0f} years old")
+        bits.append(f"is about {counted(round(t['median_age']), 'year')} old")
     if t.get("household_size") is not None:
         bits.append(f"lives in a household of {t['household_size']:.1f}")
     if bits:
@@ -336,9 +345,9 @@ def steps(site, forecast, plans, hazard, place):
     homes = sum(u.get("homes") or 0 for u in uses)
     signals = sum(((p.get("traffic") or {}).get("signals_to_study")) or 0 for p in plans or [])
     acres = site.get("acres") or 0
-    size = f"{acres:g} acre{'' if acres == 1 else 's'}" if acres > 0 else "the site"
+    size = counted(acres, "acre") if acres > 0 else "the site"
     add(1, 1, "city", "Meet the city's planners before applying",
-        f"To hear early what the city will ask for on these {acres:g} acres." if acres > 0 else "To hear early what the city will ask for on this site.", planning)
+        f"To hear early what the city will ask for on {'this' if counted(acres, 'acre').startswith('1 ') else 'these'} {counted(acres, 'acre')}." if acres > 0 else "To hear early what the city will ask for on this site.", planning)
     if change:
         add(1, max(2, ready), "city", f"Ask for a general plan amendment and a zone change for: {', '.join(change).lower()}",
             f"The zoning today ({zoning}) is not meant for this use. The Planning Commission and the City Council decide.", planning)
@@ -348,15 +357,15 @@ def steps(site, forecast, plans, hazard, place):
     if len({u["id"] for u in uses}) > 1 or (site.get("acres") or 0) >= 5:
         add(1, max(1, ready), "city", "File the map that divides the land into the pieces to be sold",
             "Each piece sold to a builder has to be a legal lot with street access and utilities shown.", planning + " and the city engineer")
-    with_trips = size + (f" and about {trips:,} trips a day when built" if trips else "")
+    with_trips = size + (f" and about {counted(trips, 'trip')} a day when built" if trips else "")
     add(1, max(1, ready), "study", "Environmental review under state law (the city leads it)",
         f"{with_trips} is far past the size that is exempt." if acres >= BIG_SITE_ACRES else
         f"{with_trips}: the city decides whether a site this size can be exempt, so ask at the first meeting." if acres > 0 else
         "The city decides whether the site can be exempt, so ask at the first meeting.", planning)
     if trips >= 1000 or signals:
         add(1, max(1, ready), "study", "Traffic study",
-            (f"About {trips:,} trips a day at build-out" if trips else "The trips a day at build-out are not known")
-            + (f", and {signals} new signal(s) to study at the entrances." if signals else "."),
+            (f"About {counted(trips, 'trip')} a day once everything is built" if trips else "The trips a day once everything is built are not known")
+            + (f", and {counted(signals, 'new signal')} to study at the entrances." if signals else "."),
             "The city's traffic engineer" + (" and Caltrans for the highway ramps" if (forecast.get("traffic") or {}).get("highway") else ""))
     add(1, max(1, ready), "study", "Soils and geology report", "Needed for the map and the grading plan on any site.", "A licensed soils engineer")
     for f in (hazard or {}).get("findings") or []:
@@ -376,9 +385,9 @@ def steps(site, forecast, plans, hazard, place):
         "No public record this app reads shows utility capacity.", place.get("water") or "The water and sewer district, and the power company")
     if homes:
         add(1, max(1, ready), "check", "Check school room and fees with the school district",
-            f"The plan adds about {homes:,} homes.", "The school district(s) serving the site")
+            f"The plan adds about {counted(homes, 'home')}.", "The school district that serves the site")
     for step in (forecast.get("programme") or {}).get("steps") or []:
-        lines = [x for x in step.get("lines") or [] if ":" in x and "acres" in x]
+        lines = [x for x in step.get("lines") or [] if ":" in x and "acre" in x]
         if lines and step["to_year"] > year + ready:
             out.append({"from_year": max(step["from_year"], year + ready + 1), "to_year": step["to_year"], "kind": "sell",
                         "what": "Offer to builders: " + " ".join(lines), "who": "Builders and developers (see each parcel's Plan page for likely buyers)",

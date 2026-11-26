@@ -16,7 +16,8 @@ FRAME = G.Frame(LON, LAT)
 ACRE = G.SQ_FT_PER_ACRE
 
 CODES = {"EDC-CC": "edc", "EDC-NG": "edc", "LDR-2": "low-density", "RR2": "rural", "BP": "business", "CR": "commercial",
-         "HDR": "denser-housing", "SP-1": "specific-plan", "OS-R": "open-space", "PF": "public"}
+         "HDR": "denser-housing", "SP-1": "specific-plan", "OS-R": "open-space", "PF": "public",
+         "RR1": "rural", "RR1/2": "rural", "RR5": "rural", "RM": "rural"}
 ZONINGS = {"edc": "EDC-CC", "low-density": "LDR-2", "rural": "RR2", "business": "BP", "commercial": "CR",
            "denser-housing": "HDR", "specific-plan": "SP-1", "mixed": "LDR-2 & CR", "open-space": "OS-R", "public": "PF",
            "other": ""}
@@ -439,14 +440,26 @@ class Scores(Plans):
         parts = {"state_highway_traffic": highway(4.0, 126000), "people": census(500, 5000, 9000), "streets": street(100, off=3000.0)}
         s, _ = scored(make_parcel(100, "LDR-2"), parts)
         retail = s["retail"]
-        self.assertLess(30 + sum(r["effect"] for r in retail["reasons"]), 0)
+        self.assertEqual(retail["reasons"][-1]["effect"], -sum(r["effect"] for r in retail["reasons"][:-1]), "the points held back are listed")
+        self.assertLess(sum(r["effect"] for r in retail["reasons"][:-1]), 0)
         self.assertEqual(retail["score"], 0)
+        self.assertEqual(sum(r["effect"] for r in retail["reasons"]), retail["score"])
 
     def test_the_reasons_add_up_to_the_score_when_nothing_is_cut_off(self):
         parts = {"state_highway_traffic": highway(0.5, 126000), "people": census(500, 15000, 30000), "streets": street(100, rank=4)}
         s, _ = scored(make_parcel(100, "EDC-CC"), parts)
         retail = s["retail"]
-        self.assertEqual(retail["score"], 30 + sum(r["effect"] for r in retail["reasons"]))
+        self.assertEqual(retail["score"], sum(r["effect"] for r in retail["reasons"]))
+        self.assertEqual(retail["reasons"][0]["effect"], 30, "the starting score is the first reason, in words")
+
+    def test_every_score_equals_the_sum_of_its_listed_reasons_for_every_kind_of_land(self):
+        for kind, code in ZONINGS.items():
+            for count_zoning in (True, False):
+                for parts in ({}, rich_parts(100)):
+                    s, _ = scored(make_parcel(100, code), parts, count_zoning)
+                    for use, got in s.items():
+                        with self.subTest(kind=kind, use=use, count_zoning=count_zoning):
+                            self.assertEqual(got["score"], sum(r["effect"] for r in got["reasons"]))
 
     def test_the_fit_of_each_use_is_carried_with_its_score(self):
         s, _ = scored(make_parcel(100, "HDR"))
@@ -1056,19 +1069,22 @@ class Buyers(Plans):
         flats = self.entries({"apartments": 5.0})["apartments"]
         self.assertEqual({p["title"] for p in flats["projects"]}, {"Flats", "Mixed block"})
 
-    def test_shop_land_lists_commercial_and_mixed_but_not_storage_or_industrial(self):
+    def test_shop_land_lists_shops_but_not_storage_clinics_or_industrial(self):
         retail = self.entries({"retail": 5.0})["retail"]
         titles = {p["title"] for p in retail["projects"]}
-        self.assertEqual(titles, {"Shops at Oak", "Mixed block", "Valley Medical Clinic"})
+        self.assertEqual(titles, {"Shops at Oak", "Mixed block"}, "a medical clinic is an office, not a shop")
         self.assertNotIn("Self storage", titles)
 
     def test_office_land_lists_only_projects_that_say_office_medical_or_clinic(self):
         offices = self.entries({"office": 5.0})["office"]
         self.assertEqual({p["title"] for p in offices["projects"]}, {"Valley Medical Clinic"})
 
-    def test_business_park_land_lists_industrial_and_mixed_projects(self):
+    def test_business_park_land_lists_industrial_projects_and_mixed_ones_that_say_so(self):
         business = self.entries({"business": 5.0})["business"]
-        self.assertEqual({p["title"] for p in business["projects"]}, {"Distribution", "Mixed block"})
+        self.assertEqual({p["title"] for p in business["projects"]}, {"Distribution"}, "shops and condos are not industrial")
+        rows = self.ROWS + (project("Light industrial and retail", "Mixed Use", 8, None, 120000, miles=2.0, description="light manufacturing and retail"),)
+        self.assertEqual({p["title"] for p in self.entries({"business": 5.0}, rows)["business"]["projects"]},
+                         {"Distribution", "Light industrial and retail"})
 
     def test_builders_named_by_the_city_come_first_then_the_nearest(self):
         homes = self.entries({"homes": 5.0})["homes"]
@@ -1098,6 +1114,186 @@ class Buyers(Plans):
         for entry in plan["buyers"]:
             self.assertEqual((entry["projects"], entry["named"]), ([], []))
             self.assertTrue(entry["who"])
+
+
+
+# ---------------------------------------------------------------- 13. the zone's smallest lot caps the houses
+
+NAMES = {"RR1": "Rural Residential, 1-acre minimum", "RR1/2": "Rural Residential, 1/2-acre minimum",
+         "RR2": "Rural Residential, 2-acre minimum", "RR5": "Rural Residential, 5-acre minimum", "RM": "Rural Mountainous",
+         "LDR-2": "Low Density Residential-2"}
+
+
+def zoned(acres, code, names=NAMES):
+    """A parcel with the city's wording for each of its zones, the way the app words it (" + " between zones)."""
+    zones = [c.strip() for c in code.split("&")]
+    return make_parcel(acres, code, zoning_name=" + ".join(names.get(z, z) for z in zones))
+
+
+class ZoneLotSize(Plans):
+    def figure(self, parcel, parts=None):
+        return next(f for f in make(parcel, parts)["figures"] if f["id"] == "homes_per_acre")
+
+    def test_two_zones_use_the_larger_lot_and_say_so(self):
+        # the live example: 372090016, zoned "RR2 & RR5", got 3.1 homes an acre from tracts nearby
+        tracts = projects(*[project(f"Tract {i}", "Residential", 20, 62, number=str(i)) for i in range(3)])
+        fig = self.figure(zoned(140, "RR2 & RR5"), {"projects": tracts})
+        self.assertEqual((fig["kind"], fig["value"], fig["start"]), ("measured", 0.17, 0.17), "0.85 / 5 acres")
+        self.assertEqual(fig["lot_acres"], 5.0)
+        self.assertIn("The zones on this parcel ask for lots of at least 2 acres (RR2) and 5 acres (RR5)", fig["basis"])
+        self.assertIn("The larger lot, 5 acres, is used", fig["basis"])
+        self.assertIn("so at most 0.2 homes an acre", fig["basis"])
+
+    def test_the_plan_gives_the_houses_that_lot_size_not_the_nearby_tracts(self):
+        tracts = projects(*[project(f"Tract {i}", "Residential", 20, 62, number=str(i)) for i in range(3)])
+        plan = make(zoned(140, "RR2 & RR5"), {"projects": tracts})
+        homes = use_of(plan, "homes")
+        self.assertEqual(homes["homes"], round(homes["acres"] * 0.17))
+        self.assertLess(homes["homes"], homes["acres"] * 0.5)
+        self.assertEqual(plan["facts"]["smallest_lot"],
+                         {"acres": 5.0, "zones": [{"code": "RR2", "acres": 2.0}, {"code": "RR5", "acres": 5.0}], "unread": []})
+
+    def test_one_zone_says_the_sentence_with_its_own_size(self):
+        fig = self.figure(zoned(40, "RR2"))
+        self.assertEqual(fig["value"], 0.42)
+        self.assertIn("The zone (RR2) asks for lots of at least 2 acres, so at most 0.5 homes an acre.", fig["basis"])
+        one = self.figure(zoned(40, "RR1"))
+        self.assertEqual(one["value"], 0.85)
+        self.assertIn("at least 1 acre, so at most 1 home an acre", one["basis"])
+
+    def test_a_half_acre_zone_reads_as_a_fraction(self):
+        fig = self.figure(zoned(40, "RR1/2"))
+        self.assertEqual(fig["value"], 1.7)
+        self.assertIn("at least 0.5 acres, so at most 2 homes an acre", fig["basis"])
+
+    def test_the_code_carries_the_size_when_the_names_did_not_load(self):
+        fig = self.figure(make_parcel(40, "RR5 & RR2"))      # zoning_name empty: the city's names did not answer
+        self.assertEqual((fig["kind"], fig["value"]), ("measured", 0.17))
+
+    def test_a_zone_whose_size_cannot_be_read_is_left_as_it_is(self):
+        for code in ("LDR-2", "RM"):
+            fig = self.figure(zoned(40, code))
+            self.assertEqual((fig["kind"], fig["value"]), ("assumption", 4.5), code)
+            self.assertIsNone(make(zoned(40, code))["facts"]["smallest_lot"])
+
+    def test_the_cities_own_wording_for_the_zone_at_the_middle_gives_a_size_the_code_does_not(self):
+        parts = {"zoning": {"abbrev": "RM", "what_it_allows": "Rural Mountainous", "general_plan_says": "Rural Mountainous 10 ac min (RM)"}}
+        fig = self.figure(zoned(40, "RM"), parts)
+        self.assertEqual((fig["kind"], fig["value"]), ("measured", 0.08), "0.85 / 10 acres")
+        self.assertIn("at least 10 acres", fig["basis"])
+
+    def test_a_zone_with_no_lot_size_beside_one_with_a_size_is_named_as_not_counted(self):
+        fig = self.figure(zoned(40, "LDR-2 & RR2"))
+        self.assertEqual(fig["value"], 0.42)
+        self.assertIn("gives no lot size for LDR-2, so that zone is not counted", fig["basis"])
+
+    def test_the_owner_can_still_change_the_figure(self):
+        plan = make(zoned(140, "RR2 & RR5"), None, assumptions={"homes_per_acre": 1.0})
+        fig = next(f for f in plan["figures"] if f["id"] == "homes_per_acre")
+        self.assertEqual((fig["kind"], fig["value"], fig["start"]), ("yours", 1.0, 0.17))
+
+    def test_a_cap_never_raises_a_figure_that_is_already_lower(self):
+        tracts = projects(project("A", "Residential", 20, 4, number="1"), project("B", "Residential", 20, 6, number="2"))
+        fig = self.figure(zoned(40, "RR1/2"), {"projects": tracts})
+        self.assertEqual((fig["kind"], fig["value"]), ("measured", 0.2), "the nearby tracts (median 0.25, shown to one place) are lower than the zone's ceiling of 1.7")
+
+
+# ---------------------------------------------------------------- 14. buyers are the right kind and size
+
+def listed(title, kind, description="", acres=None, homes=None, feet=None, builder=None, number="1"):
+    return project(title, kind, acres, homes, feet, miles=0.5, builder=builder, description=description, number=number)
+
+
+class RightBuyers(Plans):
+    def uses_of(self, **kw):
+        return P.project_uses(listed(**kw))
+
+    def test_a_small_car_wash_is_not_a_buyer_of_apartment_or_office_land(self):
+        # recorded: "Washbank Express Carwash", Mixed Use, 1.65 acres, "a 2 story carwash and office development"
+        got = self.uses_of(title="Washbank Express Carwash", kind="Mixed Use", acres=1.65,
+                           description="A proposed 2 story carwash and office development on a 1.65 acre site.")
+        self.assertEqual(got, {"retail"})
+
+    def test_a_parcel_map_and_a_plan_amendment_are_buyers_of_nothing(self):
+        self.assertEqual(self.uses_of(title="Menifee Village PM", kind="Mixed Use", acres=27.73,
+                                      description="27.73 acres into 10 commericial parcels ranging in size from 1.09 acres - 12.24acres"), set())
+        self.assertEqual(self.uses_of(title="Menifee Village SPA", kind="Mixed Use", acres=95.61,
+                                      description="Amend SP158 PA 3-1, 3-2, 4-3 and 4-4 increase residential planning areas"), set())
+
+    def test_a_big_store_that_is_split_into_parcels_still_counts_as_shops(self):
+        self.assertEqual(self.uses_of(title="Walmart", kind="Commercial", acres=30.3, feet=263160,
+                                      description="30.3 acres into 7 parcels: 240,980 sq ft major retail building"), {"retail"})
+
+    def test_each_kind_of_project_is_evidence_for_its_own_use_only(self):
+        self.assertEqual(self.uses_of(title="Tract", kind="Residential", description="94 acres - 296 residential lots", acres=94.3, homes=296), {"homes"})
+        self.assertEqual(self.uses_of(title="Del Oro", kind="Residential", description="238 apartment units", acres=17.2, homes=238), {"apartments"})
+        self.assertEqual(self.uses_of(title="Condos", kind="Residential", description="327 condominium units", acres=30.5, homes=327), {"apartments"})
+        self.assertEqual(self.uses_of(title="Medical Office Building", kind="Commercial", description="2.47 acres, 33,800 sf medical office building",
+                                      acres=2.47, feet=33800), {"office"})
+        self.assertEqual(self.uses_of(title="Freedom Business Park", kind="Industrial", description="light industrial and warehousing",
+                                      acres=17.55, feet=283000), {"business"})
+        self.assertEqual(self.uses_of(title="Costco", kind="Commercial"), {"retail"})
+
+    def test_hotels_storage_schools_and_tiny_projects_are_nobodys_buyers(self):
+        self.assertEqual(self.uses_of(title="Home2Suites", kind="Commercial", description="4-story, 65,463 square foot hotel", feet=65463), set())
+        self.assertEqual(self.uses_of(title="Menifee Self Storage", kind="Commercial",
+                                      description="expansion of a self storage facility by 45,075 sq. ft.", feet=45075), set())
+        self.assertEqual(self.uses_of(title="Montesori School", kind="Commercial", description="1.6 acres - 13,648 sf childcare center",
+                                      acres=1.6, feet=13648), set())
+        self.assertEqual(self.uses_of(title="Day Spa", kind="Commercial", description="Expansion of an existing 492 square foot barbershop", acres=0.65), set())
+        self.assertEqual(self.uses_of(title="Boulder View Estates", kind="Residential", description="15 lot tract"), set(),
+                         "15 lots is too few to buy a block")
+        self.assertEqual(self.uses_of(title="Small flats", kind="Residential", description="12 apartment units", homes=12), set())
+
+    def test_a_house_tract_is_not_apartments_and_flats_are_not_house_tracts(self):
+        tract = listed("Tract", "Residential", "80 residential lots", acres=30, homes=80)
+        flats = listed("Flats", "Residential", "300 residential units", acres=10, homes=300)       # 30 an acre
+        self.assertEqual(P.project_uses(tract), {"homes"})
+        self.assertEqual(P.project_uses(flats), {"apartments"})
+
+    def test_a_mixed_use_project_counts_only_for_the_uses_its_own_words_state(self):
+        self.assertEqual(self.uses_of(title="Office park", kind="Mixed Use", acres=8, description="8 acres office and shops"), {"retail"})
+
+    def test_the_recorded_example_lists_no_amendment_parcel_map_or_car_wash_under_the_wrong_use(self):
+        import support
+        from landplanner.cities.menifee import Menifee
+        with support.offline():
+            city = Menifee()
+            parcel = city.parcel(support.EXAMPLE)
+            projs = city.site_part("projects", parcel)["projects"]
+        rows = {u: [p["title"] for p in projs if u in P.project_uses(p)] for u in P.BUILT}
+        everything = {t for titles in rows.values() for t in titles}
+        for title in ("Menifee Village PM", "Menifee Village SPA"):
+            self.assertNotIn(title, everything)
+        self.assertEqual([u for u, titles in rows.items() if "Washbank Express Carwash" in titles], ["retail"])
+        self.assertNotIn("Montesori School", everything)
+        self.assertTrue(all(rows[u] for u in P.BUILT), "the example's lists have real buyers of every kind")
+
+    def test_a_use_with_no_matching_project_says_so_in_words(self):
+        rows = (listed("Hotel", "Commercial", "a hotel", feet=60000),)
+        F = gathered(make_parcel(100), {"projects": projects(*rows)})
+        entry = P.buyers(F, {**{u: 0.0 for u in P.USE_IDS}, "apartments": 5.0})[0]
+        self.assertEqual((entry["projects"], entry["named"]), ([], []))
+        self.assertIn("No project on the city's lists", entry["note"])
+        none_listed = P.buyers(gathered(make_parcel(100), {}), {**{u: 0.0 for u in P.USE_IDS}, "apartments": 5.0})[0]
+        self.assertIsNone(none_listed["note"], "no list at all is a missing source, not a finding")
+
+
+# ---------------------------------------------------------------- 15. the entrance sentence says it once
+
+class EntranceWords(Plans):
+    def test_an_entrance_that_may_need_a_signal_does_not_repeat_the_pages_own_words(self):
+        parts = {"streets": street(100, rank=4), "signals": {"signals": []}, "state_highway_traffic": highway(0.5, 126000),
+                 "people": census(5000, 40000, 90000), "surroundings": around(("LDR-2", "low-density", 300.0))}
+        plan = make(make_parcel(100, "EDC-CC"), parts)
+        entrances = plan["traffic"]["entrances"]
+        self.assertTrue(entrances)
+        for e in entrances:
+            self.assertNotIn("signal is worth studying", e["text"].lower())
+            self.assertEqual(len(e["text"].split(". ")), 1, "one sentence")
+        study = [e for e in entrances if e["signal"] == "study"]
+        self.assertTrue(study, "this much traffic on a major street is a signal worth studying")
+        self.assertIn("trips a day would use this entrance", study[0]["text"])
 
 
 if __name__ == "__main__":

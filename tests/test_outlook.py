@@ -864,6 +864,21 @@ class TheHazards(unittest.TestCase):
                 self.assertEqual(f["text"], f"The city rates the chance of fossils in the ground here as {rating.lower()}: a monitor may be asked for during grading.")
 
 
+    def test_a_rating_the_city_gives_as_a_code_is_put_in_words_and_never_shown_bare(self):
+        for code, said in (("Hb", "high (class B)"), ("Ha", "high (class A)"), ("U", "undetermined")):
+            with self.subTest(code=code):
+                f = finding(haz(fossils=code), "Fossils")
+                self.assertEqual(f["text"], f"The city rates the chance of fossils in the ground here as {said}: a monitor may be asked for during grading.")
+        self.assertIsNone(finding(haz(fossils="L"), "Fossils"), "a saved answer that still holds the code L is low")
+
+    def test_a_code_the_city_does_not_explain_is_reported_as_unexplained(self):
+        f = finding(haz(fossils="sea"), "Fossils")
+        self.assertEqual(f["level"], "note")
+        self.assertIn("code sea", f["text"])
+        self.assertIn("does not say in words", f["text"])
+        self.assertNotIn("rates the chance of fossils in the ground here as sea", f["text"])
+
+
 # ---------------------------------------------------------------- the typical resident
 
 class TheResident(unittest.TestCase):
@@ -1099,17 +1114,17 @@ class TheTrafficStep(unittest.TestCase):
     def test_signals_to_study_call_for_a_traffic_study_at_any_trip_count(self):
         out = self.traffic(forecast(trips=10), plans=[plan(use("homes", "Houses", 100.0, homes=500), signals=2)])
         self.assertEqual(len(out), 1)
-        self.assertIn("and 2 new signal(s) to study at the entrances.", out[0]["why"])
+        self.assertIn("and 2 new signals to study at the entrances.", out[0]["why"])
 
     def test_signals_are_added_up_across_plans_and_zero_signals_do_not_count(self):
         plans = [plan(use("homes", "Houses", 50.0, homes=5), signals=1), plan(use("retail", "Shops", 50.0), signals=2)]
-        self.assertIn("and 3 new signal(s)", self.traffic(plans=plans)[0]["why"])
+        self.assertIn("and 3 new signals", self.traffic(plans=plans)[0]["why"])
         self.assertEqual(self.traffic(plans=[plan(use("homes", "Houses", 5.0, homes=5), signals=0)]), [])
         self.assertEqual(self.traffic(plans=[plan(use("homes", "Houses", 5.0, homes=5), signals=None)]), [])
 
     def test_the_reason_and_who_for_a_big_site_with_a_highway(self):
         out = self.traffic(forecast(trips=11240, highway={"route": "215"}))[0]
-        self.assertEqual(out["why"], "About 11,240 trips a day at build-out.")
+        self.assertEqual(out["why"], "About 11,240 trips a day once everything is built.")
         self.assertEqual(out["who"], "The city's traffic engineer and Caltrans for the highway ramps")
         self.assertEqual(self.traffic(forecast(trips=11240))[0]["who"], "The city's traffic engineer")
 
@@ -1117,7 +1132,7 @@ class TheTrafficStep(unittest.TestCase):
     def test_a_traffic_study_for_signals_alone_does_not_say_zero_trips(self):
         out = self.traffic(forecast(trips=0), plans=[plan(use("homes", "Houses", 100.0, homes=500), signals=2)])
         self.assertNotIn("About 0 trips", out[0]["why"])
-        self.assertEqual(out[0]["why"], "The trips a day at build-out are not known, and 2 new signal(s) to study at the entrances.")
+        self.assertEqual(out[0]["why"], "The trips a day once everything is built are not known, and 2 new signals to study at the entrances.")
 
 
 class TheHazardSteps(unittest.TestCase):

@@ -389,9 +389,10 @@ class TheAddress(OnMenifee):
         self.assertEqual((e.status, e.code), (404, "no-such-parcel"))
         self.assertFalse(self.plans_file.exists())
 
-    def test_something_that_is_not_a_parcel_number_is_a_404(self):
+    def test_a_number_with_the_wrong_number_of_digits_is_a_400(self):
         e = self.problem(self.app, "GET", PATH, q("12"))
-        self.assertEqual((e.status, e.code), (404, "no-such-parcel"))
+        self.assertEqual((e.status, e.code), (400, "bad-request"))
+        self.assertIn("not a parcel number", e.message)
 
     def test_an_unknown_city_is_a_404_for_every_method_with_or_without_parcels(self):
         for query in (q(EXAMPLE), {}):

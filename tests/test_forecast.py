@@ -709,10 +709,10 @@ def a_use(use_id, amount, acres=10.0, trips=0, label=None):
     return {"id": use_id, "label": label or use_id.title(), "short": use_id, "colour": "#000", "acres": acres, "amount": amount, "trips": trips}
 
 
-def take(uses, pools, ready=2, capture=20, known=None, years=YEARS):
+def take(uses, pools, ready=2, capture=20, known=None, years=YEARS, pipeline=None):
     A = {"ready_years": ready, "capture_pct": capture}
     known = {"homes": True, "shops": True, "work": True} if known is None else known
-    return F.take_up({u["id"]: u for u in uses}, pools, A, years, known)
+    return F.take_up({u["id"]: u for u in uses}, pools, A, years, known, pipeline)
 
 
 class TakeUp(unittest.TestCase):
@@ -752,6 +752,23 @@ class TakeUp(unittest.TestCase):
             with self.subTest(capture=capture):
                 got = take([a_use("homes", 5000)], pool(100.0), capture=capture)[0]
                 self.assertEqual({r["taken"] for r in got["by_year"][2:]}, {per_year})
+
+    def test_the_share_is_taken_from_the_need_left_after_the_projects_already_on_the_lists(self):
+        # a need of 100 a year, 20% won; projects supply 100 in 2029 (nothing left), 60 in 2030 (40 left), none after
+        coming = {"homes": {2029: 100.0, 2030: 60.0}}
+        got = take([a_use("homes", 1000)], pool(100.0), pipeline=coming)[0]
+        self.assertEqual([r["taken"] for r in got["by_year"]], [0, 0, 0, 8] + [20] * 6)
+        self.assertEqual(got["by_year_10"], 8 + 6 * 20)
+
+    def test_projects_that_supply_more_than_is_needed_leave_nothing_and_never_a_debt(self):
+        coming = {"homes": {2029: 250.0, 2030: 1e9}}
+        got = take([a_use("homes", 1000)], pool(100.0), pipeline=coming)[0]
+        self.assertEqual([r["taken"] for r in got["by_year"]], [0, 0, 0, 0] + [20] * 6, "later years are not charged for the surplus")
+
+    def test_projects_of_one_kind_do_not_use_up_the_need_of_another(self):
+        coming = {"shops": {y: 1e9 for y in FUTURE}}
+        got = take([a_use("homes", 1000)], pool(100.0), pipeline=coming)[0]
+        self.assertEqual([r["taken"] for r in got["by_year"]], [0, 0] + [20] * 8)
 
     def test_land_ready_at_once_is_taken_from_the_first_year(self):
         got = take([a_use("homes", 1000)], pool(100.0), ready=0)[0]
@@ -885,7 +902,7 @@ class PeriodsOf(unittest.TestCase):
         steps, _ = self.periods([a_use("homes", 1000, acres=10.0, label="Houses")], pool(100.0))
         # 2029 to 2031: 60 homes of 1,000 = 0.6 acres; 2032 to 2036: 100 more = 1 acre
         self.assertEqual(steps[1]["lines"], ["Houses: about 0.6 acres (60 homes)."])
-        self.assertEqual(steps[2]["lines"], ["Houses: about 1 acres (100 homes)."])
+        self.assertEqual(steps[2]["lines"], ["Houses: about 1 acre (100 homes)."])
 
     def test_floor_space_is_rounded_to_a_hundred_square_feet(self):
         steps, _ = self.periods([a_use("retail", 100000, acres=10.0, label="Shops")], pool(1234.0, "shops"))
@@ -2217,6 +2234,59 @@ class TheForecastWithTheCityHomes(unittest.TestCase):
         out = forecast(parts)
         self.assertFalse(out["available"])
         self.assertTrue(any("No homes were counted" in line for line in out["limits"]))
+
+
+# ---------------------------------------------------------------- the advice and the take-up say the same thing
+
+class AdviceAgreesWithTheTakeUp(unittest.TestCase):
+    """Homes already on the city's lists must hold the site's housing back in the same years the advice says they do."""
+
+    def housing(self, out):
+        return [u for u in out["programme"]["uses"] if u["kind"] == "homes"]
+
+    def test_with_many_homes_on_the_way_no_housing_land_is_taken_before_the_first_year_with_room(self):
+        # 30,000 homes under review (60% expected to be built) fill 2030 to 2034 many times over
+        out = changed(lambda p: p.update(projects=projects(project("Residential", "Application under review", homes=30000))))
+        room = out["homes"]["room_from_year"]
+        self.assertGreater(out["homes"]["pipeline_covers_years"], 6)
+        self.assertEqual(room, 2029, "the land is ready after 2028; the projects arrive from 2030, so 2029 is the first year with room")
+        # no room in 2030 to 2034: the need left is zero, so nothing is taken then
+        for u in self.housing(out):
+            took = {r["year"]: r["taken"] for r in u["by_year"]}
+            for y in range(2030, 2035):
+                self.assertEqual(took[y], 0, (u["id"], y))
+        left = {r["year"]: r["left_after_projects"] for r in out["homes"]["rows"] if "left_after_projects" in r}
+        self.assertTrue(all(left[y] == 0 for y in range(2030, 2035)))
+        self.assertGreater(left[2029], 0)
+
+    def test_when_the_opening_is_later_the_advice_gives_that_year_and_the_take_up_starts_there(self):
+        out = changed(lambda p: p.update(projects=projects(project("Residential", "Under Construction", homes=60000),
+                                                          project("Residential", "Approved by planning", homes=60000))),
+                      settings=mine(ready_years=0))
+        room = out["homes"]["room_from_year"]
+        self.assertIsNotNone(room)
+        words = " ".join(out["advice"])
+        self.assertNotIn("steady pace", words)
+        self.assertIn(f"first appears in {room}", words)
+        for u in self.housing(out):
+            first = next(r["year"] for r in u["by_year"] if r["taken"] > 0)
+            self.assertGreaterEqual(first, room, u["id"])
+
+    def test_with_no_projects_on_the_lists_the_first_year_the_land_is_ready_has_room(self):
+        out = forecast()
+        self.assertEqual(out["homes"]["room_from_year"], 2029)
+        self.assertNotIn("first appears", " ".join(out["advice"]))
+        self.assertTrue(all(r["left_after_projects"] == r["need"]["expected"] or abs(r["left_after_projects"] - r["need"]["expected"]) <= 1
+                            for r in out["homes"]["rows"] if "left_after_projects" in r))
+
+    def test_the_limits_say_the_site_is_offered_only_what_the_projects_leave(self):
+        out = changed(lambda p: p.update(projects=projects(project("Residential", "Under Construction", homes=1000))))
+        self.assertTrue(any("left after the projects already on the city's lists" in x for x in out["limits"]))
+        self.assertFalse(any("left after the projects" in x for x in forecast()["limits"]), "no projects counted, nothing to say")
+
+    def test_the_figure_that_sets_the_share_says_what_it_is_a_share_of(self):
+        label = next(f["label"] for f in forecast()["figures"] if f["id"] == "capture_pct")
+        self.assertIn("after the projects already on the city's lists", label)
 
 
 if __name__ == "__main__":

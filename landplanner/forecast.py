@@ -10,13 +10,17 @@ How it works, in order:
      New work space is what the forecast jobs need. Each is set beside what is already on the city's project
      lists, spread over the years those projects are likely to open.
   3. The site. Its own plan (plan.py, per parcel, added up) is taken up at the share of each year's need that one
-     site can win.
+     site can win. That need is what is left once the projects already on the city's lists have taken their
+     part of the year (never below zero), so the page cannot say there are years of homes on the way and
+     also show all the site's housing land taken in the first year it is offered.
 
 Everything that is not measured or an official forecast is an assumption in ASSUMPTIONS, shown on the page with
 its starting value, and the owner can change it. Money is in the survey's dollars; nothing is inflated.
 """
 import math
 import statistics
+
+from .words import counted
 
 RINGS = (1, 3, 5)
 MARKET_MILES = 3            # the ring the needs are worked out for (the city's project lists are read this far)
@@ -32,7 +36,7 @@ ASSUMPTIONS = {
     "sales_per_sq_ft": ("Sales a shop needs each year for each square foot", "$ per sq ft", 400, "Shops", 100, 2000),
     "sq_ft_per_job": ("Floor space for each new job", "sq ft", 400, "Jobs", 100, 3000),
     "traffic_follow_pct": ("Highway traffic growth for each 1% more homes", "%", 70, "Traffic", 0, 200),
-    "capture_pct": ("Share of each year's new need this site can win", "%", 20, "The site", 1, 100),
+    "capture_pct": ("Share of the need left each year, after the projects already on the city's lists, that this site can win", "%", 20, "The site", 1, 100),
     "ready_years": ("Years before the first land can be handed over (approvals, map, streets)", "years", 2, "The site", 0, 8),
     "built_review_pct": ("Share of projects still under review that end up built", "%", 60, "Projects on the city's list", 0, 100),
 }
@@ -329,7 +333,7 @@ def income_near(parts, miles=MARKET_MILES):
 
 
 def programme_of(plans):
-    """What the site's own plans add up to, use by use, with the trips each use brings at build-out."""
+    """What the site's own plans add up to, use by use, with the trips each use brings once everything is built."""
     uses = {}
     for plan in plans or []:
         trips = ((plan.get("traffic") or {}).get("by_use")) or {}
@@ -342,11 +346,14 @@ def programme_of(plans):
     return uses
 
 
-def take_up(uses, pools, A, years, known):
-    """The site's land taken up year by year: each use wins the owner's share of that year's new need of its
-    kind (homes, shop space, work space), starting once the land is ready. Uses of one kind share the need
-    in proportion to their size. A kind whose need could not be worked out (`known`) is left out: the page
+def take_up(uses, pools, A, years, known, pipeline=None):
+    """The site's land taken up year by year: each use wins the owner's share of what is left of that year's
+    need of its kind (homes, shop space, work space) after the projects already on the city's lists, starting
+    once the land is ready. `pipeline` is what those projects supply, kind by kind and year by year; a year they
+    supply more than is needed leaves nothing (never below zero). Uses of one kind share what is left in
+    proportion to their size. A kind whose need could not be worked out (`known`) is left out: the page
     says it is not forecast, instead of showing it as never selling."""
+    pipeline = pipeline or {}
     base, ready = years[1], int(round(A["ready_years"]))
     out = []
     for kind in ("homes", "shops", "work"):
@@ -359,7 +366,8 @@ def take_up(uses, pools, A, years, known):
             part = u["amount"] / whole
             left, cum, rows, done, last = float(u["amount"]), 0.0, [], None, 0.0
             for y in years[2:]:
-                room = pools[kind]["expected"].get(y, 0.0) * A["capture_pct"] / 100 * part if y > base + ready else 0.0
+                left_over = max(0.0, pools[kind]["expected"].get(y, 0.0) - (pipeline.get(kind) or {}).get(y, 0.0))
+                room = left_over * A["capture_pct"] / 100 * part if y > base + ready else 0.0
                 taken = min(left, max(0.0, room))
                 left -= taken
                 cum += taken
@@ -400,8 +408,8 @@ def periods_of(taken, uses, A, years):
             before_acres = u["by_year"][a - 2]["acres_so_far"] if a > 1 else 0.0
             got, acres = u["by_year"][b - 1]["so_far"] - before, round(u["by_year"][b - 1]["acres_so_far"] - before_acres, 1)
             if got > 0 and acres >= 0.1:
-                amount = f"{got:,} homes" if u["unit"] == "homes" else f"{round(got, -2):,} sq ft"
-                lines.append(f"{u['label']}: about {acres:g} acres ({amount}).")
+                amount = counted(got, "home") if u["unit"] == "homes" else f"{round(got, -2):,} sq ft"
+                lines.append(f"{u['label']}: about {counted(acres, 'acre')} ({amount}).")
         if len(lines) == 0:
             lines.append("Nothing more is taken up in these years at this pace.")
         out.append({"from_year": base + a, "to_year": base + b, "label": f"{base + a} to {base + b}",
@@ -411,10 +419,10 @@ def periods_of(taken, uses, A, years):
     for u in left:
         rest = round(u["acres"] - u["acres_by_year_10"], 1)
         when = (f"filled around {u['filled_later_in']}" if u["filled_later_in"] else "not filled at this pace within a lifetime")
-        after.append(f"{u['label']}: {rest:g} of {u['acres']:g} acres still unsold in {years[-1]}, {when}.")
+        after.append(f"{u['label']}: {rest:g} of {counted(u['acres'], 'acre')} still unsold in {years[-1]}, {when}.")
     park = uses.get("park")
     if park and park["acres"]:
-        after.append(f"Parks, open space and drainage ({park['acres']:g} acres) are built along with the uses around them.")
+        after.append(f"Parks, open space and drainage ({counted(park['acres'], 'acre')}) are built along with the uses around them.")
     return out, after
 
 
@@ -492,6 +500,7 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
                     need[s][y] = new[s]
                     cum[s] += new[s]
                 cum_pipe += pipe["per_year"]["homes"][y]
+                row["left_after_projects"] = round(max(0.0, new["expected"] - pipe["per_year"]["homes"][y]))
                 row["need_so_far"] = {s: round(cum[s]) for s in SCENARIOS}
                 row["pipeline_so_far"] = round(cum_pipe)
                 if income.get("renters_pct") is not None:
@@ -501,13 +510,16 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
         ten, piped = cum["expected"], cum_pipe
         homes["need_10_years"] = {s: round(cum[s]) for s in SCENARIOS}
         homes["pipeline_10_years"] = round(piped)
+        ready_at = years[1] + int(round(A["ready_years"]))
+        # the first year the site's land is ready and the area still needs homes the listed projects do not supply
+        homes["room_from_year"] = next((y for y in future if y > ready_at and need["expected"][y] - pipe["per_year"]["homes"][y] > 1e-6), None)
         first = need["expected"][future[0]]
         homes["pipeline_covers_years"] = round(piped / (ten / HORIZON), 1) if ten > 0 else None
         homes["summary"] = (f"Within {MARKET_MILES} miles the expected need is about {round(first, -1):,.0f} new homes a year "
                             f"({round(need['low'][future[0]], -1):,.0f} to {round(need['high'][future[0]], -1):,.0f}), "
                             f"about {round(ten, -2):,.0f} over ten years. Projects already on the city's lists would add about "
                             f"{round(piped, -1):,.0f} homes in that time"
-                            + (f", which covers about {homes['pipeline_covers_years']:g} years of the expected need." if ten > 0 else "."))
+                            + (f", which covers about {counted(homes['pipeline_covers_years'], 'year')} of the expected need." if ten > 0 else "."))
 
     # ---- shops
     shops = {"available": bool(ok and income.get("available")), "rows": []}
@@ -556,7 +568,7 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
         jobs["new_jobs_per_year"] = {s: round(max(0.0, pace[s])) for s in SCENARIOS}
         jobs["space_10_years_sq_ft"] = {s: round(cum[s], -3) for s in SCENARIOS}
         jobs["pipeline_10_years_sq_ft"] = round(cum_pipe, -3)
-        jobs["summary"] = (f"The region's plans expect about {jobs['new_jobs_per_year']['expected']:,} new jobs a year within "
+        jobs["summary"] = (f"The region's plans expect about {counted(jobs['new_jobs_per_year']['expected'], 'new job')} a year within "
                            f"{MARKET_MILES} miles ({jobs['new_jobs_per_year']['low']:,} to {jobs['new_jobs_per_year']['high']:,}). "
                            f"At {A['sq_ft_per_job']:g} sq ft a job that is about {round(work_need['expected'][future[0]], -2):,.0f} sq ft of "
                            f"offices, clinics and business space a year. Industrial and office projects on the city's lists come to about "
@@ -566,11 +578,12 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
     uses = programme_of(plans)
     pools = {"homes": need, "shops": shop_need, "work": work_need}
     known = {"homes": ok, "shops": shops["available"], "work": jobs["available"]}
-    taken = take_up(uses, pools, A, years, known) if ok else []
-    # the same take-up if growth runs along the low or the high line: the year each use is filled, or None when
+    coming = {"homes": pipe["per_year"]["homes"], "shops": pipe["per_year"]["shops"], "work": pipe["per_year"]["work"]}
+    taken = take_up(uses, pools, A, years, known, coming) if ok else []
+    # the same, taken up if growth runs along the low or the high line: the year each use is filled, or None when
     # that is after the last forecast year
     for line in ("low", "high"):
-        other = take_up(uses, {k: {"expected": v[line]} for k, v in pools.items()}, A, years, known) if ok else []
+        other = take_up(uses, {k: {"expected": v[line]} for k, v in pools.items()}, A, years, known, coming) if ok else []
         when = {u["id"]: u["filled_in"] for u in other}
         for u in taken:
             u[f"filled_in_if_{line}"] = when.get(u["id"])
@@ -619,11 +632,18 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
                       f"Only one reading of growth answered ({said}), so the low and high lines are the same as the expected line.")
         if homes.get("pipeline_covers_years") is not None:
             c = homes["pipeline_covers_years"]
-            advice.append("Homes already on the city's lists cover about "
-                          f"{c:g} years of the expected need. "
-                          + ("New housing land here competes with many homes already on the way for the next few years; the opening is later in the decade."
-                             if c >= 6 else "Fewer homes are on the way than the area needs: housing land is likely to find a buyer early."
-                             if c <= 3 else "Housing land should sell through the decade at a steady pace."))
+            room, first_ready = homes.get("room_from_year"), years[1] + int(round(A["ready_years"])) + 1
+            if room is None:
+                words = ("New housing land here competes with homes already on the way. Once they are counted, the area needs no more "
+                         f"homes through {years[-1]}, so housing land here would wait until after that.")
+            elif room > first_ready:
+                words = ("New housing land here competes with homes already on the way. The site is offered only the need that is left "
+                         f"after them, and that first appears in {room}.")
+            elif c <= 3:
+                words = "Fewer homes are on the way than the area needs: housing land is likely to find a buyer early."
+            else:
+                words = "Housing land should sell through the decade at a steady pace."
+            advice.append(f"Homes already on the city's lists cover about {counted(c, 'year')} of the expected need. " + words)
         slow = [u for u in taken if u["pct_by_year_10"] < 60]
         quick = [u for u in taken if u["filled_in"]]
         if quick:
@@ -632,15 +652,15 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
                         if u["filled_in_if_high"] and u["filled_in_if_high"] != u["filled_in"] else "")
                 slow = f"{u['filled_in_if_low']} if it runs low" if u["filled_in_if_low"] else f"after {years[-1]} if it runs low"
                 return "; ".join(x for x in (fast, slow) if x)
-            advice.append("First to sell: " + ", ".join(f"{u['label'].lower()} ({u['acres']:g} acres, filled by about {u['filled_in']}; {span(u)})"
+            advice.append("First to sell: " + ", ".join(f"{u['label'].lower()} ({counted(u['acres'], 'acre')}, filled by about {u['filled_in']}; {span(u)})"
                                                         for u in quick) + ".")
         for u in slow:
             when = f"around {u['filled_later_in']}" if u["filled_later_in"] else "not within a lifetime"
-            advice.append(f"{u['label']}: only {u['pct_by_year_10']}% of the {u['acres']:g} acres is taken up by {years[-1]} at this pace "
+            advice.append(f"{u['label']}: only {u['pct_by_year_10']}% of the {counted(u['acres'], 'acre')} is taken up by {years[-1]} at this pace "
                           f"(filled {when}). Either it draws on more than the growth nearby, or part of that land suits another use. "
                           "Worth raising with the city before fixing the mix.")
     elif counted_here and not counted_here["homes"]:
-        limits.append(f"No homes were counted within {MARKET_MILES} miles of the site in {counted_year}, so there is nothing to project "
+        limits.append(f"No homes were counted within {counted(MARKET_MILES, 'mile')} of the site in {counted_year}, so there is nothing to project "
                       "growth from and no year-by-year forecast.")
     else:
         limits.append("No reading of growth answered for this site (the Census and the regional plan), so there is no year-by-year forecast yet.")
@@ -653,15 +673,18 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
     if old:
         limits.append("The city's list of " + " and ".join(old) + " has not been updated lately: some projects on it may be finished, and newer ones are missing.")
     if pipe["projects_without_sizes"]:
-        limits.append(f"{pipe['projects_without_sizes']} projects on the city's lists within {MARKET_MILES} miles do not state a number of homes or a building size, so they are not counted.")
+        limits.append(f"{counted(pipe['projects_without_sizes'], 'project')} on the city's lists within {counted(MARKET_MILES, 'mile')} {'does' if pipe['projects_without_sizes'] == 1 else 'do'} not state a number of homes or a building size, so they are not counted.")
     if pipe["projects_other_kinds"]:
         n = pipe["projects_other_kinds"]
-        limits.append(f"{n} {'project' if n == 1 else 'projects'} on the city's lists within {MARKET_MILES} miles "
+        limits.append(f"{counted(n, 'project')} on the city's lists within {counted(MARKET_MILES, 'mile')} "
                       f"{'is' if n == 1 else 'are'} not homes, shops or work space, so {'it is' if n == 1 else 'they are'} not counted.")
     if pipe["projects_dropped"]:
         n = pipe["projects_dropped"]
-        limits.append(f"{n} {'project' if n == 1 else 'projects'} on the city's lists within {MARKET_MILES} miles "
+        limits.append(f"{counted(n, 'project')} on the city's lists within {counted(MARKET_MILES, 'mile')} "
                       f"{'was' if n == 1 else 'were'} withdrawn, denied, expired or cancelled, so {'it is' if n == 1 else 'they are'} not counted as coming.")
+    if pipe["projects_counted"]:
+        limits.append("The site is offered only the part of each year's need that is left after the projects already on the city's lists. "
+                      "Those projects are spread over the years their stage suggests, so which years are free is an estimate.")
     limits += [
         "Shops that exist today are not counted (no public list of them), so the forecast shows what growth adds, not whether the area is short of shops now.",
         "Traffic counts by year are not published as open data: highway traffic is today's count, grown with the homes around it.",

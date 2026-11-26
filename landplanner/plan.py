@@ -12,6 +12,7 @@ import re
 import statistics
 
 from . import geometry as G
+from .words import counted
 
 USES = (
     {"id": "retail", "label": "Shops and restaurants", "short": "Shops", "colour": "#d9455f"},
@@ -86,7 +87,8 @@ def reason(text, effect, source):
 
 
 def say(n, digits=0):
-    return f"{n:,.{digits}f}"
+    """A number with thousands commas. digits may be negative to round to tens or hundreds: say(1234, -1) -> "1,230"."""
+    return f"{round(n, digits):,.{max(digits, 0)}f}"
 
 
 def a_class(name):
@@ -145,6 +147,52 @@ def density_from_plan(general_plan, zoning_name):
     return out
 
 
+MIN_LOT = re.compile(r"(\d+(?:\.\d+)?(?:/\d+)?)\s*-?\s*ac(?:re)?s?\s*min", re.I)
+RR_CODE = re.compile(r"RR(\d+(?:/\d+)?)")
+
+
+def lot_in(text):
+    """The smallest lot, in acres, that a piece of the city's wording states ("2-acre minimum", "1/2 ac min"), or None."""
+    m = MIN_LOT.search(str(text or ""))
+    if not m:
+        return None
+    top, _, bottom = m.group(1).partition("/")
+    try:
+        acres = float(top) / float(bottom) if bottom else float(top)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return acres if acres > 0 else None
+
+
+def lot_rule(parcel, parts, kind, stated):
+    """What the zones on a parcel say about the smallest lot, or None when no zone's lot size can be read.
+    Read from the city's own description of each zone (the parcel's "zoning_name" has one piece per zone), from the
+    zone code where the code itself carries the size (RR2, RR1/2), and from the city's wording for the zone at the
+    parcel's middle. A zone whose size cannot be read is left out, never guessed. With several zones the larger lot
+    is the one to use (fewer homes): {"acres": the larger lot, "zones": [(code, acres)], "unread": [codes]}."""
+    codes = [re.sub(r"\s*-\s*", "-", c.strip()) for c in str(parcel.get("zoning") or "").split("&") if c.strip()]
+    words = [w.strip() for w in str(parcel.get("zoning_name") or "").split(" + ")]
+    if len(words) != len(codes):
+        words = [""] * len(codes)
+    point = parts.get("zoning") or {}
+    found, unread = [], []
+    for code, name in zip(codes, words):
+        acres = lot_in(name)
+        if acres is None and (m := RR_CODE.fullmatch(code.upper())):
+            acres = lot_in(m.group(1) + " ac min")
+        if acres is None and str(point.get("abbrev") or "").strip().upper() == code.upper():
+            acres = lot_in(point.get("general_plan_says")) or lot_in(point.get("what_it_allows"))
+        if acres is None and len(codes) == 1 and kind == "rural":
+            acres = stated.get("lot_acres")
+        if acres:
+            found.append((code, acres))
+        else:
+            unread.append(code)
+    if not found:
+        return None
+    return {"acres": max(a for _, a in found), "zones": found, "unread": unread}
+
+
 def gather(parcel, parts, kind_of):
     """Everything the rules look at, in one flat dictionary, plus the frame the layout is drawn in."""
     acres = num(parcel.get("acres"), 0.0) or 0.0
@@ -163,6 +211,7 @@ def gather(parcel, parts, kind_of):
          "several_pieces": len(polys) > 1, "missing": []}
     F["fit"] = zoning_fit(F["zoning_kind"], F["zoning"], kind_of)
     F["stated"] = density_from_plan(parts.get("general_plan"), F["zoning_name"])
+    F["lot_rule"] = lot_rule(parcel, parts, F["zoning_kind"], F["stated"])
 
     # what surrounds it, by zoning family, leaving this parcel out
     around = parts.get("surroundings")
@@ -269,6 +318,26 @@ def gather(parcel, parts, kind_of):
     return F, frame, outline
 
 
+STREET_SHARE = 0.85      # the share of rural land that is lots; the rest is streets
+
+
+def lot_basis(lot):
+    """The reason for a homes-an-acre figure that comes from the zones' smallest lots, in words."""
+    top = lot["acres"]
+    if len(lot["zones"]) == 1:
+        ask = f"The zone ({lot['zones'][0][0]}) asks for lots of at least {counted(top, 'acre')}"
+    else:
+        sizes = " and ".join(f"{counted(a, 'acre')} ({c})" for c, a in lot["zones"])
+        ask = (f"The zones on this parcel ask for lots of at least {sizes}. The larger lot, {counted(top, 'acre')}, "
+               f"is used for all of the land")
+    text = (f"{ask}, so at most {counted(round(1 / top, 2), 'home')} an acre. With {round((1 - STREET_SHARE) * 100):g}% of the "
+            f"land left for streets, that comes to {round(STREET_SHARE / top, 2):g}.")
+    if lot["unread"]:
+        text += (f" The city's wording gives no lot size for {', '.join(lot['unread'])}, "
+                 f"so {'that zone is' if len(lot['unread']) == 1 else 'those zones are'} not counted.")
+    return text
+
+
 def starting_figures(F):
     """The assumptions, with the ones this parcel's own records can replace already replaced (and marked)."""
     out = {}
@@ -287,12 +356,16 @@ def starting_figures(F):
         lo, hi = stated["homes_range"]
         key = "apartments_per_acre" if lo >= 8 else "homes_per_acre"
         measured(key, round((lo + hi) / 2, 1), f"The middle of the city's general plan range for this land: {lo:g} to {hi:g} homes an acre.")
-    if F["zoning_kind"] == "rural" and "lot_acres" in stated:
-        measured("homes_per_acre", round(0.85 / stated["lot_acres"], 2),
-                 f"The zone's smallest lot is {stated['lot_acres']:g} acres; 15% of the land is left for streets.")
-    elif out["homes_per_acre"]["kind"] == "assumption" and len(local["houses"]) >= 2:
+    if out["homes_per_acre"]["kind"] == "assumption" and len(local["houses"]) >= 2:
         v, names = typical(local["houses"])
-        measured("homes_per_acre", round(v, 1), f"The typical figure for {len(local['houses'])} housing tracts on the city's project list nearby ({names}).")
+        measured("homes_per_acre", round(v, 1), f"The typical figure for {counted(len(local['houses']), 'housing tract')} on the city's project list nearby ({names}).")
+    lot = F.get("lot_rule")
+    if lot:
+        # a zone's smallest lot is a ceiling on houses, whatever the neighbours' tracts or the plan's range suggest
+        cap = round(STREET_SHARE / lot["acres"], 2)
+        if cap < out["homes_per_acre"]["value"]:
+            measured("homes_per_acre", cap, lot_basis(lot))
+            out["homes_per_acre"]["lot_acres"] = lot["acres"]
     if out["apartments_per_acre"]["kind"] == "assumption" and local["flats"]:
         v, names = typical(local["flats"])
         measured("apartments_per_acre", round(v, 1), f"From apartment and condominium projects on the city's list nearby ({names}).")
@@ -302,7 +375,7 @@ def starting_figures(F):
         measured(key, round((lo + hi) / 2, 2), f"The middle of the city's general plan range for this land: {lo:g} to {hi:g}.")
     if out["retail_far"]["kind"] == "assumption" and len(local["shops"]) >= 2:
         v, names = typical(local["shops"])
-        measured("retail_far", round(v, 2), f"The typical figure for {len(local['shops'])} commercial projects on the city's list nearby ({names}).")
+        measured("retail_far", round(v, 2), f"The typical figure for {counted(len(local['shops']), 'commercial project')} on the city's list nearby ({names}).")
     if out["business_far"]["kind"] == "assumption" and local["sheds"]:
         v, names = typical(local["sheds"])
         measured("business_far", round(v, 2), f"From industrial projects on the city's list nearby ({names}).")
@@ -327,7 +400,10 @@ def score_uses(F, count_zoning=True):
     out = {}
 
     def start(use, base):
-        out[use] = {"score": base, "reasons": [], "fit": F["fit"][use]}
+        # the starting score is a reason like any other, so the points listed always add up to the score
+        out[use] = {"score": base, "fit": F["fit"][use], "reasons": [
+            reason(f"Every piece of land starts from {base} points for this use before anything about it is counted. "
+                   "Each reason below adds to or takes away from that.", base, "Land Planner's own starting figure")]}
 
     def add(use, points, text, source):
         out[use]["score"] += points
@@ -351,7 +427,7 @@ def score_uses(F, count_zoning=True):
     def highway(use, close, mid):
         if not hw or not hw["per_day"]:
             return
-        text = f"Route {hw['route']} carries about {say(hw['per_day'])} vehicles a day at {hw['where']}, {hw['miles']:g} miles away."
+        text = f"Route {hw['route']} carries about {say(hw['per_day'])} vehicles a day at {hw['where']}, {counted(hw['miles'], 'mile')} away."
         scale = min(1.0, hw["per_day"] / 100000)
         if hw["miles"] <= 1.0:
             add(use, round(close * scale), text + " That is close enough to draw passing traffic.", "Caltrans")
@@ -383,7 +459,7 @@ def score_uses(F, count_zoning=True):
     if rivals:
         feet = sum(p["stated"]["building_sq_ft"] for p in rivals)
         add("retail", -6 if feet >= 300000 else -3,
-            f"{len(rivals)} large commercial projects are already on the city's list within 2 miles ({', '.join(p['title'] for p in rivals[:3])}): "
+            f"{counted(len(rivals), 'large commercial project')} {'is' if len(rivals) == 1 else 'are'} already on the city's list within 2 miles ({', '.join(p['title'] for p in rivals[:3])}): "
             f"about {say(feet)} sq ft of competing space.", "City project list")
 
     # offices and medical
@@ -400,7 +476,7 @@ def score_uses(F, count_zoning=True):
     zoning("apartments", 22, 8, -15)
     street("apartments", 10, 5, -5)
     if hw and hw["miles"] <= 2.5:
-        add("apartments", 5, f"Route {hw['route']} is {hw['miles']:g} miles away: an easy commute, which renters look for.", "Caltrans")
+        add("apartments", 5, f"Route {hw['route']} is {counted(hw['miles'], 'mile')} away: an easy commute, which renters look for.", "Caltrans")
     if around and around["jobs_pct"] >= 5:
         add("apartments", 8, f"{around['jobs_pct']:g}% of the land within {around['miles']:g} mile is zoned for shops, offices or jobs: places to walk or drive a short way to.", "City zoning")
     flats = [p for p in of_kind("residential") if re.search(r"apartment|condo|multi", p.get("description") or "", re.I)]
@@ -413,21 +489,21 @@ def score_uses(F, count_zoning=True):
     if around:
         pct = around["housing_pct"]
         add("homes", 18 if pct >= 50 else 9 if pct >= 25 else 0,
-            f"{pct:g}% of the land within {around['miles']:g} mile is zoned for housing" + (": houses would sit among houses." if pct >= 25 else ", so houses would not have many neighbours."), "City zoning")
+            f"{pct:g}% of the land within {counted(around['miles'], 'mile')} is zoned for housing" + (": houses would sit among houses." if pct >= 25 else ", so houses would not have many neighbours."), "City zoning")
     tracts = [p for p in of_kind("residential") if p not in flats]
     if tracts:
         builders = sorted({p["builder"] for p in tracts if p.get("builder")})
         add("homes", 10 if len(tracts) >= 3 else 5,
-            f"{len(tracts)} housing tracts are on the city's list within 2 miles" + (f" (builders named: {', '.join(builders[:4])})." if builders else "."), "City project list")
+            f"{counted(len(tracts), 'housing tract')} {'is' if len(tracts) == 1 else 'are'} on the city's list within 2 miles" + (f" (builders named: {', '.join(builders[:4])})." if builders else "."), "City project list")
     if ground and ground["slope_pct"] is not None:
         s = ground["slope_pct"]
         add("homes", 5 if s < 5 else 0 if s < 10 else -10,
             f"The ground's typical slope is about {s:g}% ({ground['reading']}), from {ground['detail']}." + ("" if s < 10 else " Sloping ground makes lots costly to build."), "USGS")
     if hw and hw["miles"] <= 0.25:
-        add("homes", -10, f"Route {hw['route']} is only {hw['miles']:g} miles away: noise that houses are usually kept back from.", "Caltrans")
+        add("homes", -10, f"Route {hw['route']} is only {counted(hw['miles'], 'mile')} away: noise that houses are usually kept back from.", "Caltrans")
     close = [s for s in F["schools"] if s["miles_away"] <= 1.5 and "higher" not in s["grades"].lower()]
     if close:
-        add("homes", 4, f"{close[0]['name']} is {close[0]['miles_away']:g} miles away.", "City schools list")
+        add("homes", 4, f"{close[0]['name']} is {counted(close[0]['miles_away'], 'mile')} away.", "City schools list")
 
     # business park
     start("business", 25)
@@ -438,15 +514,21 @@ def score_uses(F, count_zoning=True):
         add("business", 10 if s < 3 else 3 if s < 6 else -10,
             f"Large buildings need flat pads; the typical slope here is about {s:g}% ({ground['reading']}).", "USGS")
     if F["acres"] >= 20:
-        add("business", 5, f"At {F['acres']:g} acres the parcel is big enough for buildings with truck yards.", "City parcel records")
+        add("business", 5, f"At {counted(F['acres'], 'acre')} the parcel is big enough for buildings with truck yards.", "City parcel records")
     sheds = of_kind("industrial")
     if sheds:
         add("business", 8, f"Industrial projects are already on the city's list within 2 miles ({', '.join(p['title'] for p in sheds[:3])}).", "City project list")
     if around and around["housing_pct"] >= 60:
-        add("business", -10, f"{around['housing_pct']:g}% of the land within {around['miles']:g} mile is zoned for housing: trucks beside homes draw objections.", "City zoning")
+        add("business", -10, f"{around['housing_pct']:g}% of the land within {counted(around['miles'], 'mile')} is zoned for housing: trucks beside homes draw objections.", "City zoning")
 
     for use in out:
-        out[use]["score"] = max(0, min(100, out[use]["score"]))
+        raw = out[use]["score"]
+        held = max(0, min(100, raw))
+        if held != raw:
+            # a score stays between 0 and 100; the points that were held back are listed too
+            out[use]["reasons"].append(reason("A score is kept between 0 and 100, so the points beyond that are not counted.",
+                                              held - raw, "Land Planner's own rule"))
+        out[use]["score"] = held
     return out
 
 
@@ -466,11 +548,11 @@ def retail_ceiling(F, scores):
         cap, name = 10.0, f"a neighbourhood centre (10,000 or more people within 3 miles; here {say(p3)})"
     else:
         cap, name = 4.0, f"a small corner centre (fewer than 10,000 people within 3 miles; here {say(p3)})"
-    text = f"Shops are sized as {name}: up to about {cap:g} acres."
+    text = f"Shops are sized as {name}: up to about {counted(cap, 'acre')}."
     rivals = [r for r in scores["retail"]["reasons"] if "competing space" in r["text"]]
     if rivals and rivals[0]["effect"] <= -6:
         cap *= 0.6
-        text += f" Cut to {cap:g} acres because so much competing space is already on the city's list nearby."
+        text += f" Cut to {counted(cap, 'acre')} because so much competing space is already on the city's list nearby."
     return cap, text
 
 
@@ -555,13 +637,13 @@ def suggest(F, scores, A, mode):
         give[source] -= local_shops
         give["retail"] = local_shops
         keep.append("retail")
-        notes.append(f"A corner of neighbourhood shops ({local_shops:g} acres) is added because the plan's own homes bring about "
+        notes.append(f"A corner of neighbourhood shops ({counted(local_shops, 'acre')}) is added because the plan's own homes bring about "
                      f"{say(residents)} residents: about one acre of everyday shops for every 1,000 people is a common planning figure.")
     elif "retail" in give:
         notes.append(cap_text)
     give["park"] = park + held[0]
     if held[0] > 0.05:
-        notes.append(f"{held[0]:.1f} acres are left open and held for later: the uses today's zoning is meant for are already at the size "
+        notes.append(f"{counted(held[0], 'acre', digits=1)} {'is' if counted(held[0], 'acre', digits=1).startswith('1.0 ') else 'are'} left open and held for later: the uses today's zoning is meant for are already at the size "
                      "the people nearby can support. Best use shows what else the location could carry.")
     homes = give.get("homes", 0) * A["homes_per_acre"] + give.get("apartments", 0) * A["apartments_per_acre"]
     if homes >= 1500:
@@ -569,9 +651,9 @@ def suggest(F, scores, A, mode):
                      "(roughly 10 to 12 acres for an elementary school). None is drawn here: ask the district early.")
     basins = acres * A["drainage_share_pct"] / 100
     parkland = max(0.0, park - basins - acres * steep)
-    notes.append(f"Parks and drainage: {basins:.1f} acres of drainage basins ({A['drainage_share_pct']:g}% of the site)"
-                 + (f", {parkland:.1f} acres of parks ({A['park_acres_per_1000']:g} acres for every 1,000 new residents, the standard California cities may ask for)" if parkland > 0.05 else "")
-                 + (f", and {acres * steep:.1f} acres of the steepest ground left open" if steep else "") + ".")
+    notes.append(f"Parks and drainage: {counted(basins, 'acre', digits=1)} of drainage basins ({A['drainage_share_pct']:g}% of the site)"
+                 + (f", {counted(parkland, 'acre', digits=1)} of parks ({counted(A['park_acres_per_1000'], 'acre')} for every 1,000 new residents, the standard California cities may ask for)" if parkland > 0.05 else "")
+                 + (f", and {counted(acres * steep, 'acre', digits=1)} of the steepest ground left open" if steep else "") + ".")
     dropped = [u for u in BUILT if u not in give]
     return {u: round(give.get(u, 0.0), 1) for u in USE_IDS}, notes, dropped
 
@@ -708,14 +790,15 @@ def traffic(F, frame, outline, drawing, amount, A):
         nearest = min(F["signals"], key=lambda g: math.hypot(*[a - b for a, b in zip(frame.xy(g["lon"], g["lat"]), s["at"])]), default=None)
         feet = math.hypot(*[a - b for a, b in zip(frame.xy(nearest["lon"], nearest["lat"]), s["at"])]) if nearest else None
         if nearest and feet <= 600:
-            signal, text = "existing", f"Uses the signal that already exists at {nearest['street']} and {nearest['cross_street']}."
+            # the page puts the verdict ("Uses a signal that is already there") in front of this text, so this adds only the where
+            signal, text = "existing", f"The signal is at {nearest['street']} and {nearest['cross_street']}, about {say(feet, -1)} ft away."
         elif not F["signals_known"]:
-            signal, text = "unknown", "The city's map of traffic signals did not answer, so it is not known whether a signal already stands here."
+            signal, text = "unknown", "The city's map of traffic signals did not answer."
         elif s["street"]["rank"] >= 3 and each >= 4000:
-            signal, text = "study", f"About {say(each)} trips a day would use this entrance onto {a_class(s['street']['class'])}: a new signal is worth studying."
+            signal, text = "study", f"About {say(each)} trips a day would use this entrance onto {a_class(s['street']['class'])}, more than a stop sign handles well."
             out["signals_to_study"] += 1
         else:
-            signal, text = "none", "A stop-controlled entrance is likely enough at this volume."
+            signal, text = "none", f"About {say(each)} trips a day would use this entrance, few enough for a stop sign."
         out["entrances"].append({"lat": lat, "lon": lon, "street": s["street"]["name"], "class": s["street"]["class"],
                                  "signal": signal, "trips": round(each), "text": text})
     if not chosen and total:
@@ -794,10 +877,6 @@ def economy(amount, A):
             "retail_sales_year": round(sales), "city_sales_tax_year": round(sales * A["sales_tax_city_pct"] / 100)}
 
 
-BUYER_KINDS = {
-    "retail": ("commercial", "mixed"), "office": ("commercial", "mixed"), "apartments": ("residential", "mixed"),
-    "homes": ("residential",), "business": ("industrial", "mixed"),
-}
 WHO_BUYS = {
     "retail": "Shopping centre developers, who buy the land and lease to a supermarket and smaller shops; restaurant and fuel chains buy single corner pads.",
     "office": "Medical groups and hospital systems building clinics, and developers of small office buildings.",
@@ -807,31 +886,85 @@ WHO_BUYS = {
 }
 
 
+# What each use needs to see in a project on the city's lists before that project counts as a buyer for it.
+# BUYER_KINDS: the kinds of project (the list's own "kind", lower case, start of the word) that can count at all.
+BUYER_KINDS = {
+    "retail": ("commercial", "mixed"), "office": ("commercial", "mixed"), "apartments": ("residential", "mixed"),
+    "homes": ("residential",), "business": ("industrial", "mixed"),
+}
+_AMENDMENT = re.compile(r"amend|general plan", re.I)
+_SPLIT = re.compile(r"parcel map|\bpm\b|lot line|\binto \d+\b.{0,30}\bparcels", re.I)
+_HOTEL = re.compile(r"hotel|\binn\b|suites|motel|lodging", re.I)
+_STORAGE = re.compile(r"storage|warehouse", re.I)
+_SCHOOL = re.compile(r"school|child ?care|day ?care|church|worship", re.I)
+_FLATS = re.compile(r"apartment|condo|multi[- ]?family|town ?homes?", re.I)
+_OFFICE = re.compile(r"office|medical|clinic|dental|health", re.I)
+_SHOPS = re.compile(r"retail|shop|restaurant|store\b|commercial center|market|fitness|theat|diner|coffee|drive[- ]?thru|"
+                    r"fast food|car ?wash|fuel|gas station|pharmacy|bank\b", re.I)
+_MAKING = re.compile(r"industrial|manufactur|business park|distribution|logistics|warehous", re.I)
+_COUNT = re.compile(r"([\d,]+)\s*(?:-\s*)?(?:new\s+)?(?:res\w*\s+|single[- ]family\s+)?(?:lots?|units?|homes?)\b", re.I)
+
+
+def project_uses(p):
+    """The uses a project on the city's lists is evidence of a buyer for, as a set of use ids. A project counts for a
+    use only when it is that kind of project (the list's kind and what its own words state) and big enough to be a
+    buyer of a piece of land. An amendment to a plan or a split of land into parcels is not building anything and
+    counts for nothing. A size the list does not state is not held against a project of the plain kind, but a size
+    that is stated and small is."""
+    kind = str(p.get("kind") or "").lower().strip()
+    text = f"{p.get('title') or ''} {p.get('description') or ''}"
+    stated = p.get("stated") or {}
+    acres, feet = num(stated.get("acres")), num(stated.get("building_sq_ft"))
+    homes = num(stated.get("homes"))
+    if homes is None and (m := _COUNT.search(str(p.get("description") or ""))):
+        homes = num(m.group(1).replace(",", ""))
+    pure = not kind.startswith("mixed")
+    if not kind or _AMENDMENT.search(text) or (feet is None and _SPLIT.search(text)):
+        return set()
+    unstated = pure and acres is None and feet is None      # a plain project that states no size is not held against
+    uses = set()
+    if kind.startswith("residential") or (kind.startswith("mixed") and (_FLATS.search(text) or homes)):
+        flat = bool(_FLATS.search(text)) or bool(homes and acres and homes / acres > 9)
+        if flat:
+            if (homes or 0) >= 40 or (homes is None and (acres or 0) >= 2):
+                uses.add("apartments")
+        elif kind.startswith("residential") and ((homes or 0) >= 25 or (acres or 0) >= 5 or (homes is None and acres is None)):
+            uses.add("homes")
+    if kind.startswith(("commercial", "mixed")):
+        offices, shops = bool(_OFFICE.search(text)), bool(_SHOPS.search(text))
+        not_shops = _HOTEL.search(text) or _STORAGE.search(text) or _SCHOOL.search(text)
+        if offices and ((feet or 0) >= 5000 or (unstated and feet is None)):
+            uses.add("office")
+        # a plain commercial project that names no other kind of building is taken as shops
+        kind_of_shops = shops or (pure and not offices and not not_shops)
+        if kind_of_shops and not (not_shops and not shops) and ((feet or 0) >= 2000 or (acres or 0) >= 1 or unstated):
+            uses.add("retail")
+    if kind.startswith("industrial") or (kind.startswith("mixed") and _MAKING.search(text)):
+        if (feet or 0) >= 20000 or (acres or 0) >= 3 or unstated:
+            uses.add("business")
+    return uses
+
+
+NO_MATCH = "No project on the city's lists near here is the right kind and size to count as a buyer for this use."
+
+
 def buyers(F, acres):
-    """For each use in the plan: who is already building that kind of project nearby, from the city's own lists."""
+    """For each use in the plan: who is already building that kind of project nearby, from the city's own lists.
+    Only projects that are really that kind of project and big enough count (see project_uses); fewer, right
+    buyers beat many wrong ones. A use with none says so in "note"."""
     out = []
     for use in BUILT:
         if not acres[use]:
             continue
-        rows = []
-        for p in F["projects"]:
-            kind, text = str(p.get("kind") or "").lower(), p.get("description") or ""
-            if not kind.startswith(BUYER_KINDS[use]):
-                continue
-            flat = bool(re.search(r"apartment|condo|multi", text, re.I))
-            if (use == "apartments" and kind.startswith("residential") and not flat) or (use == "homes" and flat):
-                continue
-            if use == "office" and not re.search(r"office|medical|clinic|health", p["title"] + " " + text, re.I):
-                continue
-            if use == "retail" and re.search(r"storage|warehouse|hotel|inn\b|suites", p["title"] + " " + text[:60], re.I) and "retail" not in text.lower():
-                continue
-            rows.append({k: p.get(k) for k in ("title", "builder", "status", "miles_away", "description", "number", "list", "lat", "lon")})
+        rows = [{k: p.get(k) for k in ("title", "builder", "status", "miles_away", "description", "number", "list", "lat", "lon")}
+                for p in F["projects"] if use in project_uses(p)]
         rows.sort(key=lambda r: (not r["builder"], r["miles_away"]))
         named = []
         for r in rows:
             if r["builder"] and r["builder"] not in named:
                 named.append(r["builder"])
-        out.append({"use": use, "who": WHO_BUYS[use], "named": named[:8], "projects": rows[:8]})
+        out.append({"use": use, "who": WHO_BUYS[use], "named": named[:8], "projects": rows[:8],
+                    "note": None if rows else (NO_MATCH if F["projects"] else None)})
     return out
 
 
@@ -853,8 +986,8 @@ def advise(F, parts, mode, suggested):
     """The few things to say before anything else, in plain words."""
     out = []
     if F["outline_acres"] and F["acres"] != F["recorded_acres"]:
-        out.append(f"The city's record gives this parcel {F['recorded_acres']:g} acres, but its outline on the map measures about "
-                   f"{F['outline_acres']:g} acres. They cannot both be right, so this plan uses the {F['outline_acres']:g} acres the outline shows. "
+        out.append(f"The city's record gives this parcel {counted(F['recorded_acres'], 'acre')}, but its outline on the map measures about "
+                   f"{counted(F['outline_acres'], 'acre')}. They cannot both be right, so this plan uses the {counted(F['outline_acres'], 'acre')} the outline shows. "
                    "Check the size with the county assessor before relying on either.")
     kind, zone = F["zoning_kind"], F["zoning"] or "none listed"
     if kind in ("open-space", "public"):
@@ -953,7 +1086,9 @@ def make_plan(parcel, parts, settings=None, kind_of=lambda code: "other"):
         "recorded_acres": F["recorded_acres"], "outline_acres": F["outline_acres"],
         "facts": {"zoning": F["zoning"], "zoning_name": F["zoning_name"], "zoning_kind": F["zoning_kind"], "frontage": _plain(F["frontage"]),
                   "corner": _plain(F["corner"]), "streets": [_plain(s) for s in F["streets"][:8]], "highway": F["highway"],
-                  "around": F["around"], "ground": F["ground"], "missing": F["missing"]},
+                  "around": F["around"], "ground": F["ground"], "missing": F["missing"],
+                  "smallest_lot": {"acres": F["lot_rule"]["acres"], "zones": [{"code": c, "acres": a} for c, a in F["lot_rule"]["zones"]],
+                                   "unread": F["lot_rule"]["unread"]} if F["lot_rule"] else None},
         "street_lines": F["street_lines"], "drawing": drawing, "traffic": moving, "costs": cost,
         "money": money(parcel, acres, amount, cost, A, settings["land_cost"]), "economy": economy(amount, A),
         "buyers": buyers(F, acres), "market": market(F), "figures": list(figures.values()),

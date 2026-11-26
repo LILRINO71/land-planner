@@ -374,7 +374,23 @@ FLOOD_WORDS = {
     "undetermined": "Flood hazard not determined: the flood map has not studied this area.",
 }
 FIRE_LEVELS = ("Moderate", "High", "Very High")
-PALEO = {"L": "Low", "M": "Moderate", "H": "High", "U": "Undetermined", "N": "None"}
+# The codes the city's paleontological layer uses (read from the layer 2026-11-26: Ha, Hb, L, U and "sea"). The layer
+# carries no wording of its own; the four classes are Riverside County's: low, undetermined, and two high ones.
+PALEO = {"l": "Low", "u": "Undetermined", "ha": "High (class A)", "hb": "High (class B)"}
+_PALEO_WORDS = {"low", "none", "moderate", "high", "undetermined", "high (class a)", "high (class b)"}
+
+
+def paleo_words(code):
+    """A fossil rating in plain words. A known code is translated; a rating already in words is kept; anything else
+    is said to be unexplained, with its code, and is never shown bare as if it were a level."""
+    raw = str(code if code is not None else "").strip()
+    if not raw:
+        return None
+    if raw.lower() in PALEO:
+        return PALEO[raw.lower()]
+    if raw.lower() in _PALEO_WORDS:
+        return raw[0].upper() + raw[1:]
+    return f"not rated in words by the city (code {raw})"
 
 
 def _flood_meaning(zone, subtype):
@@ -548,7 +564,7 @@ def _fossils(city, lon, lat):
     row = _first(_at_point(_layer_url(city, "fossils"), lon, lat, "Paleo"))
     if not row:
         return None
-    return PALEO.get(str(row.get("Paleo")).strip().upper(), row.get("Paleo"))
+    return paleo_words(row.get("Paleo"))
 
 
 def _dam(city, lon, lat, box):

@@ -278,6 +278,32 @@ class Hazards(Base):
         self.assertNotIn(chr(0x2013), text)
 
 
+class FossilWords(unittest.TestCase):
+    """The city's fossil layer holds the codes Ha, Hb, L and U (and "sea"); none is shown bare."""
+
+    def test_each_code_the_layer_holds_is_put_in_words(self):
+        self.assertEqual([place.paleo_words(c) for c in ("L", "U", "Ha", "Hb")],
+                         ["Low", "Undetermined", "High (class A)", "High (class B)"])
+        self.assertEqual(place.paleo_words("hb"), "High (class B)", "the case the city wrote it in does not matter")
+        self.assertEqual(place.paleo_words(" HA "), "High (class A)")
+
+    def test_a_code_nobody_explained_is_said_to_be_unexplained_with_its_code(self):
+        self.assertEqual(place.paleo_words("sea"), "not rated in words by the city (code sea)")
+        self.assertEqual(place.paleo_words("Zx"), "not rated in words by the city (code Zx)")
+
+    def test_words_already_in_words_are_kept_and_nothing_is_nothing(self):
+        for words in ("Low", "High", "Moderate", "None", "Undetermined", "High (class A)"):
+            self.assertEqual(place.paleo_words(words), words)
+        self.assertEqual(place.paleo_words("low"), "Low")
+        self.assertIsNone(place.paleo_words(None))
+        self.assertIsNone(place.paleo_words(" "))
+
+    def test_the_fossil_reader_returns_words_for_every_code(self):
+        for code, words in (("Hb", "High (class B)"), ("sea", "not rated in words by the city (code sea)")):
+            with mock.patch.object(place, "_at_point", return_value=[{"attributes": {"Paleo": code}}]):
+                self.assertEqual(place._fossils(place.MENIFEE_LAYERS, -117.17, 33.65), words)
+
+
 class Geometry(unittest.TestCase):
     def test_distances(self):
         lon, lat = -117.0, 33.0

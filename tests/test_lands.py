@@ -51,6 +51,37 @@ class Filtering(unittest.TestCase):
         self.assertEqual(apns(L.filter_parcels(ROWS, q="main")), ["100000002"])
         self.assertEqual(L.filter_parcels(ROWS, q="zzz"), [])
 
+    def test_a_search_of_only_digits_spaces_and_dashes_is_a_parcel_number(self):
+        for text in ("372-100-001", "372 100 001", " 372100001 ", "372-100"):
+            self.assertEqual(apns(L.filter_parcels(ROWS, q=text)), ["372100001"], text)
+        self.assertTrue(L.is_number_search("372 - 100") and not L.is_number_search("zzz 1") and not L.is_number_search("TR 37668"))
+        self.assertFalse(L.is_number_search("") or L.is_number_search("- -"))
+
+    def test_words_never_turn_into_a_parcel_number(self):
+        # the digits of "zzz 1" or "Garbani 2" used to be matched against every parcel number
+        self.assertEqual(L.filter_parcels(ROWS, q="zzz 1"), [])
+        self.assertEqual(L.filter_parcels(ROWS, q="main 3"), [])
+        self.assertEqual(apns(L.filter_parcels(ROWS, q="oak 9")), ["100000001"])
+
+    def test_every_word_must_be_in_the_rows_own_text_in_any_order_and_punctuation_is_ignored(self):
+        rows = [dict(row("100000001", 50.0, "RR2 & RR5", True, 900, "27875 GARBANI RD MENIFEE  CA 92584"), subdivision="TR 37668",
+                     zoning_name="Rural Residential, 2-acre minimum + Rural Residential, 5-acre minimum"),
+                dict(row("100000002", 40.0, "LDR-2", True, 900, "29903 GARBANI RD MENIFEE  CA 92584"), subdivision="PM 39197"),
+                dict(row("100000003", 30.0, "OS-R", True, 900, ""), subdivision="TR 37668")]
+        found = lambda q: apns(L.filter_parcels(rows, q=q))  # noqa: E731
+        self.assertEqual(found("Map TR 37668"), ["100000001", "100000003"], "the list writes a recorded map as Map TR 37668")
+        self.assertEqual(found("Garbani 27875"), ["100000001"])
+        self.assertEqual(found("27875 Garbani"), ["100000001"])
+        self.assertEqual(found("Garbani, Menifee"), ["100000001", "100000002"])
+        self.assertEqual(found("garbani rd; menifee."), ["100000001", "100000002"])
+        self.assertEqual(found("2-acre minimum"), ["100000001"], "the zone's name is part of the row's text")
+        self.assertEqual(found("rr2"), ["100000001"])
+        self.assertEqual(found("zzz 1"), [])
+        self.assertEqual(found("Garbani 99999"), [])
+        self.assertEqual(found("Garbani 2"), ["100000001", "100000002"], "words and numbers are all looked for in the text, not in the parcel numbers")
+        self.assertEqual(found("tr 37668 garbani"), ["100000001"])
+        self.assertEqual(found("..."), apns(rows), "a search of only marks narrows nothing")
+
     def test_filters_combine(self):
         self.assertEqual(apns(L.filter_parcels(ROWS, min_acres=40, vacant=True, kind="edc", q="372")), ["372100001"])
         self.assertEqual(L.filter_parcels(ROWS, min_acres=40, vacant=True, kind="shops"), [])
@@ -82,6 +113,27 @@ class Sorting(unittest.TestCase):
         self.assertEqual(apns(ROWS), before)
 
 
+class Counted(unittest.TestCase):
+    """One rule for the size a parcel counts as, in the list and on the city card."""
+    RECORDS = [dict(row("100000001", 505.0, "LDR-2", True), outline_acres=5.1), dict(row("100000002", 149.84, "RR2", True)),
+               dict(row("100000003", 30.35, "RM", True), outline_acres=70.0), dict(row("100000004", 20.0, "RM", True))]
+
+    def test_a_record_that_contradicts_its_outline_counts_at_the_outlines_size(self):
+        self.assertEqual([L.counted_acres(r) for r in self.RECORDS], [5.1, 149.84, 70.0, 20.0])
+
+    def test_the_card_and_the_list_agree_on_the_largest(self):
+        card = L.summary(self.RECORDS)
+        listed = L.sort_parcels(self.RECORDS)
+        self.assertEqual(card["largest_acres"], 149.84)
+        self.assertEqual(L.counted_acres(listed[0]), card["largest_acres"], "the list starts with the card's largest")
+        self.assertEqual(card["total_acres"], round(5.1 + 149.84 + 70.0 + 20.0, 1))
+        self.assertEqual(card["corrected_records"], 2)
+
+    def test_size_filters_use_the_same_size(self):
+        self.assertEqual(apns(L.filter_parcels(self.RECORDS, min_acres=100)), ["100000002"])
+        self.assertEqual(apns(L.filter_parcels(self.RECORDS, max_acres=10)), ["100000001"])
+
+
 class Words(unittest.TestCase):
     NAMES = {"LDR-1": "Low Density Residential-1", "RM": "Rural Mountainous"}
 
@@ -104,8 +156,10 @@ class Words(unittest.TestCase):
         self.assertEqual(zones["RM"], {"code": "RM", "name": "Rural Mountainous", "count": 1})
 
     def test_summary(self):
-        self.assertEqual(L.summary(ROWS), {"large_parcels": 5, "look_vacant": 3, "largest_acres": 142.1, "total_acres": 354.6})
-        self.assertEqual(L.summary([]), {"large_parcels": 0, "look_vacant": 0, "largest_acres": None, "total_acres": None})
+        self.assertEqual(L.summary(ROWS), {"large_parcels": 5, "look_vacant": 3, "largest_acres": 142.1, "total_acres": 354.6,
+                                              "corrected_records": 0})
+        self.assertEqual(L.summary([]), {"large_parcels": 0, "look_vacant": 0, "largest_acres": None, "total_acres": None,
+                                          "corrected_records": 0})
 
 
 if __name__ == "__main__":

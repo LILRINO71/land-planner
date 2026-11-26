@@ -43,6 +43,18 @@ class Problem(Exception):
         self.status, self.code, self.message = status, code, message
 
 
+def parcel_number(text):
+    """A parcel number's digits. Dashes and spaces are fine ("372-100-001"); anything else (a letter, a stray mark)
+    or a number of digits no parcel has is refused in words, never quietly tidied into a different number."""
+    raw = str(text if text is not None else "").strip()
+    number = L.digits(raw)
+    if not raw or not L.is_number_search(raw) or not 8 <= len(number) <= 12:
+        shown = raw[:40] or "nothing"
+        raise Problem(400, "bad-request", f"“{shown}” is not a parcel number. A parcel number (APN) has 9 digits, "
+                                          "for example 372-100-001.")
+    return number
+
+
 class LandPlanner:
     def __init__(self, cities, data_dir, clock=time.time):
         self.cities = cities
@@ -100,26 +112,29 @@ class LandPlanner:
     @staticmethod
     def _sized(row):
         """A list row without its outline; when the outline measures a very different size from the recorded
-        acres, the measured size is added as "outline_acres" so the list can say so."""
+        acres, the measured size is added as "outline_acres" so the list can say so. "counted_acres" is the size
+        the row counts as (lands.counted_acres): the outline's when the record contradicts it."""
         out = {k: v for k, v in row.items() if k != "rings"}
         measured = G.rings_acres(row.get("rings"))
         if G.differs(row.get("acres"), measured):
             out["outline_acres"] = round(measured, 1)
+        out["counted_acres"] = L.counted_acres(out)
         return out
 
     def summary(self, city_id, fresh=False):
         city = self.city(city_id)
         rows, meta = self._large(city, fresh)
-        # a record whose acres its own outline contradicts does not get to be "the largest"
-        sound = [r for r in rows if not G.differs(r.get("acres"), G.rings_acres(r.get("rings")))]
-        return {"city": city.id, "large_acres": city.large_acres, **L.summary(rows),
-                "largest_acres": L.summary(sound)["largest_acres"], **meta}
+        # a record whose acres its own outline contradicts counts at the outline's size, here and in the list
+        return {"city": city.id, "large_acres": city.large_acres, **L.summary([self._sized(r) for r in rows]), **meta}
 
     # ---- lands
 
     def lands(self, city_id, min_acres=None, max_acres=None, zoning="", kind="", vacant=False, q="",
               sort="acres", descending=True, fresh=False):
         city = self.city(city_id)
+        if min_acres is not None and max_acres is not None and min_acres > max_acres:
+            raise Problem(400, "bad-request", f"The smallest size ({min_acres:g} acres) is larger than the largest size "
+                                              f"({max_acres:g} acres). Nothing can be that size.")
         floor = self.floor_for(city, min_acres)
         rows, meta = self._large(city, fresh, floor)
         names = self.zone_names(city)
@@ -131,7 +146,7 @@ class LandPlanner:
                "parcels": found, "zoning_options": L.zoning_options(rows, names, kinds), "direct": None,
                "direct_missing": False, **meta}
         number = L.digits(q)
-        if not found and 8 <= len(number) <= 12 and number == "".join(c for c in str(q) if c not in " -"):
+        if not found and 8 <= len(number) <= 12 and L.is_number_search(str(q or "").strip()):
             # A whole parcel number that is not in the large-parcel list: look that one parcel up.
             try:
                 out["direct"] = self._list_row(city, self._parcel(city, number)[0], names)
@@ -192,10 +207,7 @@ class LandPlanner:
     # ---- one land
 
     def _parcel(self, city, apn, fresh=False):
-        number = L.digits(apn)
-        if not 8 <= len(number) <= 12:
-            raise Problem(404, "no-such-parcel", "That is not a parcel number. A parcel number (APN) has 9 digits, "
-                                                 "for example 372-100-001.")
+        number = parcel_number(apn)
         try:
             return self.cache.get(f"{city.id}/parcel/{number}", PARCEL_TTL, lambda: city.parcel(number), fresh)
         except NotFound as e:
@@ -350,8 +362,8 @@ class LandPlanner:
         city = self.city(city_id)
         numbers = []
         for apn in apns or []:
-            number = L.digits(apn)
-            if number and number not in numbers:
+            number = parcel_number(apn)
+            if number not in numbers:
                 numbers.append(number)
         if not numbers:
             raise Problem(400, "bad-request", "A forecast needs at least one parcel number.")
@@ -500,7 +512,7 @@ class LandPlanner:
 
     def save(self, city_id, apn):
         city = self.city(city_id)
-        number = L.digits(apn)
+        number = parcel_number(apn)
         row = None
         known = self.cache.peek(f"{city.id}/large-parcels/{city.large_acres:g}")
         if known:
@@ -513,6 +525,6 @@ class LandPlanner:
         return self.my_lands()
 
     def remove(self, city_id, apn):
-        if not self.saved.remove(city_id, L.digits(apn)):
+        if not self.saved.remove(city_id, parcel_number(apn)):
             raise Problem(404, "not-saved", "That land is not in My lands.")
         return self.my_lands()

@@ -28,6 +28,9 @@ from another website, are refused.
     DELETE /api/my-lands/<city>/<apn>
 
 Add &fresh=1 to a GET to ask the public service again instead of using the saved copy.
+HEAD on an /api route answers like GET without the body. Any other method (PUT, PATCH, OPTIONS, ...) is a JSON 405,
+and every error, including the library's own, is JSON. A parcel number is digits with dashes or spaces: a letter is
+refused ("not a parcel number"), and a number of the wrong length is a 400.
 """
 import json
 import mimetypes
@@ -61,8 +64,10 @@ def _number(query, name):
         value = float(text)
     except ValueError:
         raise Problem(400, "bad-request", f"“{text}” is not a number of acres.") from None
-    if value != value or value < 0 or value > 1e7:
+    if value != value or abs(value) > 1e7:
         raise Problem(400, "bad-request", f"“{text}” is not a number of acres.")
+    if value < 0:
+        raise Problem(400, "bad-request", f"Acres cannot be negative (“{text}”).")
     return value
 
 
@@ -168,8 +173,8 @@ def make_handler(planner, web=WEB, verbose=False):
             if self.command != "HEAD":
                 self.wfile.write(body)
 
-        def _json(self, status, answer):
-            self._send(status, json.dumps(answer, separators=(",", ":")).encode("utf-8"), "application/json; charset=utf-8")
+        def _json(self, status, answer, extra=None):
+            self._send(status, json.dumps(answer, separators=(",", ":")).encode("utf-8"), "application/json; charset=utf-8", extra)
 
         def _problem(self, status, code, message):
             self._json(status, {"error": {"code": code, "message": message}})
@@ -203,7 +208,9 @@ def make_handler(planner, web=WEB, verbose=False):
         def _api(self, body=None):
             url = urllib.parse.urlsplit(self.path)
             try:
-                status, answer = route(planner, self.command, url.path, urllib.parse.parse_qs(url.query), body)
+                # HEAD answers like GET (the body is left out when it is sent)
+                method = "GET" if self.command == "HEAD" else self.command
+                status, answer = route(planner, method, url.path, urllib.parse.parse_qs(url.query), body)
                 self._json(status, answer)
             except Problem as e:
                 self._problem(e.status, e.code, e.message)
@@ -228,7 +235,8 @@ def make_handler(planner, web=WEB, verbose=False):
         def do_GET(self):
             if not self._local():
                 return
-            if urllib.parse.urlsplit(self.path).path.startswith("/api/"):
+            api = urllib.parse.urlsplit(self.path).path
+            if api == "/api" or api.startswith("/api/"):
                 return self._api()
             self._static()
 
@@ -250,6 +258,24 @@ def make_handler(planner, web=WEB, verbose=False):
             self._api(body)
 
         do_POST = do_DELETE = _change
+
+        def _not_allowed(self):
+            """Any other method gets the same kind of answer as every other error: JSON, with what is allowed."""
+            self.close_connection = True      # a body that came with it is not read
+            if not self._local():
+                return
+            allowed = "GET, HEAD, POST, DELETE" if urllib.parse.urlsplit(self.path).path.startswith("/api") else "GET, HEAD"
+            self._json(405, {"error": {"code": "method-not-allowed",
+                                       "message": f"Land Planner does not answer {self.command} here. It answers {allowed}."}},
+                       {"Allow": allowed})
+
+        do_PUT = do_PATCH = do_OPTIONS = _not_allowed
+
+        def send_error(self, code, message=None, explain=None):
+            """The library's own errors (a method nobody handles, a request it cannot read) as JSON too, never HTML."""
+            self.close_connection = True
+            text = message or self.responses.get(code, ("Error",))[0]
+            self._json(code, {"error": {"code": "bad-request", "message": f"{text}."}})
 
     return Handler
 

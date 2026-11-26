@@ -1,8 +1,16 @@
 """Filtering, sorting and summing up a city's large parcels. Plain functions on lists of parcel rows: no network."""
 import re
 
+def counted_acres(row):
+    """The size a parcel counts as everywhere (sorting, filtering, "largest", the total): its recorded acres, or,
+    when the recorded size contradicts its own outline (the row then carries "outline_acres"), what the outline
+    measures. One rule, so the city card and the list always agree."""
+    measured = row.get("outline_acres")
+    return measured if measured is not None else row.get("acres")
+
+
 SORT_KEYS = {
-    "acres": lambda r: r.get("acres"),
+    "acres": counted_acres,
     "apn": lambda r: r.get("apn"),
     "zoning": lambda r: (r.get("zoning") or "").upper() or None,
     "vacant": lambda r: 1 if r.get("looks_vacant") else 0,
@@ -12,6 +20,24 @@ SORT_KEYS = {
 
 def digits(text):
     return "".join(c for c in str(text or "") if c.isdigit())
+
+
+def _words(text):
+    """Lower-case words with every mark that is not a letter or a digit taken out: "Garbani, Menifee" -> "garbani menifee"."""
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", str(text or "").lower()).split())
+
+
+def is_number_search(text):
+    """A search is a parcel number only when it is nothing but digits, spaces and dashes."""
+    return bool(re.fullmatch(r"[\d\s-]*", text)) and any(c.isdigit() for c in text)
+
+
+def row_text(row):
+    """What a list row shows about a parcel, as one run of words for searching: the parcel number, the street
+    address, the recorded map (as "Map TR 37668", the way the list writes it), the zone and its name."""
+    sub = str(row.get("subdivision") or "")
+    return _words(" ".join([str(row.get("apn_formatted") or ""), str(row.get("apn") or ""), str(row.get("address") or ""),
+                            ("Map " + sub) if sub else "", str(row.get("zoning") or ""), str(row.get("zoning_name") or "")]))
 
 
 def zone_parts(code):
@@ -32,12 +58,17 @@ def filter_parcels(rows, min_acres=None, max_acres=None, zoning="", kind="", vac
     """Rows that pass every filter that is set.
     zoning: one zone code; a parcel with several zones passes when any of them is that zone.
     kind:   a zoning family id (row["zoning_kind"]).
-    q:      part of a parcel number (dashes and spaces ignored), or part of an address or map name."""
+    q:      a parcel number (part of it, when the text is only digits, spaces and dashes), or else words: every word
+            must be found in the row's own text (address, recorded map, zone and its name), in any order, with
+            punctuation ignored."""
     want_zone = (zone_parts(zoning) or [""])[0].upper()
-    number, words = digits(q), str(q or "").strip().lower()
+    text = str(q or "").strip()
+    by_number = is_number_search(text)
+    number = digits(text) if by_number else ""
+    words = [] if by_number else _words(text).split()
     out = []
     for r in rows:
-        acres = r.get("acres")
+        acres = counted_acres(r)
         if min_acres is not None and (acres is None or acres < min_acres):
             continue
         if max_acres is not None and (acres is None or acres > max_acres):
@@ -48,10 +79,11 @@ def filter_parcels(rows, min_acres=None, max_acres=None, zoning="", kind="", vac
             continue
         if vacant and not r.get("looks_vacant"):
             continue
+        if number and number not in digits(r.get("apn")):
+            continue
         if words:
-            in_number = bool(number) and number in digits(r.get("apn"))
-            in_text = any(words in str(r.get(f) or "").lower() for f in ("address", "subdivision"))
-            if not (in_number or in_text):
+            found = row_text(r)
+            if not all(w in found for w in words):
                 continue
         out.append(r)
     return out
@@ -84,7 +116,9 @@ def zoning_options(rows, names, kinds):
 
 
 def summary(rows):
-    """The numbers on a city card."""
-    acres = [r["acres"] for r in rows if r.get("acres") is not None]
+    """The numbers on a city card. A record whose size contradicts its outline counts at the outline's size (see
+    counted_acres); "corrected_records" says how many were counted that way."""
+    acres = [counted_acres(r) for r in rows if counted_acres(r) is not None]
     return {"large_parcels": len(rows), "look_vacant": sum(1 for r in rows if r.get("looks_vacant")),
-            "largest_acres": max(acres) if acres else None, "total_acres": round(sum(acres), 1) if acres else None}
+            "largest_acres": max(acres) if acres else None, "total_acres": round(sum(acres), 1) if acres else None,
+            "corrected_records": sum(1 for r in rows if r.get("outline_acres") is not None)}
