@@ -1,15 +1,22 @@
 /* Styles of the Plan page only (web/js/views/plan.js). Shared styles are in style.css. */
 
-/* ---- head */
-.plan-head{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 28px;align-items:end;margin-bottom:16px}
-.plan-sentence{font-size:clamp(22px,2vw,28px);line-height:1.3;max-width:none}
-.plan-headline .kicker{margin-bottom:6px}
+/* ---- head: the plan in one sentence, then what it follows; it stays above the chapters */
+.plan-head{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:6px}
+.plan-sentence{font-size:clamp(22px,2vw,28px);line-height:1.3;max-width:62ch;margin-bottom:0}
+.plan-headline .kicker{margin-bottom:6px;max-width:none}
 .plan-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.plan-status{grid-column:1/-1;margin:0;min-height:1.4em;font-size:13.5px;color:var(--muted)}
+.plan-actions>.plan-switch{margin-right:auto}
+.plan-status{margin:0;min-height:1.4em;font-size:13.5px;color:var(--muted)}
 .plan-status.busy{color:var(--gold-deep)}
 .plan-status.bad{color:var(--red);font-weight:600}
 .plan-status .btn{margin-left:8px}
-@media(min-width:1400px){.plan-head{grid-template-columns:minmax(0,1fr) auto}}
+
+/* ---- chapters (web/js/calm.js): one on screen at a time */
+.plan>[data-part],.plan-statrows>[data-part]{scroll-margin-top:70px}
+.plan-statrows>.plan-stats{margin-bottom:22px}
+.plan-pager{margin-top:28px}
+.plan .link[data-chapter]{margin-left:4px}
+@media screen{#planMoney{order:-1}}   /* on screen the money comes first, then the costs it rests on */
 
 /* a two-way switch */
 .plan-switch{display:inline-flex;border:1px solid #c9d3cc;border-radius:10px;overflow:hidden;background:#fff}
@@ -25,15 +32,16 @@
 .plan-advice p{max-width:none}
 .plan-stats{margin-bottom:24px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .plan-stats .stat b{font-size:clamp(20px,1.5vw,27px)}
+@media(min-width:900px){.plan-stats{grid-template-columns:repeat(auto-fill,minmax(200px,260px))}}
 .plan-lead{color:var(--muted)}
 
 /* ---- the plan on the land, beside the mix */
 .plan-top{display:grid;grid-template-columns:minmax(0,1fr);gap:20px 24px;align-items:start;margin-bottom:30px}
 .plan-top>section{margin:0}
-@media(min-width:1500px){.plan-top{grid-template-columns:minmax(0,1.55fr) minmax(440px,1fr)}}
+@media(min-width:1280px){.plan-top{grid-template-columns:minmax(0,1.45fr) minmax(400px,1fr)}}
 .plan-view-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
 .plan-view-head h2{margin:0}
-.plan-laid{margin-top:14px}
+.plan-gap{margin-top:14px}
 .plan-laid ul{margin-bottom:8px}
 .plan-3d canvas{height:clamp(520px,72vh,1100px)}
 
@@ -73,6 +81,7 @@
 .plan-mix-foot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-weight:650}
 .plan-notes{margin-top:12px;font-size:14px}
 .plan-notes li{color:var(--muted)}
+.plan-notes-box .plan-notes{margin-top:0}
 
 /* edit boxes */
 .plan-num{width:92px;height:34px;border:1px solid #c9d3cc;border-radius:8px;padding:0 9px;background:#fff;text-align:right;font-variant-numeric:tabular-nums}
@@ -109,7 +118,7 @@
 .plan-left{background:#fbfaf6;box-shadow:none;padding:16px 18px}
 .plan-left h3{font-size:15px}
 .plan-left p{font-size:14px;color:var(--muted)}
-.plan-left summary,.plan-import summary{cursor:pointer;color:var(--green);font-weight:600}
+.plan-why .calm-fold{margin-top:10px}
 
 /* ---- buyers */
 .plan-buyers{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(600px,100%),1fr));gap:16px;align-items:start}
@@ -120,6 +129,7 @@
 /* ---- traffic, market, economy */
 .plan-three{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:0 20px;align-items:start}
 .plan-sub{margin:18px 0 8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.plan-sub.plan-sub-first{margin-top:0}
 .plan-tbar{display:block;width:140px;height:9px;background:#ece8dc;border-radius:99px;overflow:hidden}
 .plan-tbar i{display:block;height:100%}
 .plan-ents{list-style:none;margin:0;padding:0}
@@ -133,7 +143,8 @@
 .plan-add{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin:14px 0 4px}
 .plan-add .field input{width:220px}
 .plan-x{margin-left:8px;padding:4px 8px}
-.plan-import{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.plan-total{font-size:17px;margin:4px 0 2px}
+.plan-total b{font:600 22px/1.2 Georgia,serif;margin-left:6px}
 .plan-import-row{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end;margin-bottom:12px}
 .plan-import textarea{font:13.5px/1.45 Consolas,"Courier New",monospace;border:1px solid #c9d3cc;border-radius:9px;padding:8px 10px;width:100%;max-width:640px;resize:vertical}
 .plan-import code{font-size:12.5px;background:#f3f0e6;padding:1px 5px;border-radius:4px}
@@ -143,7 +154,8 @@
 .plan-profit{font:600 22px/1.2 Georgia,serif;color:var(--green)}
 
 /* ---- every figure */
-.plan-fig-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(470px,100%),1fr));gap:16px;align-items:start}
+.plan-fig-list{max-width:900px}
+.plan-fig-list>.calm-fold:first-child{border-top:0;margin-top:0}
 .plan-figs{display:flex;flex-direction:column}
 .plan-fig{padding:10px 0;border-bottom:1px solid var(--line-soft)}
 .plan-fig:last-child{border-bottom:0}
@@ -157,6 +169,11 @@
 .plan-limits{background:#fffdf7;box-shadow:none}
 
 /* ---- narrow screens */
+@media(max-width:600px){
+  .plan-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .plan-stats .stat{padding:12px 13px}
+  .plan-stats .stat b{font-size:20px}
+}
 @media(max-width:820px){
   .plan-row-ctl{flex-wrap:wrap}
   .plan-row-ctl input[type=range]{flex-basis:100%}
@@ -167,9 +184,10 @@
 /* ---- print: the plan as a document, without the controls */
 @media print{
   .plan-actions,.plan-switch,.plan-status,.plan-import,.plan-add,.plan-x,.plan-mix-help,#planSuggested,
-  .plan-row-ctl input[type=range],[data-reset],.leaflet-control-container{display:none!important}
+  .plan-row-ctl input[type=range],[data-reset],.leaflet-control-container,.plan-screen-only,.plan .link[data-chapter]{display:none!important}
   .plan-num{border:0;background:none;padding:0;width:auto;text-align:left}
   .plan-top,.plan-money,.plan-three{display:block}
+  .plan-stats{display:grid!important}
   .card,.stat,.plan-why,.plan-buyer,.plan-fig-group{break-inside:avoid;box-shadow:none}
   .map.tall,.plan-3d canvas{height:520px}
 }

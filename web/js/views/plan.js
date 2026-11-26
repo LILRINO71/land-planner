@@ -1,11 +1,15 @@
 // The Plan page of one land: a first suggestion of how to divide it into uses, drawn on the land, with the reasons,
 // who builds that kind of project nearby, traffic, costs, money, and every figure it rests on (all editable).
 // Every value shown comes from the server's plan answer. A value the answer does not give reads "not covered yet".
+// The page is calm (web/js/calm.js, as the Forecast page): one chapter on screen at a time, each opening with its finding
+// and numbers, the long tables and fine print behind disclosures. Print shows every chapter, every disclosure open.
+// Address: #/land/<city>/<apn>/plan?part=<chapter>
 import { createMap, ll } from "../maps.js";
 import { ApiError } from "../api.js";
 import { mountTerrain } from "../terrain3d.js";
 import { balance, readCostSheet, applyCostSheet, costSheet, money as readNumber } from "../planmath.js";
 import { NONE, esc, has, num, plural, cap, table, icon, loading, problem, missing, toast, debounce } from "../util.js";
+import { chapters, fold, watchFolds, watchMotion, printEverything, drawIn, countUp } from "../calm.js";
 
 // ---------------------------------------------------------------- talking to the server (as api.js does)
 
@@ -40,6 +44,14 @@ const SIGNAL_WORDS = { existing: "Uses a signal that is already there", study: "
   unknown: "Not known whether a signal already stands there" };
 // the letter on each entrance marker, so the colour is never the only signal
 const SIGNAL_MARK = { existing: "S", study: "N", none: "E", unknown: "?" };
+// the page's chapters, one on screen at a time (print shows them all, in the order of the page)
+const CHAPTERS = [["plan", "The plan"], ["why", "Why this mix"], ["buyers", "Buyers"], ["area", "Traffic and market"],
+  ["money", "Money"], ["figures", "Figures and limits"]];
+// how a headline number is written while it counts up
+const COUNT = {
+  n: (v) => num(Math.round(v)), sqft: (v) => num(Math.round(v)) + " sq ft",
+  usd: (v) => usd(Math.round(v)),
+};
 
 // "$/acre" as "per acre"; other units as they are
 function per(unit) {
@@ -88,7 +100,14 @@ export function plan(box, ctx) {
   let data = null, settings = null, mixAcres = null, seq = 0, touched = false;
   let ground = null, groundProblem = "", show3d = false, mapView = null, layers = null, fitted = false, unmount3d = null, shown3dKey = "";
   let sheetRead = null;
+  // calm: the open chapter, the disclosures the reader opened (kept through every redraw), the numbers already counted
+  const folds = new Set(), counted = new Set();
+  const book = chapters({ root: box, list: CHAPTERS, onShow: shown });
+  const folded = (key, summary, body, cls) => fold(key, summary, body, folds, cls);
+  const onPlan = () => book.current() === "plan";
+  const stopFolds = watchFolds(box, folds), stopMotion = watchMotion(box), stopPrint = printEverything(box, forPrint);
   ctx.alive.onLeave(() => {
+    stopFolds(); stopMotion(); stopPrint();
     if (mapView) mapView.destroy();
     if (unmount3d) unmount3d();
     mapView = null; unmount3d = null;
@@ -148,13 +167,40 @@ export function plan(box, ctx) {
       if (!ctx.alive()) return;
       ground = g;
       if (data && !data.ground_read) refresh();
-      else { drawGroundNote(); if (show3d) draw3d(true); }
+      else { drawGroundNote(); if (show3d && onPlan()) draw3d(true); }
     }).catch((e) => {
       if (!ctx.alive()) return;
       groundProblem = e.message;
       drawGroundNote();
-      if (show3d) draw3d(true);
+      if (show3d && onPlan()) draw3d(true);
     });
+  }
+
+  // ---------------------------------------------------------------- chapters, motion and print
+
+  // a chapter is on screen: the map and the 3D view get their size now (made while hidden they have none),
+  // and the first time, its headline numbers count up and its bars draw in
+  function shown(id, first) {
+    if (!data) return;
+    if (id === "plan") {
+      if (mapView) mapView.map.invalidateSize();
+      if (show3d) draw3d(false);
+    }
+    if (!first) return;
+    box.querySelectorAll(`[data-stats="${CSS.escape(id)}"] b[data-to]`).forEach((b) => {
+      const k = b.dataset.count;
+      if (counted.has(k)) return;
+      counted.add(k);
+      countUp(b, Number(b.dataset.to), COUNT[b.dataset.fmt] || COUNT.n);
+    });
+    if (id === "why") box.querySelectorAll("#planWhy .plan-why").forEach((c) => drawIn(c));
+    if (id === "area") drawIn(box.querySelector("#planTrafficBars"));
+  }
+  // before printing every chapter shows: the map takes its printed size, and the 3D view is drawn if it is the one chosen
+  function forPrint() {
+    if (!data) return;
+    if (mapView) mapView.map.invalidateSize();
+    if (show3d) draw3d(false);
   }
 
   // ---------------------------------------------------------------- the frame (drawn once)
@@ -175,10 +221,15 @@ export function plan(box, ctx) {
           <p class="plan-status" id="planStatus" role="status" aria-live="polite"></p>
         </header>
         <div id="planGround"></div>
-        <div id="planAdvice"></div>
-        <section class="stats plan-stats" id="planStats" aria-label="The plan in numbers"></section>
+        ${book.tabs()}
+        <div id="planAdvice" data-part="plan"></div>
+        <div class="plan-statrows">
+          <section class="stats plan-stats" id="planStats" data-part="plan" data-stats="plan" aria-label="The plan in numbers"></section>
+          <section class="stats plan-stats" data-part="area" data-stats="area" aria-label="Traffic in numbers"></section>
+          <section class="stats plan-stats" data-part="money" data-stats="money" aria-label="Money in numbers"></section>
+        </div>
 
-        <div class="plan-top">
+        <div class="plan-top" data-part="plan">
           <section class="plan-view">
             <div class="plan-view-head">
               <h2>The plan on the land</h2>
@@ -193,19 +244,20 @@ export function plan(box, ctx) {
           <section class="card plan-mix" id="planMix" aria-labelledby="mixTitle"></section>
         </div>
 
-        <section id="planWhy"></section>
-        <section id="planBuyers"></section>
-        <div class="plan-three">
+        <section id="planWhy" data-part="why"></section>
+        <section id="planBuyers" data-part="buyers"></section>
+        <div class="plan-three" data-part="area">
           <section id="planTraffic"></section>
           <section id="planMarket"></section>
           <section id="planEconomy"></section>
         </div>
-        <div class="plan-money">
+        <div class="plan-money" data-part="money">
           <section id="planCosts"></section>
           <section id="planMoney"></section>
         </div>
-        <section id="planFigures"></section>
-        <section id="planLimits"></section>
+        <section id="planFigures" data-part="figures"></section>
+        <section id="planLimits" data-part="figures"></section>
+        <div class="plan-pager" data-calm-pager></div>
       </div>`;
 
     box.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
@@ -232,15 +284,16 @@ export function plan(box, ctx) {
     const L = window.L;
     mapView = createMap(box.querySelector("#planMap"), { base: "aerial" });
     layers = L.layerGroup().addTo(mapView.map);
-    drawAll();
+    drawAll(false);
     drawShow();
+    book.open(book.current(), { write: false, first: true });
     if (data.kept) status("Your earlier changes to this plan are kept on this computer.", "ok");
     watchGround(false);
   }
 
   // ---------------------------------------------------------------- drawing everything, keeping the person's place
 
-  function drawAll() {
+  function drawAll(keepPlace = true) {
     const active = document.activeElement;
     const key = active && box.contains(active) && active.dataset ? active.dataset.k : null;
     let typed = null, from = null, to = null;
@@ -248,19 +301,29 @@ export function plan(box, ctx) {
       typed = active.value;
       try { from = active.selectionStart; to = active.selectionEnd; } catch (e) { from = to = null; }
     }
-    // open "Show the reasons" and import panels stay open
-    const open = new Set([...box.querySelectorAll("details[data-open-k]")].filter((d) => d.open).map((d) => d.dataset.openK));
+    // keep what the person is looking at in the same place on the screen: the box they type in, or else the first part
+    // of the open chapter still on screen (the parts of the other chapters are not shown, so they are passed over)
+    const anchor = (key && active) || [...box.querySelectorAll("[data-part]")]
+      .find((n) => !n.classList.contains("calm-off") && n.getBoundingClientRect().bottom > 60);
+    const before = anchor ? anchor.getBoundingClientRect().top : 0;
+    // open disclosures stay open (folds); a cost sheet that has been read keeps its panel open
+    if (sheetRead) folds.add("import");
     drawHead(); drawGroundNote(); drawAdvice(); drawStats(); drawMapLayers(); drawLaid(); drawMix();
     drawWhy(); drawBuyers(); drawTraffic(); drawMarket(); drawEconomy(); drawCosts(); drawMoney(); drawFigures(); drawLimits();
-    box.querySelectorAll("details[data-open-k]").forEach((d) => { if (open.has(d.dataset.openK)) d.open = true; });
-    if (show3d) draw3d(false);
+    if (show3d && onPlan()) draw3d(false);
+    let again = null;
     if (key) {
-      const again = box.querySelector(`[data-k="${CSS.escape(key)}"]`);
+      again = box.querySelector(`[data-k="${CSS.escape(key)}"]`);
       if (again && again !== active) {
         if (typed !== null && again.type !== "range" && again.type !== "file") again.value = typed;
         again.focus({ preventScroll: true });
         if (from !== null && again.setSelectionRange && again.type === "text") { try { again.setSelectionRange(from, to); } catch (e) { /* not a text box */ } }
       }
+    }
+    const now = key ? again : anchor;
+    if (keepPlace && now && now.isConnected && anchor) {
+      const shift = now.getBoundingClientRect().top - before;
+      if (Math.abs(shift) > 1) window.scrollBy(0, shift);
     }
   }
 
@@ -309,15 +372,24 @@ export function plan(box, ctx) {
   function drawStats() {
     const e = data.economy || {}, t = data.traffic || {}, m = data.money || {};
     const houses = (data.uses.find((u) => u.id === "homes") || {}).homes || 0, flats = (data.uses.find((u) => u.id === "apartments") || {}).homes || 0;
-    const stat = (label, big, small) => `<div class="stat"><span class="label">${label}</span><b>${big}</b><span>${small}</span></div>`;
-    box.querySelector("#planStats").innerHTML = [
-      stat("Homes", num(e.homes), `${num(houses)} ${plural(houses, "house")} and ${num(flats)} ${plural(flats, "apartment")}`),
-      stat("Floor space", has(e.floor_space_sq_ft) ? num(e.floor_space_sq_ft) + " sq ft" : NONE, "for shops, offices and the business park"),
-      stat("Jobs", num(e.jobs), "in the shops, offices and business park, by rule of thumb"),
-      stat("Trips a day", num(t.per_day), `about ${num(t.peak_hour)} in the busiest hour`),
-      stat("Land sales", usd(m.revenue), "at the starting prices: replace them with real quotes"),
-      stat("Profit", usd(m.profit), has(m.margin_pct) ? `${num(m.margin_pct, 1)}% of sales, before interest, sales costs and taxes` : "before interest, sales costs and taxes"),
-    ].join("");
+    // each chapter opens with its own few numbers (print shows them all, in this order); a number counts up once
+    const stat = (label, big, small, value, fmt) => {
+      const to = has(value) && isFinite(Number(value)) ? ` data-to="${Number(value)}" data-fmt="${fmt}" data-count="${esc(label)}"` : "";
+      return `<div class="stat"><span class="label">${label}</span><b${to}>${big}</b><span>${small}</span></div>`;
+    };
+    const rows = {
+      plan: [
+        stat("Homes", num(e.homes), `${num(houses)} ${plural(houses, "house")} and ${num(flats)} ${plural(flats, "apartment")}`, e.homes, "n"),
+        stat("Floor space", has(e.floor_space_sq_ft) ? num(e.floor_space_sq_ft) + " sq ft" : NONE, "for shops, offices and the business park", e.floor_space_sq_ft, "sqft"),
+        stat("Jobs", num(e.jobs), "in the shops, offices and business park, by rule of thumb", e.jobs, "n"),
+      ],
+      area: [stat("Trips a day", num(t.per_day), `about ${num(t.peak_hour)} in the busiest hour`, t.per_day, "n")],
+      money: [
+        stat("Land sales", usd(m.revenue), "at the starting prices: replace them with real quotes", m.revenue, "usd"),
+        stat("Profit", usd(m.profit), has(m.margin_pct) ? `${num(m.margin_pct, 1)}% of sales, before interest, sales costs and taxes` : "before interest, sales costs and taxes", m.profit, "usd"),
+      ],
+    };
+    Object.keys(rows).forEach((id) => { box.querySelector(`[data-stats="${id}"]`).innerHTML = rows[id].join(""); });
   }
 
   // ---------------------------------------------------------------- the map
@@ -393,11 +465,12 @@ export function plan(box, ctx) {
     const d = data.drawing, el = box.querySelector("#planLaid");
     if (!d) { el.innerHTML = missing("The plan could not be drawn on this parcel's outline, so the map shows the outline only."); return; }
     const gap = has(d.drawn_acres) && Math.abs(d.drawn_acres - data.acres) > Math.max(1, data.acres * 0.05);
-    el.innerHTML = `<div class="card soft plan-laid"><h3>Why it is laid out this way</h3>
-      <ul class="plain">${(d.why || []).map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
-      ${d.note ? `<p>${esc(d.note)}</p>` : ""}
-      ${gap ? `<p class="notice warn">The outline on the map covers about <b>${ac(d.drawn_acres)} ${plural(d.drawn_acres, "acre", "acres", 1)}</b>, but the parcel record says <b>${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)}</b>. The plan's numbers use the record; the drawing can only use the outline. Check the parcel's real boundary.</p>` : ""}
-      <p class="fine">The pieces are a first sketch of where each use could go, cut from the assessor's outline. They are not lot lines and not a site plan.</p></div>`;
+    // a gap between the outline and the record is said at once; the reasons for the layout are there on request
+    el.innerHTML = `${gap ? `<p class="notice warn plan-gap">The outline on the map covers about <b>${ac(d.drawn_acres)} ${plural(d.drawn_acres, "acre", "acres", 1)}</b>, but the parcel record says <b>${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)}</b>. The plan's numbers use the record; the drawing can only use the outline. Check the parcel's real boundary.</p>` : ""}
+      ${folded("laid", "Why it is laid out this way", `
+        <ul class="plain">${(d.why || []).map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
+        ${d.note ? `<p>${esc(d.note)}</p>` : ""}
+        <p class="fine">The pieces are a first sketch of where each use could go, cut from the assessor's outline. They are not lot lines and not a site plan.</p>`, "plan-laid")}`;
   }
 
   // ---------------------------------------------------------------- the 3D view
@@ -406,7 +479,7 @@ export function plan(box, ctx) {
     box.querySelectorAll("[data-show]").forEach((b) => { const on = (b.dataset.show === "3d") === show3d; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
     box.querySelector("#planMapBox").hidden = show3d;
     box.querySelector("#plan3d").hidden = !show3d;
-    if (show3d) draw3d(false);
+    if (show3d && onPlan()) draw3d(false);
   }
   function draw3d(force) {
     const el = box.querySelector("#plan3d"), d = data.drawing;
@@ -426,7 +499,8 @@ export function plan(box, ctx) {
       return;
     }
     el.innerHTML = `<div class="view3d plan-3d" id="plan3dView"></div>
-      <p class="fine">The ground in the plan's colours, the streets this plan draws as light lines, and simple boxes for buildings: about as many and as large as the plan's figures make, standing on the ground. The boxes are <b>a picture of scale, not a site plan</b>; trees mark the parks. Only the ground's height is stretched by the slider; the buildings keep their true height. At most about 1,500 boxes are drawn, so a large housing area shows its houses spaced further apart than they would be.</p>`;
+      <p class="fine plan-screen-only">The boxes are <b>a picture of scale, not a site plan</b>.</p>
+      ${folded("3d-about", "What the 3D view shows", `<p class="fine">The ground in the plan's colours, the streets this plan draws as light lines, and simple boxes for buildings: about as many and as large as the plan's figures make, standing on the ground. The boxes are <b>a picture of scale, not a site plan</b>; trees mark the parks. Only the ground's height is stretched by the slider; the buildings keep their true height. At most about 1,500 boxes are drawn, so a large housing area shows its houses spaced further apart than they would be.</p>`)}`;
     const colours = Object.fromEntries(data.uses.map((u) => [u.id, colourOf(u.colour)]));
     const amounts = Object.fromEntries(data.uses.map((u) => [u.id, { homes: u.homes, sq_ft: u.sq_ft }]));
     unmount3d = mountTerrain(el.querySelector("#plan3dView"), P, H, {
@@ -454,7 +528,7 @@ export function plan(box, ctx) {
             <div class="plan-row-sub"><span class="plan-what"></span><span class="plan-sugg"></span></div>
           </div>`).join("")}</div>
         <div class="plan-mix-foot"><span id="planTotal"></span><button type="button" class="btn small" id="planSuggested">Use the suggested sizes</button></div>
-        <div id="planNotes"></div>`;
+        <div id="planNotes" class="plan-notes-box"></div>`;
     }
     updateMix(true);
     el.querySelector("#planSuggested").hidden = !settings.acres;
@@ -469,10 +543,13 @@ export function plan(box, ctx) {
       if (!cut || !shops) return n;
       const mine = Number(mixAcres[shops.id]);
       if (!isFinite(mine) || Math.abs(mine - Number(cut[1].replace(/,/g, ""))) < 0.05) return n;
-      return n.replace(cut[0], `The suggestion cut this to ${cut[1]} acres`) + ` Your mix has ${ac(mine)} ${plural(mine, "acre", "acres", 1)} of shops.`;
+      // the 24-acre kind of figure is the most the area supports; a smaller parcel is given less, and only an edited mix is "yours"
+      const own = Math.abs(mine - Number(shops.suggested_acres || 0)) >= 0.05;
+      return n.replace(cut[0], `The most the area supports was cut to ${cut[1]} acres`) +
+        (own ? ` Your mix has ${ac(mine)} ${plural(mine, "acre", "acres", 1)} of shops.` : ` On this parcel the suggestion gives shops ${ac(mine)} ${plural(mine, "acre", "acres", 1)}.`);
     };
     const notes = data.notes || [];
-    slot.innerHTML = notes.length ? `<ul class="plain plan-notes">${notes.map((n) => `<li>${esc(text(n))}</li>`).join("")}</ul>` : "";
+    slot.innerHTML = notes.length ? folded("notes", "How these sizes were set", `<ul class="plain plan-notes">${notes.map((n) => `<li>${esc(text(n))}</li>`).join("")}</ul>`) : "";
   }
   // put the current acres in the rows; the box or slider the person is using is left alone
   function updateMix(fromAnswer) {
@@ -513,22 +590,25 @@ export function plan(box, ctx) {
     const kept = data.uses.filter((u) => u.acres > 0).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
     const out = data.uses.filter((u) => !(u.acres > 0));
     const reasons = (u) => `<ul class="plan-reasons">${u.reasons.map((r) => `<li>${effect(r.effect)}<span>${esc(r.text)} <span class="plan-src">${esc(r.source)}</span></span></li>`).join("")}</ul>`;
+    // the bar is what draws in (calm-data), left to right, the first time the chapter is seen
     const bar = (u) => has(u.score)
-      ? `<div class="plan-score"><div class="plan-bar" role="img" aria-label="Score ${num(u.score)} out of 100"><i style="width:${Math.max(0, Math.min(100, Number(u.score)))}%;background:${colourOf(u.colour)}"></i></div><b>${num(u.score)}</b><span>out of 100</span></div>`
+      ? `<div class="plan-score"><div class="plan-bar" role="img" aria-label="Score ${num(u.score)} out of 100"><i class="calm-data" style="width:${Math.max(0, Math.min(100, Number(u.score)))}%;background:${colourOf(u.colour)}"></i></div><b>${num(u.score)}</b><span>out of 100</span></div>`
       : `<p class="fine">Not scored: its size comes from the parks and drainage rules under the mix.</p>`;
-    box.querySelector("#planWhy").innerHTML = `<h2>Why</h2>
+    const showReasons = (u) => u.reasons.length
+      ? folded(`why:${u.id}`, u.reasons.length === 1 ? "Show the reason" : `Show the ${u.reasons.length} reasons`, reasons(u)) : "";
+    box.querySelector("#planWhy").innerHTML = `<h2>Why this mix</h2>
       <p class="plan-lead">Each use gets a score out of 100 from the facts of this land. Each fact adds or takes away points; the source of each fact is in the small tag.${settings.mode === "best" ? " In Best use the zoning is left out of the score, so the zoning line counts 0." : ""}</p>
       <div class="plan-cards">${kept.map((u) => `
         <article class="card plan-why">
           <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)} <span class="plan-acres">${ac(u.acres)} ${plural(u.acres, "acre", "acres", 1)}</span></h3>
           ${bar(u)} ${fitChip(u)}
-          ${u.reasons.length ? reasons(u) : ""}
+          ${showReasons(u)}
         </article>`).join("")}
         ${out.map((u) => `
         <article class="card plan-why plan-left">
           <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)} <span class="plan-acres">left out</span></h3>
           <p>Score ${has(u.score) ? num(u.score) + " out of 100" : NONE} · ${esc(u.fit_words || NONE)}.${(data.left_out || []).some((x) => x.use === u.id) ? " Too low a score, or too little room, to make the suggestion." : ""}</p>
-          ${u.reasons.length ? `<details data-open-k="why:${esc(u.id)}"><summary>Show the reasons</summary>${reasons(u)}</details>` : ""}
+          ${showReasons(u)}
         </article>`).join("")}
       </div>`;
   }
@@ -545,20 +625,22 @@ export function plan(box, ctx) {
     if (nothing()) { el.innerHTML = `<h2>Who might buy each piece</h2><p class="missing">Nothing to sell in this mix, so no buyers are listed.</p>`; return; }
     const names = Object.fromEntries(data.uses.map((u) => [u.id, u]));
     const buyers = data.buyers || [];
+    // who builds each kind nearby at once; their projects on request
     el.innerHTML = `<h2>Who might buy each piece</h2>
-      <div class="notice"><p>These are companies the city's own project lists show <b>building this kind of project near here</b>. It is not a statement that any of them wants this land. ${listsLine()}</p></div>
-      ${buyers.length ? `<div class="plan-buyers">${buyers.map((b) => {
-        const u = names[b.use] || { label: b.use, colour: "" };
+      <div class="notice"><p>These are companies the city's own project lists show <b>building this kind of project near here</b>. It is not a statement that any of them wants this land.</p></div>
+      ${buyers.length ? `<div class="plan-buyers">${buyers.map((b, i) => {
+        const u = names[b.use] || { label: b.use, colour: "" }, n = b.projects.length;
         return `<article class="card plan-buyer">
           <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)}</h3>
           <p>${esc(b.who)}</p>
-          <p class="plan-chips">${b.named.length ? b.named.map((n) => `<span class="chip">${esc(n)}</span>`).join("") : '<span class="missing">No builder is named on the city\'s lists for this kind of project nearby.</span>'}</p>
-          ${b.projects.length ? table(["Project", "Builder", "Status", "Miles away", "What it is"], b.projects.map((p) => [
+          <p class="plan-chips">${b.named.length ? b.named.map((x) => `<span class="chip">${esc(x)}</span>`).join("") : '<span class="missing">No builder is named on the city\'s lists for this kind of project nearby.</span>'}</p>
+          ${n ? folded(`buyers:${b.use}:${i}`, n === 1 ? "Show the project nearby" : `Show the ${n} projects nearby`, table(["Project", "Builder", "Status", "Miles away", "What it is"], b.projects.map((p) => [
             `<b>${esc(p.title)}</b>${p.number ? `<small>${esc(p.number)} · ${esc(p.list || "")}</small>` : ""}`,
-            p.builder ? esc(p.builder) : '<span class="missing">not named</span>', esc(p.status || NONE), num(p.miles_away, 2), `<small class="plan-desc">${esc(p.description || "")}</small>`]))
+            p.builder ? esc(p.builder) : '<span class="missing">not named</span>', esc(p.status || NONE), num(p.miles_away, 2), `<small class="plan-desc">${esc(p.description || "")}</small>`])))
             : missing("No projects of this kind on the city's lists nearby.")}
         </article>`;
-      }).join("")}</div>` : missing("No buyers found on the city's lists: not covered yet.")}`;
+      }).join("")}</div>` : missing("No buyers found on the city's lists: not covered yet.")}
+      <p class="fine">${listsLine()}</p>`;
   }
 
   // ---------------------------------------------------------------- traffic, market, economy
@@ -568,49 +650,56 @@ export function plan(box, ctx) {
     if (nothing()) { el.innerHTML = `<h2>Traffic</h2><p class="missing">No buildings in this mix, so no new trips.</p>`; return; }
     const names = Object.fromEntries(data.uses.map((u) => [u.id, u]));
     const uses = Object.keys(t.by_use || {}), most = Math.max(1, ...uses.map((u) => t.by_use[u]));
+    // the trips and the entrances at once; the signals and the notes on request
     el.innerHTML = `<h2>Traffic</h2><div class="card">
       <p>About <b>${num(t.per_day)} ${plural(t.per_day, "trip")} a day</b> in and out, and about <b>${num(t.peak_hour)}</b> in the busiest hour.</p>
-      ${uses.length ? table(["Use", "Trips a day", ""], uses.map((u) => [esc((names[u] || {}).label || u), num(t.by_use[u]),
-        `<span class="plan-tbar" aria-hidden="true"><i style="width:${(100 * t.by_use[u] / most).toFixed(1)}%;background:${colourOf((names[u] || {}).colour)}"></i></span>`])) : ""}
+      ${uses.length ? `<div id="planTrafficBars">${table(["Use", "Trips a day", ""], uses.map((u) => [esc((names[u] || {}).label || u), num(t.by_use[u]),
+        `<span class="plan-tbar" aria-hidden="true"><i class="calm-data" style="width:${(100 * t.by_use[u] / most).toFixed(1)}%;background:${colourOf((names[u] || {}).colour)}"></i></span>`]))}</div>` : ""}
       <h3 class="plan-sub">Entrances</h3>
       ${(t.entrances || []).length ? `<ul class="plan-ents">${t.entrances.map((e) => {
         const kind = SIGNAL_MARK[e.signal] ? e.signal : "none";
         return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b> (${esc(e.class)}), about ${num(e.trips)} ${plural(e.trips, "trip")} a day. <b>${SIGNAL_WORDS[kind]}.</b> ${esc(e.text)}</span></li>`;
-      }).join("")}</ul>` : missing("Where the entrances go: not covered yet (see the note below).")}
-      <h3 class="plan-sub">Traffic signals today, nearest first</h3>
-      ${(t.existing_signals || []).length ? table(["Where", "Miles away"], t.existing_signals.map((s) => [`${esc(s.street)} and ${esc(s.cross_street)}`, num(s.miles_away, 2)])) : missing("Traffic signals nearby: not covered yet.")}
-      ${(t.notes || []).length ? `<ul class="plain plan-notes">${t.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
-      <p class="fine">Trips come from the trip rates under “Every figure”, which are starting figures. They are not a traffic study.</p></div>`;
+      }).join("")}</ul>` : missing("Where the entrances go: not covered yet (see the notes on these trips below).")}
+      ${folded("traffic-signals", "Traffic signals today, nearest first", (t.existing_signals || []).length
+        ? table(["Where", "Miles away"], t.existing_signals.map((s) => [`${esc(s.street)} and ${esc(s.cross_street)}`, num(s.miles_away, 2)])) : missing("Traffic signals nearby: not covered yet."))}
+      ${folded("traffic-notes", "Notes on these trips", `${(t.notes || []).length ? `<ul class="plain plan-notes">${t.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+        <p class="fine">Trips come from the trip rates under “Every figure”, which are starting figures. They are not a traffic study. <button type="button" class="link" data-chapter="figures" data-calm-scroll>Open the figures</button></p>`)}</div>`;
   }
 
   function drawMarket() {
     const el = box.querySelector("#planMarket"), m = data.market || {}, pl = m.pipeline || {};
+    // what the city's lists already hold nearby at once; the census count and the schools on request
     el.innerHTML = `<h2>The market around it</h2><div class="card">
-      <h3 class="plan-sub">People and homes nearby <span class="plan-tag measured">2020 Census</span></h3>
-      ${m.people ? table(["Within", "People", "Homes"], m.people.map((r) => [`${num(r.miles)} mile${Number(r.miles) === 1 ? "" : "s"}`, num(r.people), num(r.homes)])) : missing("The census count of people nearby: not covered yet.")}
-      <h3 class="plan-sub">Already on the city's lists within ${num(pl.within_miles, 1)} ${plural(pl.within_miles, "mile", "miles", 1)} <span class="plan-tag measured">City project lists</span></h3>
+      <h3 class="plan-sub plan-sub-first">Already on the city's lists within ${num(pl.within_miles, 1)} ${plural(pl.within_miles, "mile", "miles", 1)} <span class="plan-tag measured">City project lists</span></h3>
       ${has(pl.projects) ? `<dl class="facts">
         <dt>Projects</dt><dd>${num(pl.projects)}</dd>
         <dt>Housing projects</dt><dd>${num(pl.housing_projects)}, with ${num(pl.homes_stated)} ${plural(pl.homes_stated, "home")} stated</dd>
         <dt>Shops and offices projects</dt><dd>${num(pl.commercial_projects)}</dd>
         <dt>Industrial projects</dt><dd>${num(pl.industrial_projects)}</dd>
         <dt>Building space stated</dt><dd>${num(pl.building_sq_ft_stated)} sq ft (shops, offices and industry)</dd></dl>` : missing()}
-      <h3 class="plan-sub">Schools nearby</h3>
-      ${(m.schools || []).length ? table(["School", "Grades", "Public or private", "Miles away"], m.schools.map((s) => [esc(s.name), esc(s.grades), esc(s.kind), num(s.miles_away, 2)])) : missing("Schools nearby: not covered yet.")}
+      ${folded("market-people", "People and homes nearby", `<p><span class="plan-tag measured">2020 Census</span></p>
+        ${m.people ? table(["Within", "People", "Homes"], m.people.map((r) => [`${num(r.miles)} mile${Number(r.miles) === 1 ? "" : "s"}`, num(r.people), num(r.homes)])) : missing("The census count of people nearby: not covered yet.")}`)}
+      ${folded("market-schools", "Schools nearby", (m.schools || []).length
+        ? table(["School", "Grades", "Public or private", "Miles away"], m.schools.map((s) => [esc(s.name), esc(s.grades), esc(s.kind), num(s.miles_away, 2)])) : missing("Schools nearby: not covered yet."))}
       <p class="fine">${listsLine()}</p></div>`;
   }
 
   function drawEconomy() {
     const e = data.economy || {};
-    const rows = [
-      ["New residents", num(e.residents)], ["Homes", num(e.homes)], ["Jobs", num(e.jobs)],
-      ["Floor space for shops and jobs", has(e.floor_space_sq_ft) ? num(e.floor_space_sq_ft) + " sq ft" : NONE],
-      ["Value once built", usd(e.built_value)], ["Property tax a year", usd(e.property_tax_year)],
-      ["Shop sales a year", usd(e.retail_sales_year)], ["The city's share of sales tax a year", usd(e.city_sales_tax_year)],
+    // what the city gains at once (people, jobs, its taxes); the rest on request
+    const first = [
+      ["New residents", num(e.residents)], ["Jobs", num(e.jobs)],
+      ["Property tax a year", usd(e.property_tax_year)], ["The city's share of sales tax a year", usd(e.city_sales_tax_year)],
     ];
+    const rest = [
+      ["Homes", num(e.homes)], ["Floor space for shops and jobs", has(e.floor_space_sq_ft) ? num(e.floor_space_sq_ft) + " sq ft" : NONE],
+      ["Value once built", usd(e.built_value)], ["Shop sales a year", usd(e.retail_sales_year)],
+    ];
+    const dl = (rows) => `<dl class="facts plan-econ">${rows.map((r) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join("")}</dl>`;
     box.querySelector("#planEconomy").innerHTML = `<h2>Jobs, people and taxes</h2><div class="card">
-      <dl class="facts plan-econ">${rows.map((r) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join("")}</dl>
-      <p class="fine">Worked out from the plan's homes and floor space with the starting figures under “Jobs and taxes” in “Every figure”. Change them there.</p></div>`;
+      ${dl(first)}
+      ${folded("economy-more", "Homes, floor space, value once built and shop sales", `${dl(rest)}
+        <p class="fine">Worked out from the plan's homes and floor space with the starting figures under “Jobs and taxes” in “Every figure”. Change them there. <button type="button" class="link" data-chapter="figures" data-calm-scroll>Open the figures</button></p>`)}</div>`;
   }
 
   // ---------------------------------------------------------------- costs and money
@@ -635,17 +724,20 @@ export function plan(box, ctx) {
     (settings.extra_costs || []).forEach((x, i) => rows.push([`${esc(x.name)} <small>added by you</small>`, "", "",
       `${usd(x.amount)} <button type="button" class="btn small plan-x" data-remove-extra="${i}" aria-label="Remove ${esc(x.name)}">Remove</button>`]));
     rows.push(["<b>Total costs</b>", "", "", `<b>${usd(c.total)}</b>`]);
+    // the total at once; the lines (each figure editable), what is left out and the cost sheet on request
+    const notCounted = c.not_counted || [];
     el.innerHTML = `<h2>Costs</h2><div class="card">
       <p class="plan-calc"><b>Starting figures, not quotes.</b> Every cost per unit is a common planning figure. Replace them with your engineer's and contractors' numbers.</p>
-      ${table(["What", "Cost per unit", "How much", "Amount"], rows)}
-      <form class="plan-add" id="planAddExtra">
-        <label class="field"><span>Another cost</span><input type="text" name="name" maxlength="80" placeholder="For example: soil report" data-k="extra-name"></label>
-        <label class="field"><span>Amount ($)</span><input type="text" name="amount" inputmode="decimal" placeholder="45,000" data-k="extra-amount"></label>
-        <button type="submit" class="btn">${icon("plus")} Add</button>
-      </form>
-      <h3 class="plan-sub">Not counted</h3>
-      <ul class="plain">${(c.not_counted || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
-      <details class="plan-import" data-open-k="import" ${sheetRead ? "open" : ""}><summary>Import costs from a file, or download this cost sheet</summary>
+      <p class="plan-total">Total costs <b>${usd(c.total)}</b></p>
+      ${folded("cost-lines", "Show the cost lines and change their figures", `
+        ${table(["What", "Cost per unit", "How much", "Amount"], rows)}
+        <form class="plan-add" id="planAddExtra">
+          <label class="field"><span>Another cost</span><input type="text" name="name" maxlength="80" placeholder="For example: soil report" data-k="extra-name"></label>
+          <label class="field"><span>Amount ($)</span><input type="text" name="amount" inputmode="decimal" placeholder="45,000" data-k="extra-amount"></label>
+          <button type="submit" class="btn">${icon("plus")} Add</button>
+        </form>`)}
+      ${notCounted.length ? folded("cost-not", "Not counted", `<ul class="plain">${notCounted.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`) : ""}
+      ${folded("import", "Import costs from a file, or download this cost sheet", `
         <p>Each row is <b>a name, then an amount</b>. A header row and $ and , signs are fine. A row named exactly like a cost or figure on this page (for example “Drainage basins” or <code>cost_basin_per_acre</code>) sets that figure; any other row becomes a cost line of its own.</p>
         <div class="plan-import-row">
           <label class="field"><span>Pick a .csv file</span><input type="file" accept=".csv,text/csv,text/plain" id="planFile" data-k="file"></label>
@@ -653,8 +745,7 @@ export function plan(box, ctx) {
         </div>
         <label class="field"><span>Or paste the rows here</span><textarea id="planPaste" rows="5" data-k="paste" placeholder="Soil report, $45,000&#10;Drainage basins, 175000"></textarea></label>
         <p><button type="button" class="btn" id="planReadPaste">Read the pasted rows</button></p>
-        <div id="planSheet">${sheetHtml()}</div>
-      </details></div>`;
+        <div id="planSheet">${sheetHtml()}</div>`, "plan-import")}</div>`;
   }
   function sheetHtml() {
     const r = sheetRead;
@@ -700,7 +791,7 @@ export function plan(box, ctx) {
         <dt>Margin</dt><dd>${has(m.margin_pct) ? num(m.margin_pct, 1) + "% of sales" : NONE}</dd>
       </dl>
       ${stand}
-      <p class="fine">Houses are priced per approved house lot and apartments per apartment the land is approved for; other land per acre. Profit is before interest, sales costs and taxes.</p></div>`;
+      ${folded("money-how", "How sales and profit are counted", `<p class="fine">Houses are priced per approved house lot and apartments per apartment the land is approved for; other land per acre. Profit is before interest, sales costs and taxes.</p>`)}</div>`;
   }
 
   // ---------------------------------------------------------------- every figure
@@ -712,11 +803,15 @@ export function plan(box, ctx) {
       if (!g) { g = { name: f.group, items: [] }; groups.push(g); }
       g.items.push(f);
     });
+    // one closed group per kind of figure; the group's name says how many it holds and how many are yours
+    const count = (g) => {
+      const n = g.items.length, mine = g.items.filter((f) => f.kind === "yours").length;
+      return `${g.name}: ${n} ${n === 1 ? "figure" : "figures"}${mine ? `, ${mine} of them yours` : ""}`;
+    };
     box.querySelector("#planFigures").innerHTML = `<h2>Every figure this plan rests on</h2>
       <p class="plan-lead">Change any of them and the whole plan is worked out again. <span class="plan-tag measured">Measured here</span> figures come from this land's own records; <span class="plan-tag assumption">Starting figure</span> is a common planning figure to replace; <span class="plan-tag yours">Your figure</span> is one you typed.</p>
-      <div class="plan-fig-groups">${groups.map((g) => `
-        <article class="card plan-fig-group"><h3>${esc(g.name)}</h3>
-          <div class="plan-figs">${g.items.map((f) => {
+      <div class="card plan-fig-list">${groups.map((g) => folded(`figs:${g.name}`, count(g), `
+          <div class="plan-figs plan-fig-group">${g.items.map((f) => {
             const changedFig = Math.abs(Number(f.value) - Number(f.start)) > 1e-9;
             return `<div class="plan-fig">
               <div class="plan-fig-top"><label for="planFig-${esc(f.id)}">${esc(f.label)}</label><span class="plan-tag ${esc(f.kind)}">${esc(KIND_WORDS[f.kind] || f.kind)}</span></div>
@@ -724,8 +819,7 @@ export function plan(box, ctx) {
                 ${changedFig ? `<button type="button" class="btn small" data-reset="${esc(f.id)}" data-k="reset:${esc(f.id)}" aria-label="Back to the starting figure for ${esc(f.label)}">Back to ${esc(inputValue(f.start, f.unit))}</button>` : ""}</div>
               <p class="fine">${esc(f.basis)}</p>
             </div>`;
-          }).join("")}</div>
-        </article>`).join("")}</div>`;
+          }).join("")}</div>`)).join("")}</div>`;
   }
 
   function drawLimits() {
