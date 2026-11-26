@@ -296,7 +296,8 @@ class LandPlanner:
                "parcel_stale": meta["stale"], "parts": {}, "sources": {}, "fetched": {},
                "saved": self.saved.has(city.id, parcel["apn"])}
         for part, (value, state, fetched) in zip(wanted, results):
-            out["parts"][part], out["sources"][part], out["fetched"][part] = self._labelled(city, part, value, names), state, fetched
+            out["parts"][part], out["sources"][part], out["fetched"][part] = (
+                self._labelled(city, part, value, names), self._state(city, part, value, state), fetched)
         if group == "quick":
             out["zone_names"] = names
             out["zoning_notes"] = city.zoning_notes(parcel.get("zoning"))
@@ -336,12 +337,18 @@ class LandPlanner:
             results = list(pool.map(lambda p: self._part(city, parcel, p, False), wanted))
         parts, sources, fetched = {}, {}, {}
         for part, (value, state, at) in zip(wanted, results):
-            parts[part], sources[part], fetched[part] = self._labelled(city, part, value, names), state, at
+            parts[part], sources[part], fetched[part] = self._labelled(city, part, value, names), self._state(city, part, value, state), at
+        parts["not_published"] = [p for p in city.not_published if p in parts and parts[p] is None]
         for part in ("surface", "terrain"):
             known = self.cache.peek(f"{city.id}/site/{parcel['apn']}/{part}")
             parts[part] = known[0] if known else None
         parts["allowed_uses"] = self._allowed_uses(city, parcel, parts.get("zoning"))
         return parts, sources, fetched
+
+    @staticmethod
+    def _state(city, part, value, state):
+        """A part the city does not publish at all is said as that, not as an answer with nothing in it."""
+        return "not published" if value is None and state == "nothing found there" and part in city.not_published else state
 
     @staticmethod
     def _allowed_uses(city, parcel, zoning):

@@ -53,7 +53,7 @@ export async function render(el, params, alive) {
     </article>`).join("") + `
     <article class="card city more">
       <h2>More cities</h2>
-      <p class="muted">Menifee is the first city. Others can be added as their public parcel and zoning records are connected, and will appear here as cards.</p>
+      <p class="muted">Each city is one file that reads that city's own public parcel and zoning records. Another city appears here as a card once its file is written (the steps are in the README).</p>
     </article>`;
   list.forEach((c) => {
     count(grid.querySelector(`[data-city="${c.id}"] [data-count]`), c, alive, false);

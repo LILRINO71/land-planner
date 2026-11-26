@@ -289,16 +289,18 @@ def gather(parcel, parts, kind_of):
     F["frontage"] = fronting[0] if fronting else None
     F["corner"] = next((s for s in fronting[1:] if s["name"] != fronting[0]["name"]), None) if fronting else None
 
+    # a record the city does not publish at all is a gap of its own: it is not a source that failed to answer
+    unpublished, F["unpublished"] = set(parts.get("not_published") or ()), []
     signals = parts.get("signals")
     F["signals"] = (signals or {}).get("signals", [])
     F["signals_known"] = signals is not None
     if signals is None:
-        F["missing"].append("the city's map of traffic signals")
+        (F["unpublished"] if "signals" in unpublished else F["missing"]).append("the city's map of traffic signals")
     projects = parts.get("projects")
     F["projects"] = (projects or {}).get("projects", [])
     F["projects_updated"] = (projects or {}).get("lists_updated") or {}
     if projects is None:
-        F["missing"].append("the city's list of development projects")
+        (F["unpublished"] if "projects" in unpublished else F["missing"]).append("the city's list of development projects")
     F["schools"] = (parts.get("schools") or {}).get("schools", [])
 
     surface = (parts.get("surface") or {}).get("inside") if parts.get("surface") else None
@@ -1060,6 +1062,9 @@ def advise(F, parts, mode, suggested):
                    + ". How people get in and out is the first thing to settle.")
     if F["missing"]:
         out.append("Some records did not answer just now, so the rules that need them were skipped: " + ", ".join(F["missing"]) + ".")
+    if F.get("unpublished"):
+        out.append("This city does not publish " + " or ".join(F["unpublished"]) + ", so the rules that need them were skipped "
+                   "(who is building nearby, competing space, and which signals exist).")
     return out
 
 

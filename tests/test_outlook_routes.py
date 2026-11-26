@@ -33,6 +33,8 @@ NOW = calendar.timegm((2026, 11, 25, 12, 0, 0))
 DAY = 86400
 PATH = "/api/cities/tinytown/outlook"
 BLOCKS = ("economy", "housing", "climate", "hazards", "nearby", "resident", "todo")
+# hazards and nearby places are always asked with the city's own map layers named, so no city borrows another's
+THE_CITYS_OWN_MAPS = {"city_layers": place_source.MENIFEE_LAYERS}
 ALL_PARTS = O.CITY_PARTS + O.PLACE_PARTS
 
 
@@ -879,11 +881,11 @@ class TheMenifeeAdapter(unittest.TestCase):
     def test_climate_and_nearby_are_read_at_the_parcels_centre(self):
         self.assertEqual(self.city.outlook_part("climate", self.PARCEL), {"read": "climate"})
         self.assertEqual(self.city.outlook_part("nearby", self.PARCEL), {"read": "nearby"})
-        self.assertEqual(self.asked(), [("climate", (-117.165, 33.655), {}), ("nearby", (-117.165, 33.655), {})])
+        self.assertEqual(self.asked(), [("climate", (-117.165, 33.655), {}), ("nearby", (-117.165, 33.655), THE_CITYS_OWN_MAPS)])
 
     def test_hazards_are_read_at_the_centre_and_over_the_box_round_the_outline(self):
         self.assertEqual(self.city.outlook_part("hazards", self.PARCEL), {"read": "hazards"})
-        self.assertEqual(self.asked(), [("hazards", (-117.165, 33.655, (-117.17, 33.65, -117.16, 33.66)), {})])
+        self.assertEqual(self.asked(), [("hazards", (-117.165, 33.655, (-117.17, 33.65, -117.16, 33.66)), THE_CITYS_OWN_MAPS)])
 
     def test_the_box_takes_every_ring_of_the_outline(self):
         parcel = dict(self.PARCEL, outline={"coordinates": [[[0.0, 1.0], [2.0, 3.0]], [[-4.0, -5.0], [6.0, 7.0]]]})
@@ -895,10 +897,10 @@ class TheMenifeeAdapter(unittest.TestCase):
             with self.subTest(outline=outline):
                 parcel = {"apn": "1", "centre": self.PARCEL["centre"], "outline": outline}
                 self.city.outlook_part("hazards", parcel)
-                self.assertEqual(self.asked(), [("hazards", (-117.165, 33.655, None), {})])
+                self.assertEqual(self.asked(), [("hazards", (-117.165, 33.655, None), THE_CITYS_OWN_MAPS)])
         parcel = {"apn": "1", "centre": self.PARCEL["centre"]}
         self.city.outlook_part("hazards", parcel)
-        self.assertEqual(self.asked(), [("hazards", (-117.165, 33.655, None), {})])
+        self.assertEqual(self.asked(), [("hazards", (-117.165, 33.655, None), THE_CITYS_OWN_MAPS)])
 
     def test_residents_are_read_for_the_tracts_given_and_not_at_all_without_any(self):
         tracts = [{"id": "06065042739", "households": 2356, "share": 1.0}]

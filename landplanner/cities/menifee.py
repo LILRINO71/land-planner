@@ -1,14 +1,8 @@
-"""Menifee, California. Everything is read by tools/menifee.py (the same code the command-line tool runs), from
-the City of Menifee's public GIS, the U.S. Geological Survey and Caltrans. This file only fits it to the app."""
-import importlib.util
-from pathlib import Path
-
-from .base import CityAdapter, NotFound, SourceError
-
-_TOOL = Path(__file__).resolve().parents[2] / "tools" / "menifee.py"
-_spec = importlib.util.spec_from_file_location("menifee_tool", _TOOL)
-tool = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(tool)
+"""Menifee, California. The city's own records are read by tools/menifee.py (the same code the command-line tool
+runs) from the City of Menifee's public GIS. Everything a city shares with its neighbours (ground heights, highway
+counts, the census, the regional forecasts, hazards) is answered by shared.RegionalCity."""
+from .base import SourceError
+from .shared import SHARED_SOURCES, RegionalCity, ask as _ask, tool  # noqa: F401 - `tool` is the app's one network module
 
 CITY_GIS = "City of Menifee public GIS"
 
@@ -27,17 +21,7 @@ ZONE_NOTES = {
 }
 
 
-def _ask(fn, *args):
-    """Run one of the tool's functions, turning its errors into the app's."""
-    try:
-        return fn(*args)
-    except tool.NotFound as e:
-        raise NotFound(str(e)) from e
-    except tool.SourceError as e:
-        raise SourceError(str(e)) from e
-
-
-class Menifee(CityAdapter):
+class Menifee(RegionalCity):
     id = "menifee"
     name = "Menifee"
     region = "California"
@@ -45,17 +29,12 @@ class Menifee(CityAdapter):
     large_acres = 10.0
     site_miles = 1.0
     sources = {
+        **SHARED_SOURCES,
         "parcel": CITY_GIS, "zoning": CITY_GIS, "general_plan": CITY_GIS, "surroundings": CITY_GIS,
         "neighbour_shapes": CITY_GIS, "zone_names": CITY_GIS,
-        "terrain": "U.S. Geological Survey (3D Elevation Program)",
-        "surface": "U.S. Geological Survey (3D Elevation Program)",
-        "state_highway_traffic": "Caltrans traffic counts",
-        "people": "U.S. Census Bureau, 2020 Census", "streets": "City of Menifee general plan circulation map",
+        "streets": "City of Menifee general plan circulation map",
         "signals": "City of Menifee traffic signals", "projects": "City of Menifee project lists",
-        "schools": "City of Menifee schools", "photo": "USDA aerial photo programme (NAIP), served by USGS",
-        "people_before": "U.S. Census Bureau, 2010 Census",
-        "regional_plan": "Southern California Association of Governments (SCAG) growth forecasts",
-        "tracts": "U.S. Census Bureau, American Community Survey (served by Esri)",
+        "schools": "City of Menifee schools",
     }
     not_covered = (
         "The shops and offices that exist today (the Forecast shows what growth adds, not what is missing now)",
@@ -93,15 +72,16 @@ class Menifee(CityAdapter):
     def records_updated(self):
         return _ask(tool.records_updated)
 
-    def photo_date(self, lon, lat):
-        return _ask(tool.photo_date, lon, lat)
-
     def parcel(self, apn):
         return _ask(tool.parcel, apn)
 
-    def site_part(self, part, parcel):
+    @property
+    def map_layers(self):
+        from ..sources.place import MENIFEE_LAYERS   # the city's own hazard and nearby-place maps
+        return MENIFEE_LAYERS
+
+    def city_part(self, part, parcel):
         lon, lat = parcel["centre"]["lon"], parcel["centre"]["lat"]
-        rings = parcel["outline"]["coordinates"]
         if part == "zoning":
             return _ask(tool.zoning_at, lon, lat)
         if part == "general_plan":
@@ -110,14 +90,6 @@ class Menifee(CityAdapter):
             return _ask(tool.neighbours, lon, lat, self.site_miles)
         if part == "neighbour_shapes":
             return _ask(tool.neighbour_shapes, lon, lat, self.site_miles)
-        if part == "state_highway_traffic":
-            return _ask(tool.traffic, lon, lat)
-        if part == "terrain":
-            return _ask(tool.terrain, rings, parcel["centre"])
-        if part == "surface":
-            return _ask(tool.surface, rings)
-        if part == "people":
-            return _ask(tool.people_near, lon, lat)
         if part == "streets":
             return _ask(tool.streets_near, lon, lat, self._reach(parcel) + 0.35)
         if part == "signals":
@@ -126,61 +98,13 @@ class Menifee(CityAdapter):
             return _ask(tool.projects_near, lon, lat)
         if part == "schools":
             return _ask(tool.schools_near, lon, lat)
-        if part == "people_before":
-            return _ask(tool.people_before, lon, lat)
-        if part == "regional_plan":
-            return _ask(tool.regional_plan, lon, lat)
-        if part == "tracts":
-            return _ask(tool.tracts_near, lon, lat)
         return None
 
     place = {"name": "Menifee", "fips": "46842", "county": "Riverside",
              "planning": "City of Menifee Community Development Department (Planning)",
              "water": "Eastern Municipal Water District (water and sewer) and Southern California Edison (power)"}
 
-    def economy_part(self, part, year):
-        from ..sources import economy as E
-        p = self.place
-        if part == "population":
-            return E.population_by_year(p["name"], year, p["county"])
-        if part == "permits":
-            return E.permits_by_year(p["fips"], year - 8, year - 1)
-        if part == "sales":
-            return E.shop_sales_by_year(p["name"])
-        if part == "work":
-            return E.work_by_year(p["name"], p["county"])
-        if part == "borrowing":
-            return E.mortgage_rates()
-        if part == "prices":
-            return E.prices_by_year(year - 9)
-        if part == "housing":
-            from ..sources import housing as H
-            return H.housing_target(p["name"], p["county"])
-        return None
-
-    def outlook_part(self, part, parcel, tracts=None):
-        from ..sources import place as S
-        lon, lat = parcel["centre"]["lon"], parcel["centre"]["lat"]
-        if part == "climate":
-            return S.climate(lon, lat)
-        if part == "hazards":
-            pts = [pt for ring in (parcel.get("outline") or {}).get("coordinates") or [] for pt in ring]
-            box = (min(x for x, _ in pts), min(y for _, y in pts), max(x for x, _ in pts), max(y for _, y in pts)) if pts else None
-            return S.hazards(lon, lat, box)
-        if part == "nearby":
-            return S.nearby(lon, lat)
-        if part == "residents":
-            if not tracts:
-                # the census tracts did not answer: that is a source not answering, not an empty answer to keep
-                raise SourceError("the census tracts did not answer, so the residents nearby cannot be described")
-            return S.residents(tracts)
-        return None
-
-    @staticmethod
-    def _reach(parcel):
-        """Miles from the parcel's centre to its far corner, so "near" is measured from the edge of big parcels."""
-        size = parcel.get("size_feet") or {}
-        return round(0.5 * (size.get("east_west", 0) ** 2 + size.get("north_south", 0) ** 2) ** 0.5 / 5280, 2)
+    _reach = staticmethod(RegionalCity.reach)
 
     def zone_names(self):
         names = _ask(tool.zone_names)

@@ -66,8 +66,10 @@ small server on this computer only and opens the app in the browser. It needs Py
 installed version above needs nothing at all.) A new version is published by pushing a tag like `v2.0.1`: the
 release workflow tests, builds and uploads it.
 
-- **Cities**: Menifee today. A city is one adapter in `landplanner/cities/` (see `base.py`), so another city is
-  added by writing one file for its public parcel and zoning records.
+- **Cities**: Menifee and Temecula. A city is one file in `landplanner/cities/` that reads that city's own public
+  parcel and zoning records; everything the cities share (ground heights, highway counts, the census, the regional
+  forecasts, hazards, the city's economy) is answered once, in `shared.py`. Temecula was added that way (see "How
+  to add a city" below). Each city's pages say plainly what that city does not publish.
 - **Lands**: the city's parcels as a sortable list and on an aerial-photo map. The list starts at 10 acres and
   can be lowered to 1; zoomed in, the map outlines every parcel of any size. Filter by size, zoning and "no
   buildings on record", search by parcel number, save one to My lands. Every map says when the city last changed
@@ -116,6 +118,7 @@ the back, drainage toward the lowest ground. These are rules of thumb, stated on
 python -m unittest discover -s tests                offline checks (recorded answers, no network)
 python tools/menifee.py selfcheck                   did every public source answer just now?
 python tests/record_fixtures.py forecast            re-record the forecast's sources (needs the internet)
+python tests/record_fixtures.py temecula            re-record the second city's answers (needs the internet)
 python tools/record_allowed_uses.py                 re-read the city's tables of allowed uses (needs the internet)
 ```
 
@@ -138,6 +141,40 @@ city's code while it runs. Run the tool again when the city changes its code.
 - Land Planner plans in six broad uses; the code lists well over a hundred. The match between them is in one
   file, `landplanner/cities/menifee_uses.py`, and is shown at the foot of every Zoning page: for each of the six,
   the one row of the code that decides, and the close relatives shown beside it.
+
+### The second city: Temecula
+
+Of Menifee's neighbours, Temecula publishes the most without an account or a key: the city runs its own open-data
+map service with parcels, zoning, specific plans, the general plan, streets and schools. (Murrieta's and Wildomar's
+public parcel layers carry owners' names and have no usable zoning layer; Perris and Lake Elsinore publish zoning
+or projects but no parcel layer of their own.) Every page works for it, with these differences, each said on the
+page:
+
+- **Zoning** is the zone the city's zoning map has at the parcel's centre (Temecula's parcel records carry none).
+- **Allowed uses**: not read. Only Menifee's code has been read, and nothing is borrowed from it: the Zoning page
+  says so, and the Plan marks each use from the kind of zone alone ("what the zone is for").
+- **Not published by the city**: project lists, traffic signals, its own hazard maps (fire zones, dam flooding,
+  evacuation zones, fossils), the fire hazard zone and council district on a parcel record, and the date its
+  parcel records last changed. The Plan skips the rules that need them and says which.
+- The city's parcel layer also holds owners' names and mailing addresses. They are never asked for.
+
+### How to add a city
+
+1. Find the city's public map service (usually ArcGIS) and its layers for parcels and zoning. No account, no key.
+2. Copy `landplanner/cities/temecula.py` to a new file and subclass `RegionalCity` (`shared.py`). Fill in `id`,
+   `name`, `centre`, `place` (the city's name, its census place number and its county), `zoning_kinds` and
+   `zoning_kind()` (which of the Plan's zoning families each code belongs to), and these methods:
+   `large_parcels()`, `parcel()`, `parcels_in_box()`, `zone_names()` and `city_part()` for the zoning and general
+   plan at a spot, what surrounds a parcel, and whichever of streets, signals, projects and schools the city
+   publishes. Name every column you read; never ask for owners.
+3. List what the city does not publish: `not_published` (site parts that are always empty) and `not_covered`
+   (plain words for its card and pages). Leave `allowed_uses()` alone unless that city's own code has been read
+   into `landplanner/cities/records/` the way Menifee's was.
+4. Add the class to `ADAPTERS` in `landplanner/cities/__init__.py`.
+5. Record its answers for the offline tests (`tests/record_fixtures.py` shows how for Temecula) and add a test
+   file like `tests/test_temecula_adapter.py`.
+
+Nothing else changes: the server, the pages, the cache and My lands read the city through `base.py`.
 
 ### When a source fails
 
@@ -217,6 +254,9 @@ switch, which the presentation shares.
   an allowed use still has to meet. The table's own "additional requirements" note is shown; the chapters it
   points to are not read.
 - Changes to the city's code after the day the table was read (the day is on every page that uses it).
+- For Temecula: which uses each zone allows (its code has not been read), projects being built nearby, traffic
+  signals, and the city's own hazard maps (the state's and the nation's hazard maps are still read). Its Forecast
+  therefore sets growth beside no list of projects already coming.
 - City and agency fees.
 - Riverside County's own parcel site blocks automated reading, so the city's copy is used instead.
 - The aerial photo is the newest public one (its date is shown under each map); newer buildings are not in it.
@@ -241,4 +281,5 @@ owner, his engineer and the city's planners.
 9. Present to the city: the same facts as full-screen slides that print one per page. *(done)*
 10. One part at a time on the Forecast and Plan pages; the city's state housing target; the one-page summary. *(done)*
 11. The city's zone-by-zone table of allowed uses, on the Zoning page and in the Plan. *(done)*
-12. Next: real quotes from the owner; a second city.
+12. A second city (Temecula), with the shared sources moved out so a third city is one file. *(done)*
+13. Next: real quotes from the owner; Temecula's own table of allowed uses; what each specific plan allows.

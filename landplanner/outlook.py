@@ -290,7 +290,8 @@ def hazards(part):
     return {"available": True, "findings": found, "evacuation_zone": part.get("evacuation_zone"),
             "work": sum(1 for f in found if f["level"] == "work"), "did_not_answer": part.get("did_not_answer") or [],
             "not_covered": ["Airport noise and height zones (March Air Reserve Base): only the county serves them, behind a robot check",
-                            "Water, sewer and power capacity"]}
+                            "Water, sewer and power capacity"]
+                           + [f"{label}: this city publishes no such map" for label in part.get("not_published") or []]}
 
 
 HOUSING_LEVELS = (("very_low", "Very low income"), ("low", "Low income"), ("moderate", "Moderate income"),

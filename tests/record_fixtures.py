@@ -3,6 +3,7 @@
     python tests/record_fixtures.py        (needs the internet; re-records everything into tests/fixtures/menifee.json)
     python tests/record_fixtures.py plan   (needs the internet; records only the "land-use plan" questions)
     python tests/record_fixtures.py forecast   (needs the internet; records only the "forecast" questions)
+    python tests/record_fixtures.py temecula   (needs the internet; records the second city into tests/fixtures/temecula.json)
 
 It runs the Menifee adapter for real once, and keeps every answer the services gave, keyed by the exact question.
 Answers already in the fixture file are kept; a question asked again gets its new answer, and the rest are added.
@@ -115,8 +116,82 @@ def record_forecast_sources():
     return missing
 
 
+TEMECULA_OUT = Path(__file__).resolve().parent / "fixtures" / "temecula.json"
+TEMECULA_EXAMPLE = "921300013"     # 19.9 acres, CC (Community Commercial), no buildings on record
+TEMECULA_BOX = (-117.1515, 33.5075, -117.1465, 33.5120)
+KEEP_TEMECULA = 40
+
+
+def record_temecula():
+    """The second city, recorded the same way into its own file (tests/fixtures/temecula.json): the list of large
+    parcels, the zoning names, the example parcel, the parts its Zoning and Plan pages read, and one map view.
+    To keep the file small each parcel answer keeps its first 40 parcels and says there are no more, and each
+    zoning-map answer keeps the zones those parcels' centres fall in. Nothing else is changed."""
+    from landplanner.cities.temecula import Temecula
+    real, book, centres = tool.get_json, {}, []
+
+    def box(rings):
+        xs, ys = [p[0] for r in rings for p in r], [p[1] for r in rings for p in r]
+        return min(xs), min(ys), max(xs), max(ys)
+
+    def thin_city(url, params, answer):
+        feats = answer.get("features") if isinstance(answer, dict) else None
+        if "temeculaca.gov" not in url or not feats or not url.endswith("/query"):
+            return answer
+        fields = (params or {}).get("outFields") or ""
+        if "/FeatureServer/2/" in url or "/FeatureServer/8/" in url:          # parcels, streets
+            kept = feats[:KEEP_TEMECULA]
+            centres.extend((f["centroid"]["x"], f["centroid"]["y"]) for f in kept if f.get("centroid"))
+            return {**answer, "features": kept, "exceededTransferLimit": False}
+        if "/FeatureServer/5/" in url and fields == "ZONING" and (params or {}).get("returnGeometry") == "true":
+            kept = []
+            for f in feats:
+                if not (f.get("geometry") or {}).get("rings"):
+                    continue                                  # a zone the city's map has no shape for
+                rings = f["geometry"]["rings"]
+                west, south, east, north = box(rings)
+                if any(west <= x <= east and south <= y <= north and tool.inside(rings, x, y) for x, y in centres):
+                    kept.append(f)
+            return {**answer, "features": kept}
+        return answer
+
+    def recording(url, params=None, timeout=30, tries=2, post=False):
+        answer = real(url, params, timeout=timeout, tries=tries, post=post)
+        book[key(url, params)] = {"url": url, "answer": thin_city(url, params, thin(url, params, answer))}
+        return answer
+
+    tool.get_json = recording
+    missing = []
+    try:
+        city = Temecula()
+        print("large parcels:", len(city.large_parcels()))
+        print("zoning names:", len(city.zone_names()))
+        parcel = city.parcel(TEMECULA_EXAMPLE)
+        for part in SITE_PARTS:
+            if SITE_PARTS[part] in ("quick", "market"):
+                try:
+                    print(f"  {part}: {'ok' if city.site_part(part, parcel) else 'nothing'}")
+                except tool.SourceError as e:
+                    print(f"  {part}: DID NOT ANSWER ({e})")
+                    missing.append(part)
+        print("map view:", len(city.parcels_in_box(*TEMECULA_BOX)["parcels"]))
+        try:
+            city.parcel(UNKNOWN)
+        except Exception as e:  # noqa: BLE001 - "no such parcel" is the answer being recorded
+            print("unknown parcel:", e)
+    finally:
+        tool.get_json = real
+    TEMECULA_OUT.write_text(json.dumps(book, separators=(",", ":"), sort_keys=True), encoding="utf-8", newline="\n")
+    print(f"Wrote {TEMECULA_OUT} ({TEMECULA_OUT.stat().st_size // 1024} KB, {len(book)} answers)")
+    if missing:
+        print("Run it again for:", ", ".join(missing))
+    return 1 if missing else 0
+
+
 def main(argv=None):
     args = argv if argv is not None else sys.argv[1:]
+    if "temecula" in args:
+        return record_temecula()
     only_plan, only_forecast = "plan" in args, "forecast" in args
     real = tool.get_json
     # keep what is already recorded: the recorder adds to the file

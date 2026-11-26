@@ -83,7 +83,19 @@ def _get(url, params=None, post=False, timeout=TIMEOUT):
     return fetch.get_json(url, params, timeout=timeout, post=post)
 
 
+class NotPublished(SourceError):
+    """This city publishes no such map. Not a silent service: the page says the city does not publish it."""
+
+
+def no_city_layers(name):
+    """The layers of a city that publishes none of the maps below (its hazards and nearby places then come from
+    the state's and the nation's maps only, and the page says which city maps are missing)."""
+    return {"name": name, "host": "", "layers": {}}
+
+
 def _layer_url(city, key):
+    if key not in (city.get("layers") or {}):
+        raise NotPublished(f"{city.get('name') or 'this city'} publishes no “{key}” map")
     service, layer = city["layers"][key]
     return f"{city['host']}/{service}/FeatureServer/{layer}"
 
@@ -629,16 +641,20 @@ def hazards(lon, lat, box=None, city_layers=None):
         "fire_service": lambda: _fire_service(city, lon, lat),
     }
     got = _run_all(jobs)
-    out, missing, errors = {}, [], []
+    out, missing, errors, absent = {}, [], [], []
     for key, label in HAZARD_BLOCKS:
         value, error = got[key]
         out[key] = value
-        if error:
+        if isinstance(error, NotPublished):
+            absent.append(label)                         # the city has no such map: said as that, not as a silent service
+        elif error:
             missing.append(label)
             errors.append(str(error))
-    if len(missing) == len(HAZARD_BLOCKS):
+    if len(missing) + len(absent) == len(HAZARD_BLOCKS):
         raise SourceError("none of the hazard maps answered: " + "; ".join(errors)[:300])
     out["did_not_answer"] = missing + sorted(set(extra))
+    if absent:
+        out["not_published"] = absent
     return out
 
 
@@ -787,8 +803,9 @@ def nearby(lon, lat, miles=5.0, city_layers=None):
               "police stations and libraries": "Police stations and libraries (city map)",
               "colleges": "Colleges (city map)", "hospitals": "Hospitals (U.S. Geological Survey)",
               "hospital beds": "Hospital beds (federal hospital list)", "bus stops": "Bus stops (Riverside Transit)"}
-    missing = [labels[k] for k, (_, e) in got.items() if e]
-    if len(missing) == len(jobs):
+    absent = [labels[k] for k, (_, e) in got.items() if isinstance(e, NotPublished)]
+    missing = [labels[k] for k, (_, e) in got.items() if e and not isinstance(e, NotPublished)]
+    if len(missing) + len(absent) == len(jobs):
         raise SourceError("nothing close by could be looked up: " + "; ".join(str(e) for _, e in got.values())[:300])
     places = []
     for key in ("parks", "fire stations", "police stations and libraries", "colleges", "bus stops"):
@@ -806,7 +823,8 @@ def nearby(lon, lat, miles=5.0, city_layers=None):
     nearest = {}
     for p in kept:
         nearest.setdefault(p["kind"], p)
-    return {"places": kept, "nearest": nearest, "not_covered": list(NOT_COVERED), "did_not_answer": missing}
+    return {"places": kept, "nearest": nearest, "did_not_answer": missing,
+            "not_covered": list(NOT_COVERED) + [f"{label}: this city publishes no such map" for label in absent]}
 
 
 # ===================================================================================================================

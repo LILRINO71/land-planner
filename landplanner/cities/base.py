@@ -1,6 +1,11 @@
 """What a city has to provide. To add a city, write one file in this folder with a class that fills this in,
 and list it in cities/__init__.py. The rest of the app (server, pages, cache, My lands) needs no change.
 
+A city in Southern California should subclass shared.RegionalCity rather than CityAdapter: it already answers
+everything cities share (ground heights, highway counts, the census, the regional forecasts, hazards, the city's
+economy), so the city's own file only reads the city's own records. temecula.py is the example to copy, and the
+README lists the steps ("How to add a city").
+
 A city adapter answers three questions from that city's public records:
 
     large_parcels()            every parcel of `large_acres` or more
@@ -87,6 +92,9 @@ class CityAdapter:
     sources = {}
     # What is not covered for this city, in plain words.
     not_covered = ()
+    # The SITE_PARTS this city does not publish at all (for example "signals", "projects"). The pages then say
+    # "the city does not publish this" instead of treating the gap as a source that did not answer.
+    not_published = ()
     # Zoning families for map colours, the legend and the zoning filter: (id, label, colour), most specific first.
     zoning_kinds = (("other", "Other", "#9aa0a6"),)
 
@@ -153,6 +161,6 @@ class CityAdapter:
         """The city card and page headers are drawn from this."""
         return {"id": self.id, "name": self.name, "region": self.region, "centre": self.centre,
                 "large_acres": self.large_acres, "site_miles": self.site_miles, "sources": dict(self.sources),
-                "not_covered": list(self.not_covered),
+                "not_covered": list(self.not_covered), "not_published": list(self.not_published),
                 "zoning_kinds": [{"id": k, "label": label, "colour": colour} for k, label, colour in self.zoning_kinds],
                 "links": dict(getattr(self, "links", {}))}

@@ -16,7 +16,10 @@ from landplanner.cities import CityAdapter, NotFound, SourceError  # noqa: E402
 from landplanner.cities.menifee import tool  # noqa: E402
 
 FIXTURES = json.loads((Path(__file__).resolve().parent / "fixtures" / "menifee.json").read_text(encoding="utf-8"))
+# the second city's recorded answers (tests/record_fixtures.py temecula); a question has the same key in either file
+FIXTURES.update(json.loads((Path(__file__).resolve().parent / "fixtures" / "temecula.json").read_text(encoding="utf-8")))
 EXAMPLE = "372100001"
+TEMECULA_EXAMPLE = "921300013"      # 19.9 acres, CC (Community Commercial), no buildings on record
 
 
 def _key(url, params):

@@ -20,7 +20,8 @@ const PART_NAMES = {
   surface: "Ground heights for the 3D view",
 };
 const STATE_WORDS = { ok: "Yes", "nothing found there": "Answered, with nothing for this spot", "did not answer": "Did not answer just now",
-  "could not be read": "Answered in a form this app could not read", "older copy": "Did not answer just now: this is the copy read earlier" };
+  "could not be read": "Answered in a form this app could not read", "older copy": "Did not answer just now: this is the copy read earlier",
+  "not published": "The city does not publish this" };
 
 export async function render(el, params, alive) {
   const page = PAGES.some((p) => p[0] === params.page) ? params.page : "overview";

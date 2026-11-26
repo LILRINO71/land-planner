@@ -1588,7 +1588,8 @@ export async function render(main, route, alive) {
     const answered = outlook.answered || {}, names = Object.keys(answered);
     const words = { ok: "Yes", "did not answer": '<b class="fc-no">Did not answer just now</b>', "nothing found there": "Answered, nothing for this spot",
       "could not be read": '<b class="fc-no">Answered in a form this app could not read</b>',
-      "older copy": '<b class="fc-no">Did not answer just now</b>: this is the copy read earlier' };
+      "older copy": '<b class="fc-no">Did not answer just now</b>: this is the copy read earlier',
+      "not published": "The city does not publish this" };
     const says = stateSentences(names, answered, (p) => (OUTLOOK_WORDS[p] || [p])[0]);
     return plainTable(["Source", "What it gives", "Answered", "Read"], names.map((p) => [esc((OUTLOOK_WORDS[p] || [p])[0]), esc((OUTLOOK_WORDS[p] || ["", ""])[1]),
       words[answered[p]] || esc(answered[p]), (outlook.fetched || {})[p] ? esc(when((outlook.fetched || {})[p])) : ""])) +
