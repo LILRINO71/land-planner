@@ -39,7 +39,7 @@ export async function render(el, params, alive) {
     </header>
     <form class="filters card" id="filters" autocomplete="off">
       <label class="field grow"><span>Find a parcel number (APN)</span>
-        <div class="input-icon">${icon("search")}<input type="search" name="q" placeholder="for example 372-100-001" value="${esc(f.q)}"></div></label>
+        <div class="input-icon">${icon("search")}<input type="search" name="q" placeholder="nine digits, with or without dashes" value="${esc(f.q)}"></div></label>
       <div class="field"><span>Size, in acres</span>
         <div class="range"><input type="number" name="min" min="0" step="any" inputmode="decimal" placeholder="${num(standard)}" value="${esc(f.min)}" aria-label="Smallest size in acres">
           <i>to</i><input type="number" name="max" min="0" step="any" inputmode="decimal" placeholder="any" value="${esc(f.max)}" aria-label="Largest size in acres"></div>
@@ -164,7 +164,7 @@ export async function render(el, params, alive) {
         <p><b>${esc(apnText(p))}</b> is ${num(p.acres, 2)} ${plural(p.acres, "acre", "acres", 2)}, zoned ${esc(p.zoning || "none listed")}. It is smaller than the ${acresWords(from)} this list starts at, so it is shown here on its own.</p>
         <p class="row"><a class="btn small primary" href="#/land/${esc(c.id)}/${esc(p.apn)}">Open this parcel</a> ${saveButton(p.apn)}</p></div>`;
     } else if (data.direct_missing) {
-      notice.innerHTML = `<div class="notice warn"><p>No parcel in ${esc(c.name)} has the number <b>${esc(f.q.trim())}</b>. Check the digits; a parcel number has nine, for example 372-100-001.</p></div>`;
+      notice.innerHTML = `<div class="notice warn"><p>No parcel in ${esc(c.name)} has the number <b>${esc(f.q.trim())}</b>. Check the digits; a parcel number has nine, written like 123-456-789.</p></div>`;
     }
     if (!data.count) {
       list.innerHTML = data.direct || data.direct_missing ? "" :

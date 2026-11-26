@@ -289,7 +289,7 @@ def hazards(part):
                                    "a monitor may be asked for during grading.", "City paleontological map")
     return {"available": True, "findings": found, "evacuation_zone": part.get("evacuation_zone"),
             "work": sum(1 for f in found if f["level"] == "work"), "did_not_answer": part.get("did_not_answer") or [],
-            "not_covered": ["Airport noise and height zones (March Air Reserve Base): only the county serves them, behind a robot check",
+            "not_covered": ["Airport noise and height zones (the county's airport land use maps): only the county serves them, behind a robot check",
                             "Water, sewer and power capacity"]
                            + [f"{label}: this city publishes no such map" for label in part.get("not_published") or []]}
 
