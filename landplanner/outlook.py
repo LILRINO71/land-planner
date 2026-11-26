@@ -10,6 +10,8 @@ from .forecast import HORIZON, SCENARIOS, money, yearly
 ECONOMY_PARTS = ("population", "permits", "sales", "work", "borrowing", "prices")
 PLACE_PARTS = ("climate", "hazards", "nearby", "residents")
 WET_ZONES = ("A", "V")     # FEMA zone letters for land a 1-in-100-year flood covers
+MONTHS = {"Jan": "January", "Feb": "February", "Mar": "March", "Apr": "April", "Jun": "June", "Jul": "July", "Aug": "August",
+          "Sep": "September", "Oct": "October", "Nov": "November", "Dec": "December"}
 
 
 def _rows(part):
@@ -43,6 +45,7 @@ def economy(parts, forecast, place_name):
                      "unemployment_pct": (work.get(y) or {}).get("unemployment_pct"),
                      "labour_force": (work.get(y) or {}).get("labour_force"),
                      "mortgage_pct": (rates.get(y) or {}).get("rate_pct"),
+                     "mortgage_weeks": (rates.get(y) or {}).get("weeks"),
                      "prices_change_pct": (prices.get(y) or {}).get("change_pct")})
     facts = []
     if len(people) >= 2:
@@ -123,7 +126,7 @@ def climate(part, year):
     if t.get("mean_f") is not None:
         hot = max(months, key=lambda m: m.get("high_f") or -99) if months else None
         out["facts"].append(f"A typical year averages {t['mean_f']:.0f} degrees F with about {t.get('rain_in', 0):.1f} inches of rain"
-                            + (f"; the hottest month is {hot['month']}, with afternoons around {hot['high_f']:.0f} degrees." if hot and hot.get("high_f") else "."))
+                            + (f"; the hottest month is {MONTHS.get(hot['month'], hot['month'])}, with afternoons around {hot['high_f']:.0f} degrees." if hot and hot.get("high_f") else "."))
     if trend.get("mean_f_per_decade") is not None:
         ten = trend["mean_f_per_decade"] * HORIZON / 10
         out["ahead"] = {"year": year + HORIZON, "mean_f_change": round(ten, 1),
@@ -152,7 +155,7 @@ def hazards(part):
         wet = flood.get("special_hazard_area") or any(str(z).upper().startswith(WET_ZONES) for z in zones)
         add("Flood", "work" if wet else "clear",
             (f"Part of the site is in FEMA flood zone {', '.join(sorted(set(map(str, zones))))}: building there needs a flood study and raised pads."
-             if wet else f"FEMA flood zone {flood.get('zone')}: "
+             if wet else f"FEMA flood zone {flood.get('zone')}, "
                          f"{str(flood.get('meaning') or 'outside the mapped flood areas').strip().rstrip('.').lower()}.")
             + (f" Map panel {flood['panel']}, in force since {flood['effective']}." if flood.get("panel") and flood.get("effective") else ""),
             "FEMA National Flood Hazard Layer")
@@ -309,8 +312,8 @@ def steps(site, forecast, plans, hazard, place):
             f"The plan adds about {homes:,} homes.", "The school district(s) serving the site")
     for step in (forecast.get("programme") or {}).get("steps") or []:
         lines = [x for x in step.get("lines") or [] if ":" in x and "acres" in x]
-        if lines:
-            out.append({"from_year": step["from_year"], "to_year": step["to_year"], "kind": "sell",
+        if lines and step["to_year"] > year + ready:
+            out.append({"from_year": max(step["from_year"], year + ready + 1), "to_year": step["to_year"], "kind": "sell",
                         "what": "Offer to builders: " + " ".join(lines), "who": "Builders and developers (see each parcel's Plan page for likely buyers)",
                         "why": "The pace the forecast's expected line supports."})
     out.sort(key=lambda s: (s["from_year"], {"city": 0, "study": 1, "check": 2, "sell": 3}[s["kind"]]))

@@ -376,8 +376,13 @@ class LandPlanner:
             "One plan worked out for the whole block of land, under today's zoning." if site["one_plan"] else
             "Each parcel's own plan, added up (the parcels do not form one block, or are zoned differently).")
         # where each use sits on the land, for the site plan and the phasing map
+        named = {u["id"]: u for u in P.USES}
         out["programme"]["drawings"] = [
-            {"pieces": (p.get("drawing") or {}).get("pieces") or [], "streets": (p.get("drawing") or {}).get("streets") or [],
+            {"pieces": [{**piece, "label": named.get(piece.get("use"), {}).get("label"),
+                         "short": named.get(piece.get("use"), {}).get("short"),
+                         "colour": named.get(piece.get("use"), {}).get("colour")}
+                        for piece in (p.get("drawing") or {}).get("pieces") or []],
+             "streets": (p.get("drawing") or {}).get("streets") or [],
              "why": (p.get("drawing") or {}).get("why") or [], "street_lines": p.get("street_lines") or []} for p in plans]
         if not site["together"]:
             out["limits"].insert(0, "These parcels are not next to each other. The forecast is worked out around the point "

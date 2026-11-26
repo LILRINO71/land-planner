@@ -6,7 +6,7 @@ import { createMap, ll } from "../maps.js";
 import { api } from "../api.js";
 import { PAGES, FORECAST_ICON } from "./land.js";
 import { money as readNumber } from "../planmath.js";
-import { NONE, esc, has, num, cap, icon, loading, problem, missing, debounce, dateOnly } from "../util.js";
+import { NONE, esc, has, num, cap, icon, loading, problem, missing, debounce, dateOnly, when } from "../util.js";
 
 // ---------------------------------------------------------------- words and numbers
 
@@ -46,6 +46,42 @@ const GROUPS_FOR = {
   homes: ["Projects on the city's list"], shops: ["Shops", "Projects on the city's list"], jobs: ["Jobs", "Projects on the city's list"],
   traffic: ["Traffic", "The site"], programme: ["The site"],
 };
+// the in-page jump links, top to bottom
+const JUMPS = [["fcTop", "Summary"], ["fcPeople", "People and homes"], ["fcIncome", "Income"], ["fcNeeds", "Homes, shops, jobs"],
+  ["fcTraffic", "Traffic"], ["fcLand", "The land by year"], ["fcPlan", "Site plan"], ["fcEconomy", "Economy"], ["fcWeather", "Weather"],
+  ["fcHazards", "Hazards"], ["fcNearby", "Close by"], ["fcResident", "Who lives nearby"], ["fcTodo", "What needs to be done"],
+  ["fcFigures", "Figures"], ["fcSources", "Sources"]];
+// names and colours of the plan's uses (as plan.py names them), for drawing pieces whose use the forecast does not
+// take up on its own (parks); a use the forecast does take up brings its own name and colour
+const USE_NAMES = {
+  retail: { label: "Shops and restaurants", short: "Shops", colour: "#d9455f" }, office: { label: "Offices and medical", short: "Offices", colour: "#8a6bbd" },
+  apartments: { label: "Apartments and townhomes", short: "Apartments", colour: "#e08a2e" }, homes: { label: "Houses", short: "Houses", colour: "#f4d35e" },
+  business: { label: "Business park and light industry", short: "Business park", colour: "#5b8fb9" }, park: { label: "Parks, open space and drainage", short: "Parks", colour: "#3f9d68" },
+};
+// the outlook's sources: [name on screen, what it gives]
+const OUTLOOK_WORDS = {
+  population: ["State population estimates", "People and homes in the city, by year"], permits: ["Building permits (Census Bureau)", "Homes permitted, by year"],
+  sales: ["State taxable sales", "Shop and restaurant sales, by year"], work: ["State employment figures", "Unemployment and people working"],
+  borrowing: ["Freddie Mac home-loan survey", "The 30-year home-loan rate"], prices: ["Consumer prices (Bureau of Labor Statistics)", "How much prices rose"],
+  climate: ["NASA weather grids", "Weather since 1985"], hazards: ["Hazard maps (FEMA, state, city)", "Flood, fire, faults, ground, water, habitat"],
+  nearby: ["City and federal place lists", "Parks, stops, stations, schools, hospitals"], residents: ["Census survey", "Who lives nearby"],
+};
+// hazard levels: words and a mark, never colour alone
+const LEVELS = { clear: { words: "Clear", mark: "✓" }, note: { words: "Know about it", mark: "!" }, work: { words: "Adds work", mark: "+" } };
+// kinds of nearby places: a letter and a shape each, so the map does not rely on colour
+const PLACE_KINDS = {
+  park: { letter: "P", shape: "round", colour: "#2f8a57", words: "Parks", one: "park" },
+  "transit stop": { letter: "B", shape: "square", colour: "#2a6fb0", words: "Bus and transit stops", one: "bus stop" },
+  "fire station": { letter: "F", shape: "diamond", colour: "#c0392b", words: "Fire stations", one: "fire station" },
+  police: { letter: "PD", shape: "square", colour: "#22313f", words: "Police", one: "police station" },
+  hospital: { letter: "H", shape: "round", colour: "#b0306b", words: "Hospitals", one: "hospital" },
+  library: { letter: "L", shape: "round", colour: "#6d4c9f", words: "Libraries", one: "library" },
+  college: { letter: "C", shape: "square", colour: "#1f6f8b", words: "Colleges", one: "college" },
+  school: { letter: "K", shape: "round", colour: "#a5641a", words: "Schools", one: "school" },
+};
+const KIND_ORDER = Object.keys(PLACE_KINDS);
+const TODO_KINDS = [["city", "With the city", "meetings and applications"], ["study", "Studies", "reports by specialists"],
+  ["check", "Checks", "letters and confirmations"], ["sell", "Offering the land", "to builders, as the forecast supports"]];
 
 // ---------------------------------------------------------------- charts (inline SVG, drawn at the width of their box)
 
@@ -82,10 +118,11 @@ function chart(o) {
     out += `<line class="fc-grid${v === 0 ? " zero" : ""}" x1="${left.toFixed(1)}" x2="${s.right}" y1="${yy}" y2="${yy}"/><text class="fc-ylab" x="${(left - 6).toFixed(1)}" y="${yy}" dy="4" text-anchor="end">${labels[i]}</text>`;
   });
   out += `<text class="fc-unit" x="${left.toFixed(1)}" y="13">${esc(o.unit)}</text>`;
-  const step = [1, 2, 5, 10].find((k) => slot * k >= 42) || 10;
+  // o.xLabel(v) names a position (months); otherwise it is a year
+  const step = o.xLabel ? ([1, 2, 3].find((k) => slot * k >= 30) || 3) : ([1, 2, 5, 10].find((k) => slot * k >= 42) || 10);
   for (let v = o.xMin; v <= o.xMax; v++) {
-    if (step >= 5 ? v % step !== 0 : (v - o.xMin) % step !== 0) continue;
-    out += `<text class="fc-xlab" x="${x(v).toFixed(1)}" y="${H - 7}" text-anchor="middle">${v}</text>`;
+    if (!o.xLabel && step >= 5 ? v % step !== 0 : (v - o.xMin) % step !== 0) continue;
+    out += `<text class="fc-xlab" x="${x(v).toFixed(1)}" y="${H - 7}" text-anchor="middle">${esc(o.xLabel ? o.xLabel(v) : v)}</text>`;
   }
   out += o.draw(s);
   (o.hover || []).forEach((h) => {
@@ -139,19 +176,26 @@ export async function render(main, route, alive) {
   const el = main.firstChild;
   const cityId = route.city, apns = route.apns || [];
   let data = null, values = {}, seq = 0, ringMiles = null, mapView = null, mapDrawn = false, lastWidth = 0, observer = null;
+  // the wider picture (outlook) arrives after the forecast; its own maps are made once and redrawn in place
+  let outlook = null, outlookProblem = "", outlookSeq = 0, planView = "uses";
+  let planMap = null, planLayers = null, planFitted = false, nearMap = null, nearLayers = null, nearFitted = false;
   const charts = {};
+  function dropMaps() {
+    [mapView, planMap, nearMap].forEach((m) => { if (m) m.destroy(); });
+    mapView = planMap = nearMap = null; planLayers = nearLayers = null; planFitted = nearFitted = false;
+  }
   alive.onLeave(() => {
-    if (mapView) mapView.destroy();
+    dropMaps();
     if (observer) observer.disconnect();
-    mapView = null; observer = null;
+    observer = null;
   });
   el.addEventListener("input", onInput);
   el.addEventListener("change", onChange);
   el.addEventListener("click", onClick);
 
   function first() {
-    if (mapView) mapView.destroy();
-    mapView = null; mapDrawn = false;
+    dropMaps();
+    mapDrawn = false; outlook = null; outlookProblem = ""; outlookSeq++;
     el.innerHTML = `<header class="page-head"><p class="kicker">Forecast</p><h1>Working out the forecast…</h1></header>` +
       loading("Reading the Census, the regional plan, the census survey, the city's project lists and the highway counts around this site. The first time takes several seconds.");
     if (!apns.length) {
@@ -198,6 +242,7 @@ export async function render(main, route, alive) {
       if (!alive() || my !== seq) return;
       take(answer);
       drawAll();
+      loadOutlook(false, true);   // its steps and shop sales ahead follow the owner's figures too
       status(method === "DELETE" ? "Back to the starting figures. Every number on this page is worked out again."
         : answer.kept ? "Worked out again with your figures. Every number on this page is updated, and your figures are kept on this computer."
           : "Worked out again. These are the starting figures.", "ok");
@@ -220,7 +265,7 @@ export async function render(main, route, alive) {
       <div class="fc">
         <header class="page-head fc-head" id="fcHead"></header>
         <div id="fcEdited"></div>
-        <div class="fc-top"><section class="stats fc-stats" id="fcStats" aria-label="The forecast in numbers"></section><section class="card fc-advice" id="fcAdvice"></section></div>
+        <div class="fc-top" id="fcTop"><section class="stats fc-stats" id="fcStats" aria-label="The forecast in numbers"></section><section class="card fc-advice" id="fcAdvice"></section></div>
         <section id="fcPeople" aria-labelledby="fcPeopleTitle"></section>
         <section id="fcIncome" aria-labelledby="fcIncomeTitle">
           <h2 id="fcIncomeTitle">Income areas</h2>
@@ -236,11 +281,34 @@ export async function render(main, route, alive) {
         <section id="fcNeeds" aria-labelledby="fcNeedsTitle"></section>
         <section id="fcTraffic" aria-labelledby="fcTrafficTitle"></section>
         <section id="fcLand" aria-labelledby="fcLandTitle"></section>
+        <section id="fcPlan" aria-labelledby="fcPlanTitle">
+          <div class="fc-sec-head"><h2 id="fcPlanTitle">Site plan</h2>
+            <div class="plan-switch small" role="group" aria-label="What the site plan shows">
+              <button type="button" data-planview="uses">The uses</button><button type="button" data-planview="when">When each part is offered</button></div></div>
+          <div class="fc-plan">
+            <div class="fc-plan-map"><div class="map-frame"><div class="map fc-map" id="fcPlanMap"></div></div><div class="legend" id="fcPlanLegend"></div></div>
+            <div id="fcPlanText"></div>
+          </div>
+        </section>
+        <section id="fcEconomy" aria-labelledby="fcEconomyTitle"></section>
+        <section id="fcWeather" aria-labelledby="fcWeatherTitle"></section>
+        <section id="fcHazards" aria-labelledby="fcHazardsTitle"></section>
+        <section id="fcNearby" aria-labelledby="fcNearbyTitle">
+          <h2 id="fcNearbyTitle">What is close by</h2>
+          <div class="fc-nearby">
+            <div class="fc-nearby-map"><div class="map-frame"><div class="map fc-map" id="fcNearMap"></div></div><div class="legend" id="fcNearLegend"></div><div id="fcNearSummary"></div></div>
+            <div id="fcNearText"></div>
+          </div>
+        </section>
+        <section id="fcResident" aria-labelledby="fcResidentTitle"></section>
+        <section id="fcTodo" aria-labelledby="fcTodoTitle"></section>
         <section id="fcFigures" aria-labelledby="fcFiguresTitle"></section>
         <section class="two fc-last" id="fcSources"></section>
       </div>`;
+    el.querySelector(".fc-head").insertAdjacentHTML("afterend", jumpNav());
     drawAll(false);
     drawMap();
+    loadOutlook(false);
     if (data.kept) status("Your own figures for this site are kept on this computer and used below.", "ok");
     if (window.ResizeObserver && !observer) {
       observer = new ResizeObserver(() => {
@@ -268,6 +336,7 @@ export async function render(main, route, alive) {
     const before = anchor ? anchor.getBoundingClientRect().top : 0;
 
     drawHead(); drawEdited(); drawStats(); drawAdvice(); drawPeople(); drawIncomeText(); drawNeeds(); drawTraffic(); drawLand();
+    drawSitePlan(); drawOutlook();
     drawFigures(); drawSources();
     paintCharts();
 
@@ -371,6 +440,7 @@ export async function render(main, route, alive) {
         <div class="head-actions">
           ${single ? "" : `<a class="btn" href="#/my-lands">${icon("saved")} My lands</a>`}
           <button type="button" class="btn" id="fcPrint">Print</button>
+          <a class="btn primary" href="#/present/${esc(encodeURIComponent(data.city))}/${data.apns.map((a) => esc(a)).join("+")}">${icon("cities")} Present to the city</a>
         </div>
       </div>
       ${together}
@@ -447,7 +517,8 @@ export async function render(main, route, alive) {
       if (Number(g.rate_pct) === Number(r.expected)) used.push("expected line");
       if (!ring.one_reading && Number(g.rate_pct) === Number(r.low)) used.push("low line");
       if (!ring.one_reading && Number(g.rate_pct) === Number(r.high)) used.push("high line");
-      const tag = g.kind === "measured" ? '<span class="fc-tag measured">measured</span>' : '<span class="fc-tag official">official forecast</span>';
+      const tag = (g.kind === "measured" ? '<span class="fc-tag measured">measured</span>' : '<span class="fc-tag official">official forecast</span>') +
+        (g.whole_city ? ' <span class="fc-tag city">whole city</span>' : "");
       return [`<b>${esc(g.label)}</b> ${tag}<small>${esc(g.source || NONE)}</small>${used.length ? `<small><b>Used for the ${esc(listWords(used))}</b></small>` : ""}`,
         `${num(g.rate_pct, 2)}% a year`,
         g.from ? `${num(g.from.homes)} homes<small>in ${esc(g.from.year)}</small>` : NONE,
@@ -458,6 +529,7 @@ export async function render(main, route, alive) {
         <div class="card fc-people-chart">
           <div class="fc-chart" data-chart="people"></div>
           <div class="legend fc-legend">${key("band", "Low to high")}${key("line", "Expected")}${key("counted", "Counted by the Census")}${key("focus", "Next five years")}${key("now", "This year")}</div>
+          ${ring.today_from && ring.today_from.words ? `<p class="fine">Where “this year” (${esc(ring.today_from.year || now())}) comes from: ${esc(ring.today_from.words)}</p>` : ""}
         </div>
         <div class="fc-people-table"><h3>Year by year, within ${esc(mi(ring.miles))}</h3>
           ${yearTable(["Year", "People<small>expected, then low to high</small>", "Homes<small>expected, then low to high</small>"],
@@ -669,7 +741,7 @@ export async function render(main, route, alive) {
     });
     const lists = Object.entries(pipe.lists_updated || {});
     return head + plainTable(["Stage", "Likely to open", "Projects", "Homes", "Shop space (sq ft)", "Work space (sq ft)"], rows, [2, 3, 4, 5]) +
-      `<p class="fine">Counted: <b>${num(pipe.projects_counted)}</b> projects within ${esc(mi(data.market_miles))} that state a number of homes or a building size.${isNum(pipe.projects_without_sizes) && pipe.projects_without_sizes ? ` ${num(pipe.projects_without_sizes)} more within that distance state neither, so they are left out.` : ""} The lists hold ${num(pipe.projects_listed)} projects in all.
+      `<p class="fine">Counted: <b>${num(pipe.projects_counted)}</b> projects within ${esc(mi(data.market_miles))} that state a number of homes or a building size.${isNum(pipe.projects_without_sizes) && pipe.projects_without_sizes ? ` ${num(pipe.projects_without_sizes)} more within that distance state neither, so they are left out.` : ""}${Number(pipe.projects_other_kinds) > 0 ? ` ${num(pipe.projects_other_kinds)} are not homes, shops or work space, so they are not counted.` : ""}${Number(pipe.projects_dropped) > 0 ? ` ${num(pipe.projects_dropped)} were withdrawn, denied, expired or cancelled, so they are not counted as coming.` : ""} The lists hold ${num(pipe.projects_listed)} projects in all.
         ${review ? ` Stages marked “may not all be built” count ${figureValue(review)} of their homes and floor space (${esc(review.label.toLowerCase())}, ${review.yours ? "your figure" : "a starting figure"}).` : ""}</p>
       ${lists.length ? `<p class="fine">The city's lists used: ${lists.map(([name, d]) => `${esc(name)} (updated ${esc(day(d) || d)})`).join("; ")}.</p>` : ""}`;
   }
@@ -744,7 +816,14 @@ export async function render(main, route, alive) {
         hover: years.map((y) => ({ x: y, text: `${y}: ` + uses.map((u) => { const r = (u.by_year || []).find((x) => x.year === y); return `${u.short || u.label} ${r ? num(r.acres_so_far, 1) : NONE} acres`; }).join(", ") })),
       });
     };
-    const when = (u) => u.filled_in ? `all taken up by about ${u.filled_in}` : u.filled_later_in ? `filled around ${u.filled_later_in} at this pace` : u.never_at_this_pace ? "not filled at this pace" : "";
+    // when the use is filled on the expected line, then on the high and low lines (absent: not within the ten years)
+    const spans = (u) => {
+      if (!("filled_in_if_high" in u) && !("filled_in_if_low" in u)) return "";
+      const hi = u.filled_in_if_high ? `by ${u.filled_in_if_high} if growth runs high` : "not within the ten years even if growth runs high";
+      const lo = u.filled_in_if_low ? `by ${u.filled_in_if_low} if it runs low` : "not within the ten years if it runs low";
+      return ` (${hi}; ${lo})`;
+    };
+    const when = (u) => (u.filled_in ? `all taken up by about ${u.filled_in}` : u.filled_later_in ? `filled around ${u.filled_later_in} at this pace` : u.never_at_this_pace ? "not filled at this pace" : "") + spans(u);
     const legend = uses.map((u) => `<li><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b>: ${num(u.acres, 1)} acres (${num(u.amount)} ${esc(u.unit)}). ${num(u.acres_by_year_5, 1)} acres by ${now() + 5}, ${num(u.acres_by_year_10, 1)} by ${now() + 10} (${num(u.pct_by_year_10)}%)${when(u) ? "; " + esc(when(u)) : ""}.</span></li>`).join("");
     const table = yearTable(["Year"].concat(uses.map((u) => `${esc(u.short || u.label)} (acres)`)),
       years.map((y) => ({ year: y, cells: uses.map((u) => { const r = (u.by_year || []).find((x) => x.year === y); return r ? `${num(r.acres_so_far, 1)}<small>${num(r.so_far)} ${esc(u.unit)}</small>` : NONE; }) })), "fc-compact");
@@ -760,6 +839,439 @@ export async function render(main, route, alive) {
         <div><h3>After ten years</h3>${(G.after || []).length ? `<ul class="plain">${G.after.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : "<p>All of the land is taken up within the ten years at this pace.</p>"}</div>
         <div>${notForecast || "<h3>Not forecast</h3><p>Every use on this site has a forecast.</p>"}${restsOn("programme")}${planLinks}</div>
       </div>`;
+  }
+
+  // ---------------------------------------------------------------- jump links (sticky at the top of the page)
+
+  function jumpNav() {
+    return `<nav class="fc-jump" aria-label="Parts of this page">${JUMPS.map(([id, words]) =>
+      `<button type="button" data-goto="${id}"${id === "fcTodo" ? ' class="key"' : ""}>${esc(words)}</button>`).join("")}</nav>`;
+  }
+  // redraw something without moving what the person is reading: the first section at the top of the screen stays put
+  function keepScreen(fn) {
+    const top = [...el.querySelectorAll(".fc > section, .fc > .fc-top")].find((s) => s.getBoundingClientRect().bottom > 60);
+    const before = top ? top.getBoundingClientRect().top : 0;
+    fn();
+    if (top && top.isConnected) {
+      const shift = top.getBoundingClientRect().top - before;
+      if (Math.abs(shift) > 1) window.scrollBy(0, shift);
+    }
+  }
+
+  // ---------------------------------------------------------------- site plan (from the forecast: where each use sits)
+
+  function useInfo(id) {
+    const u = ((data.programme || {}).uses || []).find((x) => x.id === id), f = USE_NAMES[id] || {};
+    return { label: (u && u.label) || f.label || cap(String(id)), short: (u && u.short) || f.short || cap(String(id)), colour: colourOf((u && u.colour) || f.colour), taken: u || null };
+  }
+  const firstYear = (u) => { const r = (u.by_year || []).find((x) => Number(x.taken) > 0); return r ? r.year : null; };
+  // the shade of a piece in "When each part is offered": its use's first year, or why it has none
+  function phaseOf(id) {
+    const G = data.programme || {}, info = useInfo(id);
+    if ((G.not_forecast || []).some((n) => n.id === id)) return { key: "nf", words: "Not forecast", colour: "#b9b4a6" };
+    if (!info.taken) return { key: "with", words: "Built along with the uses around it", colour: "#e6dfc6" };
+    const y = firstYear(info.taken);
+    if (!y) return { key: "never", words: "Not within the ten years", colour: "#8c8c8c" };
+    const t = Math.max(0, Math.min(1, (y - now() - 1) / 9));
+    const mix = (a, b) => Math.round(a + (b - a) * t);
+    return { key: String(y), year: y, words: `From ${y}`, colour: `rgb(${mix(15, 222)},${mix(92, 236)},${mix(69, 200)})` };
+  }
+  function drawSitePlan() {
+    const L = window.L, G = data.programme || {}, drawings = G.drawings || [], parcels = (data.site || {}).parcels || [];
+    const pieces = drawings.flatMap((d) => d.pieces || []);
+    el.querySelectorAll("[data-planview]").forEach((b) => { const on = b.dataset.planview === planView; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+    if (!planMap) {
+      planMap = createMap(el.querySelector("#fcPlanMap"), { base: "aerial" });
+      planLayers = L.layerGroup().addTo(planMap.map);
+    }
+    planLayers.clearLayers();
+    const seenStreets = new Set();
+    drawings.forEach((d) => (d.street_lines || []).forEach((s) => {
+      if (!s.path || s.path.length < 2) return;
+      const id = s.name + JSON.stringify(s.path[0]);
+      if (seenStreets.has(id)) return;
+      seenStreets.add(id);
+      const line = s.path.map((p) => [p[1], p[0]]), weight = 1.5 + 1.4 * (Number(s.rank) || 1);
+      L.polyline(line, { color: "#1d2a24", weight: weight + 3, opacity: 0.55, interactive: false }).addTo(planLayers);
+      L.polyline(line, { color: "#8fc3ff", weight, opacity: 0.95 }).bindTooltip(`${esc(s.name)}: ${esc(s.class)} (the city's planned street network)`, { sticky: true }).addTo(planLayers);
+    }));
+    const shades = new Map();
+    pieces.forEach((p) => {
+      if (!p.ring || p.ring.length < 3) return;
+      const info = useInfo(p.use), phase = phaseOf(p.use);
+      const fill = planView === "when" ? phase.colour : info.colour;
+      if (planView === "when") shades.set(phase.key, phase);
+      L.polygon(ll([p.ring]), { color: "#fff", weight: 2, opacity: 0.95, fillColor: fill, fillOpacity: planView === "when" ? 0.78 : 0.55 })
+        .bindTooltip(`${esc(info.label)}: ${num(p.acres, 1)} acres${planView === "when" ? " · " + esc(phase.words.toLowerCase()) : ""}`, { sticky: true }).addTo(planLayers);
+      if (p.label_at) {
+        L.marker([p.label_at[1], p.label_at[0]], {
+          icon: L.divIcon({ className: "plan-label", iconSize: [0, 0], html: `<span><b>${esc(info.short)}</b> ${planView === "when" ? esc(phase.year ? "from " + phase.year : phase.key === "never" ? "after ten years" : phase.key === "with" ? "with the rest" : "not forecast") : num(p.acres, 1) + " ac"}</span>` }),
+          interactive: false, keyboard: false,
+        }).addTo(planLayers);
+      }
+    });
+    drawings.forEach((d) => (d.streets || []).forEach((s) => {
+      const line = (s.line || []).map((p) => [p[1], p[0]]);
+      if (line.length < 2) return;
+      L.polyline(line, { color: "#1d2a24", weight: 9, opacity: 0.5, interactive: false }).addTo(planLayers);
+      L.polyline(line, { color: "#ffffff", weight: 5, opacity: 1 }).bindTooltip(`A new street inside the site, about ${num(s.feet)} ft long`, { sticky: true }).addTo(planLayers);
+    }));
+    let bounds = null;
+    parcels.forEach((p) => {
+      if (!p.outline || !p.outline.coordinates) return;
+      const shape = ll(p.outline.type === "MultiPolygon" ? p.outline.coordinates.flat() : p.outline.coordinates);
+      L.polygon(shape, { color: "#1d2a24", weight: 6, fill: false, interactive: false }).addTo(planLayers);
+      const g = L.polygon(shape, { color: "#f2b632", weight: 3, fill: false, interactive: false }).addTo(planLayers);
+      bounds = bounds ? bounds.extend(g.getBounds()) : g.getBounds();
+    });
+    if (bounds && !planFitted) { planMap.fit(bounds.pad(0.12)); planFitted = true; }
+
+    const ids = [...new Set(pieces.map((p) => p.use))];
+    const legend = planView === "when"
+      ? [...shades.values()].sort((a, b) => (a.year || 9999) - (b.year || 9999)).map((p) => `<span><i style="background:${p.colour}"></i>${esc(p.words)}</span>`).join("")
+      : ids.map((id) => `<span><i style="background:${useInfo(id).colour}"></i>${esc(useInfo(id).label)}</span>`).join("");
+    el.querySelector("#fcPlanLegend").innerHTML = pieces.length ? legend + '<span><i class="fc-key street"></i>New streets inside the site</span><span><i class="fc-key city-street"></i>The city\'s planned streets</span><span><i class="fc-key site"></i>Parcel outlines</span>' : "";
+
+    const box = el.querySelector("#fcPlanText");
+    if (!pieces.length) {
+      box.innerHTML = missing("Where each use sits on the land: not covered yet. The plan could not be drawn on the parcel outlines, so the map shows the outlines only.");
+      return;
+    }
+    const byParcel = drawings.length > 1 && drawings.length === parcels.length && !(data.site || {}).one_plan;
+    const why = drawings.map((d, i) => (d.why || []).length ? `${byParcel ? `<h4 class="fc-sub">Parcel ${esc(parcels[i].apn_formatted || parcels[i].apn)}</h4>` : ""}<ul class="plain">${d.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : "").join("");
+    const totals = new Map();
+    pieces.forEach((p) => totals.set(p.use, (totals.get(p.use) || 0) + (Number(p.acres) || 0)));
+    const rows = [...totals.entries()].map(([id, acres]) => {
+      const info = useInfo(id), phase = phaseOf(id), u = info.taken;
+      const filled = u ? (u.filled_in ? `by ${u.filled_in}` : u.filled_later_in ? `around ${u.filled_later_in}` : "not at this pace") : "";
+      return [`<span class="swatch" style="background:${info.colour}"></span>${esc(info.short)}`, num(acres, 1),
+        `<span class="swatch" style="background:${phase.colour}"></span>${esc(phase.year ? String(phase.year) : phase.words)}`, filled || '<span class="muted">with the rest</span>'];
+    });
+    box.innerHTML = `<div class="card fc-plan-card">
+        ${why ? `<h3>Why it is laid out this way</h3>${why}` : ""}
+        <h3 class="fc-gap">The pieces</h3>
+        ${plainTable(["Use", "Acres", "First offered", "All taken up"], rows, [1])}
+        <p class="fine">“First offered” is the first year the forecast takes up any of that use (expected line, your figures if you changed them). The pieces are a first sketch cut from the assessor's outlines: not lot lines and not a site plan the city has seen.</p>
+      </div>`;
+  }
+
+  // ---------------------------------------------------------------- the wider picture (the outlook answer)
+
+  function loadOutlook(fresh, quiet = false) {
+    const my = ++outlookSeq;
+    if (!quiet) {
+      outlookProblem = "";
+      if (fresh) outlook = null;
+      if (el.querySelector("#fcEconomy")) keepScreen(() => { drawOutlook(); drawSources(); paintCharts(); });
+    }
+    api.outlook(cityId, data.apns, fresh).then((o) => {
+      if (!alive() || my !== outlookSeq) return;
+      outlook = o; outlookProblem = "";
+      keepScreen(() => { drawOutlook(); drawSources(); paintCharts(); });
+    }, (e) => {
+      if (!alive() || my !== outlookSeq) return;
+      if (!outlook) outlookProblem = e.message;   // a quiet refresh that fails keeps what is already shown
+      keepScreen(() => { drawOutlook(); drawSources(); paintCharts(); });
+    });
+  }
+  // the heading, then either a quiet waiting line, the problem, or null when the answer is here
+  function outlookWait(id, title) {
+    const head = `<h2 id="${id}">${esc(title)}</h2>`;
+    if (outlookProblem) {
+      return head + `<div class="state problem fc-wait-problem">${icon("alert")}<p>The wider picture could not be read just now: ${esc(outlookProblem)}</p><button type="button" class="btn" data-outlook-again>Try again</button></div>`;
+    }
+    if (!outlook) return head + `<p class="plan-wait fc-wait"><span class="spinner" aria-hidden="true"></span> Reading the wider picture… The forecast above is complete; this part arrives on its own.</p>`;
+    return null;
+  }
+  function outlookMissing(what, silent) {
+    const names = (silent || []).map((p) => (OUTLOOK_WORDS[p] || [p])[0]);
+    return missing(`${what}: not covered yet.${names.length ? ` ${listWords(names)} did not answer just now.` : ""}`);
+  }
+  function drawOutlook() {
+    drawEconomy(); drawWeather(); drawHazards(); drawNearby(); drawResident(); drawTodo();
+  }
+
+  // ---- the city's economy, year by year
+  const millions = (v) => (isNum(v) ? "$" + num(Number(v) / 1e6, Number(v) >= 1e8 ? 0 : 1) + " million" : null);
+  const notGiven = '<span class="muted">not given</span>';
+  const given = (v, text) => (isNum(v) ? text : notGiven);
+  function drawEconomy() {
+    const box = el.querySelector("#fcEconomy"), title = "The city's economy, year by year";
+    const wait = outlookWait("fcEconomyTitle", title);
+    if (wait) { box.innerHTML = wait; return; }
+    const E = outlook.economy || {};
+    if (!E.available) { box.innerHTML = `<h2 id="fcEconomyTitle">${title}</h2>` + outlookMissing("The city's economy", E.did_not_answer); return; }
+    const rows = E.rows || [], ahead = E.sales_ahead || [], place = E.place || outlook.city_name || "The city";
+    const xs = rows.map((r) => r.year), xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const partialSales = (r) => isNum(r.sales_quarters) && Number(r.sales_quarters) < 4;
+    const partialPermits = (r) => isNum(r.permit_months) && Number(r.permit_months) < 12;
+    charts["eco-people"] = (w) => chart({
+      width: w, height: 210, xMin, xMax, values: rows.flatMap((r) => [r.people, r.homes]), zero: true, unit: `People and homes in ${place}`,
+      label: `Chart of people and homes in ${place} by year. The table gives the same figures.`,
+      draw: (s) => line(s, rows.map((r) => [r.year, r.people])) + dots(s, rows.map((r) => [r.year, r.people])) +
+        line(s, rows.map((r) => [r.year, r.homes]), "fc-line alt") + dots(s, rows.map((r) => [r.year, r.homes]), "fc-dot alt"),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${isNum(r.people) ? num(r.people) + " people" : "people not given"}, ${isNum(r.homes) ? num(r.homes) + " homes" : "homes not given"}` })),
+    });
+    charts["eco-permits"] = (w) => chart({
+      width: w, height: 210, xMin, xMax, values: rows.map((r) => r.homes_permitted), zero: true, unit: "Homes permitted a year",
+      label: `Chart of homes permitted in ${place} each year; years not complete are drawn paler and marked.`,
+      draw: (s) => bars(s, rows.filter((r) => !partialPermits(r)).map((r) => [r.year, r.homes_permitted])) +
+        bars(s, rows.filter(partialPermits).map((r) => [r.year, r.homes_permitted]), "fc-bar partial") +
+        rows.filter((r) => partialPermits(r) && isNum(r.homes_permitted)).map((r) => `<text class="fc-pt-lab small" x="${s.x(r.year).toFixed(1)}" y="${(s.y(r.homes_permitted) - 5).toFixed(1)}" text-anchor="middle">${esc(r.permit_months)} mo</text>`).join(""),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${isNum(r.homes_permitted) ? num(r.homes_permitted) + " homes permitted" : "not given"}${partialPermits(r) ? ` (${r.permit_months} months reported)` : ""}` })),
+    });
+    const aheadX = ahead.map((a) => a.year);
+    charts["eco-sales"] = (w) => {
+      const vals = rows.map((r) => r.shop_sales_usd / 1e6).concat(ahead.flatMap((a) => [a.shop_sales_usd.low / 1e6, a.shop_sales_usd.high / 1e6]));
+      return chart({
+        width: w, height: 210, xMin, xMax: Math.max(xMax, ...aheadX), values: vals, zero: true, unit: "Shop and restaurant sales, $ millions",
+        label: `Chart of shop and restaurant sales in ${place}: measured years as bars, a part year paler, and the years ahead as a low to high band and an expected line.`,
+        draw: (s) => bars(s, rows.filter((r) => isNum(r.shop_sales_usd) && !partialSales(r)).map((r) => [r.year, r.shop_sales_usd / 1e6])) +
+          bars(s, rows.filter((r) => isNum(r.shop_sales_usd) && partialSales(r)).map((r) => [r.year, r.shop_sales_usd / 1e6]), "fc-bar partial") +
+          rows.filter((r) => isNum(r.shop_sales_usd) && partialSales(r)).map((r) => `<text class="fc-pt-lab small" x="${s.x(r.year).toFixed(1)}" y="${(s.y(r.shop_sales_usd / 1e6) - 5).toFixed(1)}" text-anchor="middle">${esc(r.sales_quarters)} of 4</text>`).join("") +
+          band(s, ahead.map((a) => [a.year, a.shop_sales_usd.low / 1e6, a.shop_sales_usd.high / 1e6])) + line(s, ahead.map((a) => [a.year, a.shop_sales_usd.expected / 1e6])) + nowLine(s, now()),
+        hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${millions(r.shop_sales_usd) || "not given"}${partialSales(r) ? ` (${r.sales_quarters} of 4 quarters only)` : ""}` }))
+          .concat(ahead.filter((a) => !xs.includes(a.year)).map((a) => ({ x: a.year, text: `${a.year}: about ${millions(a.shop_sales_usd.expected)} expected (${millions(a.shop_sales_usd.low)} to ${millions(a.shop_sales_usd.high)})` }))),
+      });
+    };
+    charts["eco-rates"] = (w) => chart({
+      width: w, height: 210, xMin, xMax, values: rows.flatMap((r) => [r.unemployment_pct, r.mortgage_pct]), zero: true, unit: "Percent",
+      label: `Chart of unemployment in ${place} and the 30-year home-loan rate, by year.`,
+      draw: (s) => line(s, rows.map((r) => [r.year, r.unemployment_pct]), "fc-line jobless") + dots(s, rows.map((r) => [r.year, r.unemployment_pct]), "fc-dot jobless") +
+        line(s, rows.map((r) => [r.year, r.mortgage_pct]), "fc-line loan") + dots(s, rows.map((r) => [r.year, r.mortgage_pct]), "fc-dot loan"),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: unemployment ${isNum(r.unemployment_pct) ? num(r.unemployment_pct, 1) + "%" : "not given"}, home loans ${isNum(r.mortgage_pct) ? num(r.mortgage_pct, 2) + "%" : "not given"}` })),
+    });
+    const tableRows = rows.map((r) => [
+      `<b>${esc(r.year)}</b>${r.year === outlook.year ? "<small>this year, so far</small>" : ""}`,
+      given(r.people, num(r.people)) + (isNum(r.homes) ? `<small>${num(r.homes)} homes</small>` : ""),
+      given(r.homes_permitted, num(r.homes_permitted) + (partialPermits(r) ? `<small>${esc(r.permit_months)} months</small>` : "")),
+      given(r.shop_sales_usd, millions(r.shop_sales_usd) + (partialSales(r) ? `<small>${esc(r.sales_quarters)} of 4 quarters</small>` : "")),
+      given(r.sales_per_home_usd, "$" + num(r.sales_per_home_usd)),
+      given(r.unemployment_pct, num(r.unemployment_pct, 1) + "%") + (isNum(r.labour_force) ? `<small>of ${num(r.labour_force)}</small>` : ""),
+      given(r.mortgage_pct, num(r.mortgage_pct, 2) + "%"), given(r.prices_change_pct, num(r.prices_change_pct, 1) + "%")]);
+    box.innerHTML = `<h2 id="fcEconomyTitle">${title}</h2>
+      <p class="fc-intro">${esc(place)} as a whole, as measured by the state and federal agencies below. A year not yet complete is marked.</p>
+      <div class="fc-eco-charts">
+        <div class="card"><h3>People and homes</h3><div class="fc-chart" data-chart="eco-people"></div><div class="legend fc-legend">${key("line", "People")}${key("line alt", "Homes")}</div></div>
+        <div class="card"><h3>Homes permitted</h3><div class="fc-chart" data-chart="eco-permits"></div><div class="legend fc-legend">${key("bar", "Homes permitted")}${key("bar partial", "Year not complete (months marked)")}</div></div>
+        <div class="card"><h3>Shop and restaurant sales</h3><div class="fc-chart" data-chart="eco-sales"></div><div class="legend fc-legend">${key("bar", "Measured")}${key("bar partial", "Part of the year only")}${ahead.length ? key("band", "Ahead, low to high") + key("line", "Ahead, expected") : ""}</div></div>
+        <div class="card"><h3>Unemployment and home loans</h3><div class="fc-chart" data-chart="eco-rates"></div><div class="legend fc-legend">${key("line jobless", "Unemployment")}${key("line loan", "30-year home-loan rate")}</div></div>
+      </div>
+      <div class="fc-eco-bottom">
+        <div class="card"><h3>What it says</h3>${(E.facts || []).length ? `<ul class="plain">${E.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : missing("Nothing to say yet.")}
+          ${E.sales_ahead_basis ? `<p class="fine"><b>Sales ahead:</b> ${esc(E.sales_ahead_basis)}</p>` : ""}
+          ${(E.did_not_answer || []).length ? `<p class="fine fc-no">Did not answer just now: ${esc(listWords(E.did_not_answer.map((p) => (OUTLOOK_WORDS[p] || [p])[0])))}.</p>` : ""}</div>
+        <div class="fc-eco-table">${plainTable(["Year", "People<small>and homes</small>", "Homes permitted", "Shop and restaurant sales", "Sales a household", "Unemployment<small>of those working or looking</small>", "Home-loan rate<small>30-year, average</small>", "Prices rose"], tableRows, [1, 2, 3, 4, 5, 6, 7])}
+          <p class="fine">Sources: ${(E.sources || []).map((s) => `${esc(s.source || (OUTLOOK_WORDS[s.name] || [s.name])[0])}${s.answered ? "" : " (did not answer)"}`).join("; ")}.</p></div>
+      </div>`;
+  }
+
+  // ---- weather and how it is changing
+  function drawWeather() {
+    const box = el.querySelector("#fcWeather"), title = "Weather and how it is changing";
+    const wait = outlookWait("fcWeatherTitle", title);
+    if (wait) { box.innerHTML = wait; return; }
+    const C = outlook.climate || {};
+    if (!C.available) { box.innerHTML = `<h2 id="fcWeatherTitle">${title}</h2>` + outlookMissing("The weather", ["climate"]); return; }
+    const months = C.months || [], years = (C.by_year || []).filter((y) => isNum(y.mean_f)), t = C.typical_year || {}, trend = C.trend || {}, ahead = C.ahead;
+    charts["wx-temp"] = (w) => chart({
+      width: w, height: 220, xMin: 1, xMax: months.length || 12, xLabel: (v) => (months[v - 1] || {}).month || v,
+      values: months.flatMap((m) => [m.high_f, m.low_f]), zero: false, unit: "Degrees F, a typical month",
+      label: "Chart of each month's typical high, average and low temperature. The table under the facts gives the decades.",
+      draw: (s) => line(s, months.map((m, i) => [i + 1, m.high_f]), "fc-line hot") + dots(s, months.map((m, i) => [i + 1, m.high_f]), "fc-dot hot") +
+        line(s, months.map((m, i) => [i + 1, m.mean_f]), "fc-line") + line(s, months.map((m, i) => [i + 1, m.low_f]), "fc-line cold") + dots(s, months.map((m, i) => [i + 1, m.low_f]), "fc-dot cold"),
+      hover: months.map((m, i) => ({ x: i + 1, text: `${m.month}: high ${num(m.high_f, 1)}, average ${num(m.mean_f, 1)}, low ${num(m.low_f, 1)} degrees F; ${num(m.rain_in, 2)} in of rain` })),
+    });
+    charts["wx-rain"] = (w) => chart({
+      width: w, height: 150, xMin: 1, xMax: months.length || 12, xLabel: (v) => (months[v - 1] || {}).month || v,
+      values: months.map((m) => m.rain_in), zero: true, unit: "Rain, inches a month",
+      label: "Chart of typical rain each month.", draw: (s) => bars(s, months.map((m, i) => [i + 1, m.rain_in]), "fc-bar rain"),
+      hover: months.map((m, i) => ({ x: i + 1, text: `${m.month}: ${num(m.rain_in, 2)} inches of rain` })),
+    });
+    // the trend line: the slope the answer gives, through the middle of the measured years (where a straight-line fit passes)
+    const slope = isNum(trend.mean_f_per_decade) ? Number(trend.mean_f_per_decade) / 10 : null;
+    const mx = years.length ? years.reduce((a, y) => a + y.year, 0) / years.length : 0, my = years.length ? years.reduce((a, y) => a + Number(y.mean_f), 0) / years.length : 0;
+    const at = (y) => my + slope * (y - mx);
+    const endYear = ahead && isNum(ahead.year) ? Number(ahead.year) : (years.length ? years[years.length - 1].year : now());
+    charts["wx-years"] = (w) => {
+      if (!years.length) return "";
+      const first = years[0].year, last = years[years.length - 1].year;
+      const vals = years.map((y) => y.mean_f).concat(slope !== null ? [at(first), at(endYear)] : []);
+      return chart({
+        width: w, height: 240, xMin: first, xMax: endYear, values: vals, zero: false, unit: "Yearly average, degrees F",
+        label: `Chart of the yearly average temperature from ${first} to ${last}${slope !== null ? `, with its straight-line trend carried on to ${endYear}` : ""}.`,
+        draw: (s) => line(s, years.map((y) => [y.year, y.mean_f]), "fc-line thin") + dots(s, years.map((y) => [y.year, y.mean_f]), "fc-dot small") +
+          (slope !== null ? line(s, [[first, at(first)], [last, at(last)]], "fc-line trend") + line(s, [[last, at(last)], [endYear, at(endYear)]], "fc-line trend ahead") : "") + nowLine(s, now()),
+        hover: years.map((y) => ({ x: y.year, text: `${y.year}: average ${num(y.mean_f, 1)} degrees F, ${num(y.rain_in, 1)} in of rain` })),
+      });
+    };
+    const stat = (label, big, small = "") => `<div class="stat"><span class="label">${label}</span><b>${big}</b>${small ? `<span>${small}</span>` : ""}</div>`;
+    box.innerHTML = `<h2 id="fcWeatherTitle">${title}</h2>
+      <section class="stats fc-wx-stats" aria-label="A typical year">
+        ${stat("Typical year", isNum(t.mean_f) ? num(t.mean_f, 1) + " °F" : NONE, "average of day and night")}
+        ${stat("Rain", isNum(t.rain_in) ? num(t.rain_in, 1) + " in" : NONE, "in a typical year")}
+        ${stat("Wind", isNum(t.wind_mph) ? num(t.wind_mph, 1) + " mph" : NONE, "typical speed")}
+        ${stat("Sunshine", isNum(t.sun_kwh_m2_day) ? num(t.sun_kwh_m2_day, 2) + " kWh" : NONE, "a square metre a day")}
+        ${stat("Change each ten years", isNum(trend.mean_f_per_decade) ? (trend.mean_f_per_decade > 0 ? "+" : "") + num(trend.mean_f_per_decade, 2) + " °F" : NONE, isNum(trend.rain_in_per_decade) ? `rain ${trend.rain_in_per_decade > 0 ? "+" : ""}${num(trend.rain_in_per_decade, 2)} in; ${esc(trend.from_year)} to ${esc(trend.to_year)}` : "")}
+      </section>
+      <div class="fc-wx">
+        <div class="card"><h3>A typical year, month by month</h3><div class="fc-chart" data-chart="wx-temp"></div>
+          <div class="legend fc-legend">${key("line hot", "Highs")}${key("line", "Average")}${key("line cold", "Lows")}</div>
+          <div class="fc-chart" data-chart="wx-rain"></div><div class="legend fc-legend">${key("bar rain", "Rain")}</div></div>
+        <div class="card"><h3>The yearly average since ${esc(years.length ? years[0].year : trend.from_year || "")}</h3><div class="fc-chart" data-chart="wx-years"></div>
+          <div class="legend fc-legend">${key("line thin", "Each year")}${slope !== null ? key("line trend", "Straight-line trend") + key("line trend ahead", `Trend carried on to ${endYear}`) : ""}${key("now", "This year")}</div>
+          ${ahead && ahead.basis ? `<p class="fine">${esc(ahead.basis)}${isNum(ahead.mean_f_change) ? ` About ${ahead.mean_f_change > 0 ? "+" : ""}${num(ahead.mean_f_change, 1)} degrees F by ${esc(ahead.year)}.` : ""} This is where the past trend points, not a climate forecast.</p>` : ""}
+          <h3 class="fc-gap">By decade</h3>
+          ${plainTable(["Years", "Average", "Summer high", "Rain a year"], (C.by_decade || []).map((d) => [esc(d.years), given(d.mean_f, num(d.mean_f, 1) + " °F"), given(d.summer_high_f, num(d.summer_high_f, 1) + " °F"), given(d.rain_in, num(d.rain_in, 2) + " in")]), [1, 2, 3])}</div>
+      </div>
+      <div class="card fc-wx-facts"><h3>What it says</h3>${(C.facts || []).length ? `<ul class="plain">${C.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+        ${C.note ? `<p class="fine">${esc(C.note)}</p>` : ""}<p class="fine">${esc(C.source || "")}</p></div>`;
+  }
+
+  // ---- hazards and limits on building
+  function drawHazards() {
+    const box = el.querySelector("#fcHazards"), title = "Hazards and limits on building";
+    const wait = outlookWait("fcHazardsTitle", title);
+    if (wait) { box.innerHTML = wait; return; }
+    const H = outlook.hazards || {};
+    if (!H.available) { box.innerHTML = `<h2 id="fcHazardsTitle">${title}</h2>` + outlookMissing("Hazards and limits on building", ["hazards"]); return; }
+    const order = { work: 0, note: 1, clear: 2 };
+    const found = (H.findings || []).slice().sort((a, b) => (order[a.level] ?? 3) - (order[b.level] ?? 3));
+    const count = (lv) => found.filter((f) => f.level === lv).length;
+    box.innerHTML = `<h2 id="fcHazardsTitle">${title}</h2>
+      <p class="fc-intro"><b>${num(count("work"))}</b> ${count("work") === 1 ? "finding adds" : "findings add"} work (a study, a permit or a cost), <b>${num(count("note"))}</b> to know about, <b>${num(count("clear"))}</b> clear.${H.evacuation_zone ? ` Evacuation zone: <b>${esc(H.evacuation_zone)}</b>.` : ""}</p>
+      <div class="fc-haz-grid">${found.map((f) => {
+        const lv = LEVELS[f.level] || { words: f.level, mark: "?" };
+        return `<article class="card fc-haz ${esc(f.level)}"><div class="fc-haz-top"><h3>${esc(f.topic)}</h3><span class="fc-level ${esc(f.level)}"><b aria-hidden="true">${lv.mark}</b>${esc(lv.words)}</span></div>
+          <p>${esc(f.text)}</p><p class="fine">${esc(f.source || "")}</p></article>`;
+      }).join("")}
+        <article class="card fc-haz-gaps"><h3>Not covered yet</h3><ul class="plain">${(H.not_covered || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+          ${(H.did_not_answer || []).length ? `<h3 class="fc-gap">Did not answer just now</h3><ul class="plain">${H.did_not_answer.map((n) => `<li>${esc(String(n).replace(/_/g, " "))}</li>`).join("")}</ul>` : ""}
+          <p class="fine">Maps say where to look; the studies under “What needs to be done” settle it on the ground.</p></article>
+      </div>`;
+  }
+
+  // ---- what is close by
+  function placeKind(kind) {
+    const k = PLACE_KINDS[kind];
+    return k || { letter: String(kind || "?").charAt(0).toUpperCase(), shape: "round", colour: "#4d5b54", words: cap(String(kind || "other")) };
+  }
+  function placePin(kind, small) {
+    const k = placeKind(kind);
+    return `<span class="fc-pin ${k.shape}${small ? " sm" : ""}" style="background:${k.colour}" aria-hidden="true"><b>${esc(k.letter)}</b></span>`;
+  }
+  function drawNearby() {
+    const L = window.L, text = el.querySelector("#fcNearText");
+    if (!nearMap) {
+      nearMap = createMap(el.querySelector("#fcNearMap"), { base: "aerial" });
+      nearLayers = L.layerGroup().addTo(nearMap.map);
+    }
+    nearLayers.clearLayers();
+    let bounds = null;
+    ((data.site || {}).parcels || []).forEach((p) => {
+      if (!p.outline || !p.outline.coordinates) return;
+      const shape = ll(p.outline.type === "MultiPolygon" ? p.outline.coordinates.flat() : p.outline.coordinates);
+      L.polygon(shape, { color: "#1d2a24", weight: 6, fill: false, interactive: false }).addTo(nearLayers);
+      const g = L.polygon(shape, { color: "#f2b632", weight: 3, fillColor: "#f2b632", fillOpacity: 0.3 }).bindTooltip("The site", { sticky: true }).addTo(nearLayers);
+      bounds = bounds ? bounds.extend(g.getBounds()) : g.getBounds();
+    });
+    const N = outlook && outlook.nearby;
+    const places = N && N.available ? (N.places || []).filter((p) => isNum(p.lat) && isNum(p.lon)) : [];
+    places.forEach((p) => {
+      const k = placeKind(p.kind);
+      L.marker([Number(p.lat), Number(p.lon)], { icon: L.divIcon({ className: "fc-pin-icon", html: placePin(p.kind), iconSize: [24, 24], iconAnchor: [12, 12] }), keyboard: false, title: `${k.words}: ${p.name}` })
+        .bindTooltip(`<b>${esc(p.name)}</b><br>${esc(k.words)} · ${num(p.miles_away, 2)} miles${p.detail ? "<br>" + esc(p.detail) : ""}`).addTo(nearLayers);
+      bounds = bounds ? bounds.extend([Number(p.lat), Number(p.lon)]) : L.latLngBounds([[Number(p.lat), Number(p.lon)], [Number(p.lat), Number(p.lon)]]);
+    });
+    if (bounds && !nearFitted) { nearMap.fit(bounds.pad(0.15)); if (places.length || (outlook && !(N && N.available))) nearFitted = true; }
+    const kinds = [...new Set(places.map((p) => p.kind))].sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
+    el.querySelector("#fcNearLegend").innerHTML = '<span><i class="fc-key site"></i>The site</span>' + kinds.map((k) => `<span>${placePin(k, true)}${esc(placeKind(k).words)}</span>`).join("");
+
+    const summary = el.querySelector("#fcNearSummary");
+    summary.innerHTML = "";
+    const wait = outlookWait("fcNearbyWait", "");
+    if (wait) { text.innerHTML = wait.replace('<h2 id="fcNearbyWait"></h2>', ""); return; }
+    if (!N || !N.available) { text.innerHTML = outlookMissing("What is close by", ["nearby"]); return; }
+    const nearest = Object.values(N.nearest || {}).sort((a, b) => Number(a.miles_away) - Number(b.miles_away));
+    const rows = places.slice().sort((a, b) => (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) || (Number(a.miles_away) - Number(b.miles_away)))
+      .map((p) => [`<span class="fc-kind">${placePin(p.kind, true)}${esc(placeKind(p.kind).words)}</span>`, `<b>${esc(p.name)}</b>${p.detail ? `<small>${esc(p.detail)}</small>` : ""}`, num(p.miles_away, 2)]);
+    summary.innerHTML = `${nearest.length ? `<h3 class="fc-gap">The nearest of each kind</h3><div class="fc-nearest">${nearest.map((p) => `<div>${placePin(p.kind, true)}<span><span class="label">Nearest ${esc(placeKind(p.kind).one)}</span><b>${esc(p.name)}</b><span class="muted">${num(p.miles_away, 2)} miles</span></span></div>`).join("")}</div>` : ""}
+      ${(N.not_covered || []).length ? `<p class="fine"><b>Not covered yet:</b> ${esc(N.not_covered.join("; "))}.</p>` : ""}
+      ${(N.did_not_answer || []).length ? `<p class="fine fc-no">Did not answer just now: ${esc(N.did_not_answer.join(", "))}.</p>` : ""}`;
+    text.innerHTML = `<h3>Everything found, by kind</h3>
+      ${rows.length ? plainTable(["Kind", "Place", "Miles away"], rows, [2]) : missing("No places found nearby.")}
+      <p class="fine">Straight-line miles from the middle of the site. Sources: ${esc([...new Set(places.map((p) => p.source).filter(Boolean))].join("; "))}.</p>`;
+  }
+
+  // ---- who lives nearby
+  function drawResident() {
+    const box = el.querySelector("#fcResident"), title = "Who lives nearby";
+    const wait = outlookWait("fcResidentTitle", title);
+    if (wait) { box.innerHTML = wait; return; }
+    const R = outlook.resident || {};
+    if (!R.available) { box.innerHTML = `<h2 id="fcResidentTitle">${title}</h2>` + outlookMissing("Who lives nearby", ["residents"]); return; }
+    const t = R.typical || {}, then = R.earlier || {};
+    const pct = (v) => (isNum(v) ? num(v, 1) + "%" : NONE);
+    const stat = (label, big, small = "") => `<div class="stat"><span class="label">${label}</span><b>${big}</b>${small ? `<span>${small}</span>` : ""}</div>`;
+    const usd = (v) => (isNum(v) ? "$" + num(v) : NONE);
+    box.innerHTML = `<h2 id="fcResidentTitle">${title}</h2>
+      <p class="fc-intro">The typical figures of the census tracts within ${esc(mi(data.market_miles))} of the site, census survey ${esc(R.survey || "")}.</p>
+      <section class="stats fc-res-stats" aria-label="The typical resident nearby">
+        ${stat("Typical age", isNum(t.median_age) ? num(t.median_age, 1) : NONE, "years, half older and half younger")}
+        ${stat("Household", isNum(t.household_size) ? num(t.household_size, 2) : NONE, "people in a typical household")}
+        ${stat("Home value", usd(t.home_value_usd), "typical, as owners report it")}
+        ${stat("Rent", usd(t.rent_usd), "typical, a month")}
+        ${stat("Under 18", pct(t.under_18_pct))}
+        ${stat("65 or older", pct(t.over_65_pct))}
+        ${stat("College degree", pct(t.bachelors_pct), "of adults")}
+        ${stat("Drive alone to work", pct(t.drive_alone_pct))}
+        ${stat("Work from home", pct(t.work_from_home_pct))}
+        ${stat("An hour or more to work", pct(t.long_commute_pct), "of workers")}
+        ${stat("Spanish at home", pct(t.spanish_at_home_pct))}
+      </section>
+      <div class="two fc-res">
+        <div class="card"><h3>Then and now</h3>
+          ${plainTable(["", `Survey ${esc(then.years || "earlier")}`, `Survey ${esc(R.survey || "now")}`, "A year"], [
+            ["Typical home value", usd(then.home_value_usd), usd(t.home_value_usd), isNum(R.home_value_rise_pct_a_year) ? `about ${num(R.home_value_rise_pct_a_year, 1)}%` : ""],
+            ["Typical rent a month", usd(then.rent_usd), usd(t.rent_usd), ""]], [1, 2, 3])}
+          <p class="fine">${isNum(then.tracts_matched) ? `The earlier figures come from the ${num(then.tracts_matched)} tracts that match between the two surveys. ` : ""}Survey dollars, not adjusted for inflation.</p></div>
+        <div class="card"><h3>What it says</h3>${(R.facts || []).length ? `<ul class="plain">${R.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+          <p class="fine">${esc(R.source || "")}${(R.tracts || []).length ? `; ${num(R.tracts.length)} census tracts` : ""}.</p></div>
+      </div>`;
+  }
+
+  // ---- what needs to be done (the part the owner shows the city)
+  function drawTodo() {
+    const box = el.querySelector("#fcTodo"), title = "What needs to be done";
+    const wait = outlookWait("fcTodoTitle", title);
+    if (wait) { box.innerHTML = wait; return; }
+    const T = outlook.todo || {}, steps = T.steps || [];
+    if (!steps.length) { box.innerHTML = `<h2 id="fcTodoTitle">${title}</h2>` + missing("The list of steps: not covered yet."); return; }
+    const y0 = Math.min(...steps.map((s) => s.from_year)), y1 = Math.max(...steps.map((s) => s.to_year)), n = y1 - y0 + 1;
+    const cols = `grid-template-columns:repeat(${n},minmax(0,1fr));--n:${n}`;
+    const years = Array.from({ length: n }, (_, i) => y0 + i);
+    const what = (s) => {
+      const i = s.kind === "sell" ? String(s.what).indexOf(": ") : -1;
+      return i > 0 ? `<b>${esc(s.what.slice(0, i))}</b>: ${esc(s.what.slice(i + 2))}` : `<b>${esc(s.what)}</b>`;
+    };
+    const groups = TODO_KINDS.map(([k, words, help]) => ({ k, words, help, list: steps.filter((s) => s.kind === k) }))
+      .concat([{ k: "other", words: "Other steps", help: "", list: steps.filter((s) => !TODO_KINDS.some(([k]) => k === s.kind)) }]).filter((g) => g.list.length);
+    box.innerHTML = `<h2 id="fcTodoTitle">${title}</h2>
+      <p class="fc-intro">In order, year by year: who to see, which studies, which checks, and when each part of the land is offered. Each step says why it is on the list.</p>
+      <div class="card fc-todo">
+        <div class="fc-tl-row fc-tl-head" aria-hidden="true"><div>Step, why and who</div><div class="fc-tl-years" style="${cols}">${years.map((y) => `<span>${y}</span>`).join("")}</div></div>
+        ${groups.map((g) => `
+          <h3 class="fc-tl-kind"><span class="fc-tl-dot k-${g.k}" aria-hidden="true"></span>${esc(g.words)} <span class="muted">${num(g.list.length)} ${g.list.length === 1 ? "step" : "steps"}${g.help ? ", " + esc(g.help) : ""}</span></h3>
+          <ol class="fc-tl-list">${g.list.map((s) => {
+            const span = s.from_year === s.to_year ? String(s.from_year) : `${s.from_year} to ${s.to_year}`;
+            return `
+            <li class="fc-tl-row">
+              <div class="fc-tl-text"><span class="fc-tl-when k-${g.k}">${esc(span)}</span>${what(s)}<p>${esc(s.why || "")}</p><p class="fc-tl-who"><span>Who:</span> ${esc(s.who || NONE)}</p></div>
+              <div class="fc-tl-bar" style="${cols}" aria-hidden="true"><span class="fc-tl-span k-${g.k}" style="grid-column:${s.from_year - y0 + 1} / ${s.to_year - y0 + 2}" title="${esc(span)}"></span></div>
+            </li>`;
+          }).join("")}</ol>`).join("")}
+      </div>
+      ${T.note ? `<div class="notice warn fc-todo-note"><p><b>A starting list, not the city's list.</b> ${esc(T.note)}</p></div>` : ""}`;
   }
 
   // ---------------------------------------------------------------- figures you can change
@@ -808,11 +1320,24 @@ export async function render(main, route, alive) {
       <div class="card"><h2>What answered</h2>
         ${plainTable(["Source", "What it gives", "Answered"], (data.sources || []).map((s) => [esc(s.name), esc(s.what), s.answered ? "Yes" : '<b class="fc-no">No</b>']))}
         ${silent.length ? `<p class="fc-again">${esc(cap(listWords(silent.map((p) => PART_WORDS[p] || p))))} did not answer just now. <button type="button" class="btn small" data-ask-again>Ask again</button></p>` : ""}
+        <h3 class="fc-gap">The wider picture</h3>
+        ${outlookSources()}
       </div>
       <div class="card fc-limits"><h2>Limits of this forecast</h2>
         <ul class="plain">${(data.limits || []).map((l) => `<li>${esc(l)}</li>`).join("")}
           <li>This is a forecast from public records and stated figures, not a market study or an appraisal.</li></ul>
       </div>`;
+  }
+
+  function outlookSources() {
+    if (outlookProblem) return `<p class="fc-again fc-no">The wider picture could not be read just now. <button type="button" class="btn small" data-outlook-again>Ask again</button></p>`;
+    if (!outlook) return '<p class="plan-wait"><span class="spinner" aria-hidden="true"></span> Asking these sources now…</p>';
+    const answered = outlook.answered || {}, names = Object.keys(answered);
+    const words = { ok: "Yes", "did not answer": '<b class="fc-no">Did not answer just now</b>', "nothing found there": "Answered, nothing for this spot" };
+    const silent = names.filter((p) => answered[p] !== "ok");
+    return plainTable(["Source", "What it gives", "Answered", "Read"], names.map((p) => [esc((OUTLOOK_WORDS[p] || [p])[0]), esc((OUTLOOK_WORDS[p] || ["", ""])[1]),
+      words[answered[p]] || esc(answered[p]), (outlook.fetched || {})[p] ? esc(when((outlook.fetched || {})[p])) : ""])) +
+      `<p class="fc-again">${silent.length ? `${esc(cap(listWords(silent.map((p) => (OUTLOOK_WORDS[p] || [p])[0]))))} did not answer. ` : "Saved answers are reused for a while. "}<button type="button" class="btn small" data-outlook-again>Ask these sources again</button></p>`;
   }
 
   // ---------------------------------------------------------------- what the person does
@@ -847,6 +1372,17 @@ export async function render(main, route, alive) {
       if (target) { target.scrollIntoView({ behavior: "smooth", block: "start" }); const box = target.querySelector("input"); if (box) box.focus({ preventScroll: true }); }
       return;
     }
+    if (b.dataset.goto) {
+      const target = el.querySelector("#" + b.dataset.goto);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (b.dataset.planview) {
+      planView = b.dataset.planview;
+      drawSitePlan();
+      return;
+    }
+    if (b.dataset.outlookAgain !== undefined) { loadOutlook(true); return; }
     if (b.dataset.ring) {
       ringMiles = Number(b.dataset.ring);
       drawPeople();
