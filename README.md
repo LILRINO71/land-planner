@@ -4,6 +4,31 @@ Software for a land developer in Menifee, California: someone who buys a large p
 city to decide what each part of it may become, lays out the plan, and then sells the planned pieces to the
 companies that build on them.
 
+## Install on Windows: one click
+
+### [Download Install-Land-Planner.bat](https://github.com/LILRINO71/land-planner/releases/latest/download/Install-Land-Planner.bat)
+
+Double-click the downloaded file. About a minute later Land Planner opens in your browser, and a **Land Planner**
+icon is on your Desktop and in the Start menu for next time.
+
+- Nothing else to install: the app brings its own Python. No administrator rights needed.
+- If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. The file is a short
+  script (you can read it [here](Install-Land-Planner.bat)), not signed by a company.
+- To update, run the same file again. Your saved lands and plans are kept.
+- To remove it, delete the folder `%LOCALAPPDATA%\LandPlanner` and the two shortcuts.
+
+Prefer one line? Paste this into PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/LILRINO71/land-planner/main/install.ps1 | iex
+```
+
+Or without installing: download `LandPlanner.zip` from the [latest release](https://github.com/LILRINO71/land-planner/releases/latest),
+unzip it anywhere and double-click `Start Land Planner.bat`. On Mac or Linux, or to work on the code, see
+"The app" below (`python -m landplanner`).
+
+## What it is for
+
 The goal is a tool that looks at one piece of land and answers, with reasons he can check:
 
 1. **What is this land?** Size, shape, slope, zoning, what the city's general plan intends, what surrounds it,
@@ -36,8 +61,10 @@ python tools/menifee.py selfcheck                           did every data sourc
 
 ### The app
 
-Double-click `Start Land Planner.bat` (or run `python -m landplanner`). It starts a small server on this computer
-only and opens the app in the browser. It needs Python 3 and nothing else.
+From a copy of this repository: double-click `Start Land Planner.bat` (or run `python -m landplanner`). It starts a
+small server on this computer only and opens the app in the browser. It needs Python 3 and nothing else. (The
+installed version above needs nothing at all.) A new version is published by pushing a tag like `v2.0.1`: the
+release workflow tests, builds and uploads it.
 
 - **Cities**: Menifee today. A city is one adapter in `landplanner/cities/` (see `base.py`), so another city is
   added by writing one file for its public parcel and zoning records.

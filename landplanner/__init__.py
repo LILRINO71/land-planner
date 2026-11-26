@@ -1,3 +1,3 @@
 """Land Planner: one local app for looking at large parcels of land, city by city. Standard library only."""
 APP = "land-planner"
-VERSION = "1.0"
+VERSION = "2.0"

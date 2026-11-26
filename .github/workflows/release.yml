@@ -1,0 +1,73 @@
+# Builds the Windows download and publishes it as a release whenever a version tag (v2.0.0, ...) is pushed.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Offline tests
+        run: python -m unittest discover -s tests
+
+      - name: Get the Python that ships inside the app
+        shell: pwsh
+        run: |
+          $v = "3.13.1"
+          Invoke-WebRequest "https://www.python.org/ftp/python/$v/python-$v-embed-amd64.zip" -OutFile runtime.zip
+          Expand-Archive runtime.zip -DestinationPath runtime
+          $sig = Get-AuthenticodeSignature runtime\python.exe
+          if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "Python Software Foundation") {
+            throw "python.exe is not signed by the Python Software Foundation: $($sig.Status) $($sig.SignerCertificate.Subject)"
+          }
+
+      - name: Build the download
+        run: python tools/build_release.py --runtime runtime --version ${{ github.ref_name }}
+
+      - name: Start the built app and ask it a question
+        shell: pwsh
+        run: |
+          $app = Resolve-Path dist\LandPlanner
+          $p = Start-Process -FilePath "$app\runtime\python.exe" -ArgumentList "-m","landplanner","--no-browser","--port","8791" -WorkingDirectory $app -PassThru
+          $ok = $false
+          foreach ($i in 1..30) {
+            Start-Sleep -Seconds 1
+            try { $h = Invoke-RestMethod "http://127.0.0.1:8791/api/health"; if ($h.app -eq "land-planner") { $ok = $true; break } } catch {}
+          }
+          if ($ok) {
+            $page = (Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8791/").Content
+            $cities = Invoke-RestMethod "http://127.0.0.1:8791/api/cities"
+            if ($page -notmatch "Land Planner" -or -not $cities.cities) { $ok = $false }
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "the built app did not start" }
+
+      - name: Test the installer against the built download
+        shell: pwsh
+        run: |
+          $env:LANDPLANNER_ZIP = (Resolve-Path dist\LandPlanner.zip).Path
+          $env:LANDPLANNER_DIR = Join-Path $env:RUNNER_TEMP "installed"
+          $env:LANDPLANNER_NO_SHORTCUT = "1"
+          $env:LANDPLANNER_NO_START = "1"
+          ./install.ps1
+          New-Item -ItemType Directory -Force (Join-Path $env:LANDPLANNER_DIR "data") | Out-Null
+          Set-Content (Join-Path $env:LANDPLANNER_DIR "data\keep.txt") "mine"
+          ./install.ps1
+          if (-not (Test-Path (Join-Path $env:LANDPLANNER_DIR "data\keep.txt"))) { throw "an update lost the data folder" }
+          if (-not (Test-Path (Join-Path $env:LANDPLANNER_DIR "runtime\python.exe"))) { throw "the install is incomplete" }
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} dist/LandPlanner.zip Install-Land-Planner.bat --title "Land Planner ${{ github.ref_name }}" --notes-file dist/RELEASE_NOTES.md

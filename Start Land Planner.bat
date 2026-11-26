@@ -3,6 +3,12 @@ rem Double-click to start Land Planner. It runs on this computer only and opens 
 title Land Planner
 cd /d "%~dp0"
 
+rem The installed copy carries its own Python in the runtime folder.
+if exist "%~dp0runtime\python.exe" (
+  "%~dp0runtime\python.exe" -m landplanner %*
+  goto done
+)
+
 where py >nul 2>nul
 if not errorlevel 1 (
   py -3 -m landplanner %*

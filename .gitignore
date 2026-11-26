@@ -4,3 +4,7 @@ __pycache__/
 # the owner's own data (My lands) and saved answers from the public services
 data/
 .env
+# release builds
+dist/
+runtime/
+runtime.zip
