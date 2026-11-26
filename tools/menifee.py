@@ -223,7 +223,7 @@ def traffic(lon, lat, miles=4.0, limit=6):
         d = math.hypot((g["x"] - lon) * 69.17 * math.cos(math.radians(lat)), (g["y"] - lat) * 69.17)
         rows.append({"route": a.get("RTE"), "where": a.get("DESCRIPTION"), "vehicles_per_day_behind": a.get("BACK_AADT"),
                      "vehicles_per_day_ahead": a.get("AHEAD_AADT"), "peak_hour_ahead": a.get("AHEAD_PEAK_HOUR"),
-                     "miles_away": round(d, 2)})
+                     "miles_away": round(d, 2), "lat": round(g["y"], 6), "lon": round(g["x"], 6)})
     rows.sort(key=lambda r: r["miles_away"])
     return {"within_miles": miles, "stations": rows[:limit],
             "note": "state highways only; city streets need Menifee's own traffic counts"}

@@ -28,6 +28,18 @@ python tools/menifee.py site 372100001 --miles 1            the parcel and every
 python tools/menifee.py selfcheck                           did every data source answer just now?
 ```
 
+### The site report page
+
+Double-click `report/index.html`. To show a different parcel, run this once and reload the page:
+
+```
+python tools/build_report.py <APN>                  add --confirmed when it really is the owner's parcel
+python -m unittest discover -s tests                offline checks
+```
+
+It writes `report/data.js` (the `site` answer plus neighbouring outlines, zoning code names and a USGS 3DEP height
+grid). Known gap: the aerial background does not load yet (the USGS layer named in `report/app.js` refuses tiles).
+
 `site` returns, for one parcel number (APN):
 
 | Part | What it says | From |
