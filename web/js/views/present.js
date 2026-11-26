@@ -4,7 +4,7 @@
 // Every slide is drawn at 1920 x 1080 and scaled to the screen, so it looks the same on a laptop, a projector and in
 // print (Ctrl+P gives one landscape page per slide). On a phone the same slides run down the page instead.
 // Every value comes from the server's forecast and outlook answers; a value they do not give reads "not covered yet".
-import { api, land } from "../api.js";
+import { api } from "../api.js";
 import { createMap, ll } from "../maps.js";
 import { mountTerrain } from "../terrain3d.js";
 import { NONE, esc, has, num, cap, icon } from "../util.js";
@@ -23,6 +23,13 @@ const LEVELS = {
   clear: { word: "Clear", mark: "check" },
   note: { word: "Know about it", mark: "note" },
   work: { word: "Adds work", mark: "alert" },
+};
+// an entrance onto a street, by what the traffic answer says about a signal there (word, not colour alone)
+const ENTRANCES = {
+  study: { short: "Study a signal", word: "a new signal is worth studying" },
+  existing: { short: "Signal there", word: "a signal already stands there" },
+  none: { short: "No signal", word: "no signal likely" },
+  unknown: { short: "Not known", word: "not known whether a signal stands there" },
 };
 const PLACE_COLOURS = {
   park: "#3f9d68", "transit stop": "#4f7fa6", "fire station": "#c4434f", college: "#8a6bbd",
@@ -240,7 +247,17 @@ export async function render(main, route, alive) {
 
   // ---------------------------------------------------------------- state
 
-  const S = { O: null, Oerr: "", ground: null, groundErr: "", one: (F.site && F.site.parcels || []).length === 1 };
+  // O: the outlook. G: the ground under the whole site with the plan drawn on it (for the 3D view).
+  const S = { O: null, Oerr: "", G: null, Gerr: "" };
+  // the 3D view can be drawn: the ground heights are read and a plan is drawn on them
+  const has3d = () => !!(S.G && S.G.surface && S.G.plan && S.G.plan.drawing && (S.G.plan.drawing.pieces || []).length && S.G.parcel && S.G.parcel.outline);
+  // why there is no 3D view, in plain words ("" while it is still being read, or when there is one)
+  function no3dWords() {
+    if (S.Gerr) return `The 3D view could not be made just now (${S.Gerr}).`;
+    if (!S.G || has3d()) return "";
+    if (!S.G.surface) return "The 3D view is not available for this site: the ground heights under it are not covered yet.";
+    return "The 3D view is not available for this site: the parcels do not form one block, so no single plan is drawn on the ground.";
+  }
   let motion = true;
   try { motion = localStorage.getItem(MOTION_KEY) !== "off"; } catch (e) { /* private window: keep the default */ }
   let flow = false, cur = 0, order = [], scaleNow = 1;
@@ -590,7 +607,7 @@ export async function render(main, route, alive) {
 
     // ---- 8. the plan
     list.push({
-      id: "plan", title: "The plan", key: "1",
+      id: "plan", title: "The plan", key: S.Gerr ? "ground-error" : S.G && !has3d() ? "no-3d" : "1",
       html() {
         const homes = uses.filter((u) => u.kind === "homes").reduce((t, u) => t + (Number(u.amount) || 0), 0);
         const feet = uses.filter((u) => u.kind !== "homes").reduce((t, u) => t + (Number(u.amount) || 0), 0);
@@ -606,6 +623,7 @@ export async function render(main, route, alive) {
             ${uses.length ? `<ul class="pr-uses">${rows}</ul>` : missing("The uses of the land")}
             ${why.length ? `<h3 class="pr-sub" data-rise>Why each sits where it does</h3><ul class="pr-why">${why.map((w) => `<li data-rise>${esc(w)}</li>`).join("")}</ul>` : ""}
             ${G.basis ? `<p class="pr-note" data-rise>${esc(G.basis)} A first sketch cut from the assessor's outlines: not lot lines.</p>` : ""}
+            ${no3dWords() ? `<p class="pr-note" data-rise>${esc(no3dWords())}${S.Gerr ? ` <button type="button" class="btn small" data-ground-again>Try again</button>` : ""}</p>` : ""}
           </div></div>`;
       },
       mount(el, rec) {
@@ -632,25 +650,35 @@ export async function render(main, route, alive) {
       enter: playReveal,
     });
 
-    // ---- 8b. the plan in 3D, for one parcel (the ground heights are read for one parcel at a time)
-    if (S.one && pieces.length) {
+    // ---- 8b. the plan in 3D: the ground under the whole site with the plan drawn on it. Shown while it is being
+    // read; left out (and said so on the plan slide) when the site has no ground heights or no single plan.
+    if ((!S.G && !S.Gerr) || has3d()) {
       list.push({
-        id: "plan-3d", title: "The plan on the ground", key: S.ground ? "ready" : S.groundErr ? "error" : "wait",
+        id: "plan-3d", title: "The plan on the ground", key: S.G ? "ready" : "wait",
         html() {
-          const h = "The same plan on the land's real ground";
-          if (S.groundErr) return head(h) + `<div class="pr-pending" data-rise><p>The ground heights could not be read just now (${esc(S.groundErr)}), so the 3D view cannot be shown.</p><button type="button" class="btn" data-ground-again>Try again</button></div>`;
-          if (!S.ground) return head(h) + `<div class="pr-pending" data-rise><span class="spinner" aria-hidden="true"></span><p>Reading the ground heights. The 3D view appears here when they arrive (up to a minute).</p></div>`;
-          if (!S.ground.H) return head(h) + missing("The ground heights for this parcel");
-          return `${head(h, "Each use in its colour on the ground as measured. Buildings are simple boxes, as many and as large as the plan's figures make: a picture of scale, not a site plan.")}
-            <div class="pr-3d view3d" data-3d data-rise></div>`;
+          if (!S.G) return head("The plan on the land's real ground") + `<div class="pr-pending" data-rise><span class="spinner" aria-hidden="true"></span><p>Reading the ground heights under the site. The 3D view appears here when they arrive; the first time can take a minute or two.</p></div>`;
+          const P = S.G.plan, inside = (S.G.surface || {}).inside || {};
+          const h = isNum(inside.range_ft) ? `The plan on the real ground, ${big(inside.range_ft, 0)} ft from its lowest to its highest point` : "The plan on the land's real ground";
+          const shown = (P.uses || []).filter((u) => Number(u.acres) > 0);
+          const what = (u) => (isNum(u.homes) && u.homes > 0 ? `${num(u.homes)} homes` : isNum(u.sq_ft) && u.sq_ft > 0 ? `${num(u.sq_ft)}&nbsp;sq&nbsp;ft` : u.id === "park" ? "built with the uses around them" : "");
+          // the ground route plans with the heights in hand, so its mix can differ a little from the plan slide
+          const differs = shown.some((u) => { const f = uses.find((x) => x.id === u.id); return !f || Math.abs(Number(f.acres) - Number(u.acres)) >= 0.1; });
+          return `${head(h)}<div class="pr-3dbody">
+            <div class="pr-3d view3d" data-3d></div>
+            <aside class="pr-3dkey pr-field">
+              <ul class="pr-uses">${shown.map((u) => `<li data-rise><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.short || u.label)}</b><small>${what(u)}</small></span><em>${num(u.acres, 1)} ac</em></li>`).join("")}</ul>
+              <p class="pr-note" data-rise>Buildings are simple boxes, as many and as large as the plan's figures make: a picture of scale, not a site plan.${differs ? " This plan was worked out knowing the ground, so its acres differ a little from the plan slide." : ""}</p>
+              ${S.G.surface && S.G.surface.source ? `<p class="pr-note" data-rise>Ground heights: ${esc(S.G.surface.source)}${isNum(S.G.surface.spacing_ft) ? `, every ${num(S.G.surface.spacing_ft)} ft` : ""}.</p>` : ""}
+            </aside></div>`;
         },
         mount(el, rec) {
           const box = el.querySelector("[data-3d]");
-          if (!box || !S.ground || !S.ground.H) return;
-          const colours = Object.fromEntries(Object.values(useById).map((u) => [u.id, colourOf(u.colour)]));
-          const amounts = Object.fromEntries(uses.map((u) => [u.id, u.kind === "homes" ? { homes: u.amount } : { sq_ft: u.amount }]));
-          const off = mountTerrain(box, S.ground.parcel, S.ground.H, {
-            pieces, streets: drawings.flatMap((d) => (d.streets || []).map((s) => s.line)), colours, front: null, amounts, cap: 1500,
+          if (!box || !has3d()) return;
+          const P = S.G.plan, d = P.drawing;
+          const colours = Object.fromEntries((P.uses || []).map((u) => [u.id, colourOf(u.colour)]));
+          const amounts = Object.fromEntries((P.uses || []).map((u) => [u.id, { homes: u.homes, sq_ft: u.sq_ft }]));
+          const off = mountTerrain(box, S.G.parcel, S.G.surface, {
+            pieces: d.pieces, streets: (d.streets || []).map((s) => s.line), colours, front: d.front || null, amounts, cap: 1500,
           });
           rec.cleanup.push(() => off());
         },
@@ -721,16 +749,50 @@ export async function render(main, route, alive) {
         const h = `Route ${esc(hw.route)} at ${esc(hw.where)} carries about ${big(hw.today)} vehicles a day`;
         const lead = mid && end ? `If traffic grows with the homes around it: about ${num(mid.highway.expected)} a day by ${mid.year} and ${num(end.highway.expected)} by ${end.year} (${range(end.highway)}).` : "";
         const study = S.O && S.O.todo ? (S.O.todo.steps || []).find((s) => s.kind === "study" && /traffic/i.test(s.what || "")) : null;
-        return `${head(h, lead)}<div class="pr-body pr-chartbody">
+        const ents = (T.entrances || []), toStudy = Number(T.signals_to_study) || ents.filter((e) => e.signal === "study").length;
+        const entHead = !ents.length ? "Entrances and signals" : toStudy ? `${countWord(toStudy)} ${toStudy === 1 ? "entrance where a new signal is" : "entrances where a new signal is"} worth studying` : `${countWord(ents.length)} ${ents.length === 1 ? "entrance" : "entrances"} onto the streets around`;
+        return `${head(h, lead)}<div class="pr-body pr-traffic">
           <div class="pr-visual pr-stack"><div class="pr-chart tall" data-chart="highway"></div><div class="pr-chart short" data-chart="trips"></div>
             <p class="pr-keys" data-rise>${key("line", "Highway, expected")}${key("band", "Low to high")}${key("bar", "Trips a day the site adds as it fills", "background:#e0a91f")}</p></div>
-          <aside class="pr-aside">
-            ${fig(big(hw.today), "vehicles a day today", `Caltrans' latest count, ${esc(miles(hw.miles_away))} from the site`)}
-            ${isNum(G.trips_at_build_out) ? fig(big(G.trips_at_build_out), "trips a day the site adds once everything is built") : ""}
-            ${study ? `<div class="pr-study" data-rise><h3>${esc(study.what)}</h3><p>${esc(study.why)}</p><p class="pr-who">${esc(study.who)}</p></div>` : S.O ? "" : `<p class="pr-note" data-rise>What to study at the entrances appears here once the city's records are read.</p>`}
-            <p class="pr-note" data-rise>Yearly counts are not published as open data: the highway line is today's count, grown with the homes around it.</p>
-          </aside></div>`;
+          <div class="pr-tside">
+            <div class="pr-mapframe pr-tmap" data-rise><div class="pr-map" data-map></div>
+              <p class="pr-maplegend">${key("site", "The site")}${ents.length ? Object.keys(ENTRANCES).filter((k) => ents.some((e) => (ENTRANCES[e.signal] ? e.signal : "unknown") === k)).map((k) => `<span><b class="pr-ent ${k}">${esc(ENTRANCES[k].short)}</b>Entrance</span>`).join("") : ""}${(T.existing_signals || []).length ? key("dot", "Traffic signal today") : ""}</p></div>
+            <div class="pr-tnotes">
+              <h3 class="pr-sub" data-rise>${esc(entHead)}</h3>
+              ${ents.length ? `<ul class="pr-entlist">${ents.map((e) => { const k = ENTRANCES[e.signal] ? e.signal : "unknown"; return `<li data-rise><b class="pr-ent ${k}">${esc(ENTRANCES[k].short)}</b><span><b>${esc(e.street)}</b>${e.class ? ` <small>(${esc(e.class)})</small>` : ""}: ${esc(e.text || ENTRANCES[k].word)}</span></li>`; }).join("")}</ul>` : missing("Entrances and signals for this site")}
+              ${isNum(G.trips_at_build_out) ? `<p class="pr-body-text" data-rise>The site adds about <b>${big(G.trips_at_build_out)}</b> trips a day once everything is built.</p>` : ""}
+              ${study ? `<p class="pr-body-text" data-rise><b>${esc(study.what)}:</b> ${esc(study.who)}.</p>` : ""}
+              <p class="pr-note" data-rise>The highway figure is Caltrans' count on Route ${esc(hw.route)} at ${esc(hw.where)}, ${esc(miles(hw.miles_away))} from the site (the count gives no position to draw); the line ahead is that count grown with the homes around it.</p>
+            </div></div></div>`;
       },
+      mount(el, rec) {
+        const T = F.traffic || {}, box = el.querySelector("[data-map]");
+        if (!box) return;
+        const L = window.L, view = newMap(rec, box), m = view.map, items = [];
+        drawParcels(L, m, { fill: 0.3, weight: 3 });
+        let b = siteBounds(L);
+        (T.existing_signals || []).forEach((s) => {
+          if (!isNum(s.lat) || !isNum(s.lon)) return;
+          const dot = L.circleMarker([s.lat, s.lon], { radius: 8, color: "#ffffff", weight: 3, fillColor: "#1d2a24", fillOpacity: 1 })
+            .bindTooltip(`Traffic signal today at ${esc(s.street)} and ${esc(s.cross_street)}, ${esc(miles(s.miles_away))} away`).addTo(m);
+          items.push({ layer: dot, style: { opacity: 1, fillOpacity: 1 } });
+          // the map frames the site and the signals closest to it; farther ones show when the map is moved
+          if (b && isNum(s.miles_away) && s.miles_away <= 0.6) b = b.extend([s.lat, s.lon]);
+        });
+        (T.entrances || []).forEach((e) => {
+          if (!isNum(e.lat) || !isNum(e.lon)) return;
+          const k = ENTRANCES[e.signal] ? e.signal : "unknown";
+          const pin = L.marker([e.lat, e.lon], {
+            icon: L.divIcon({ className: "pr-entpin", iconSize: [0, 0], html: `<span><b class="pr-ent ${k}">${esc(ENTRANCES[k].short)}</b>${esc(e.street)}</span>` }),
+            title: `Entrance onto ${e.street}: ${ENTRANCES[k].word}`, keyboard: false,
+          }).bindTooltip(`<b>Entrance onto ${esc(e.street)}</b>: ${esc(e.text || ENTRANCES[k].word)}`).addTo(m);
+          items.push({ marker: pin });
+          if (b) b = b.extend([e.lat, e.lon]);
+        });
+        if (b) view.fit(b.pad(0.12));
+        reveal(rec, items);
+      },
+      enter: playReveal,
       charts: {
         highway: (w, h, fs) => {
           const rows = (F.traffic || {}).rows || [], xs = rows.map((r) => r.year), end = lastRow(rows);
@@ -1000,7 +1062,7 @@ export async function render(main, route, alive) {
     rec.el.innerHTML = `<div class="pr-slide pr-s-${esc(rec.def.id)}">${rec.def.html()}</div>
       <p class="pr-print-foot"><span>${esc(siteName)}</span><span>${esc(rec.def.title)}</span><span>Prepared with public records${i >= 0 ? ` · ${i + 1} of ${order.length}` : ""}</span></p>`;
     rec.el.querySelectorAll("[data-rise]").forEach((x, k) => x.style.setProperty("--i", Math.min(k, 14)));
-    rec.el.querySelectorAll(".pr-side, .pr-aside, .pr-hazards, .pr-todo-item, .pr-when-side, .pr-limitlist, .pr-twocol > div, .pr-gantt").forEach((x) => x.setAttribute("data-fit", ""));
+    rec.el.querySelectorAll(".pr-side, .pr-aside, .pr-tnotes, .pr-3dkey, .pr-hazards, .pr-todo-item, .pr-when-side, .pr-limitlist, .pr-twocol > div, .pr-gantt").forEach((x) => x.setAttribute("data-fit", ""));
     drawCharts(rec);
     fit(rec);
   }
@@ -1230,17 +1292,15 @@ export async function render(main, route, alive) {
     });
   }
   function askGround() {
-    if (!S.one) return;
-    S.groundErr = ""; S.ground = null;
+    S.Gerr = ""; S.G = null;
     sync();
-    const entry = land(cityId, parcels[0].apn);
-    entry.quick.then((q) => entry.loadGround().then((g) => {
+    api.ground(cityId, apns).then((g) => {
       if (gone) return;
-      S.ground = { parcel: q.parcel || parcels[0], H: g && g.parts && g.parts.surface ? g.parts.surface : null };
+      S.G = g || {};
       sync();
-    })).catch((e) => {
+    }, (e) => {
       if (gone) return;
-      S.groundErr = e.message || "no answer";
+      S.Gerr = e.message || "no answer";
       sync();
     });
   }
@@ -1254,7 +1314,7 @@ export async function render(main, route, alive) {
   if (!flow) go(start >= 0 ? start : 0);
   else if (start > 0) later(() => go(start), 300);
   askOutlook();
-  if (S.one && pieces.length) askGround();
+  askGround();
   // the maps of the other slides are made one by one in the background, so printing has them and moving is instant
   let next = 0;
   const warm = () => { while (next < order.length && recs.get(order[next]) && recs.get(order[next]).mounted) next++; if (next < order.length) { mount(recs.get(order[next])); later(warm, 900); } };
