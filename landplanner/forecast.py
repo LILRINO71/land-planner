@@ -343,6 +343,11 @@ def programme_of(plans):
             row["acres"] = round(row["acres"] + (u.get("acres") or 0), 1)
             row["amount"] += u.get("homes") or u.get("sq_ft") or 0
             row["trips"] += trips.get(u["id"]) or 0
+            # how the use sits with today's zoning, as the plan read it (several parcels can differ: each is kept)
+            if (u.get("acres") or 0) > 0 and u.get("fit_words") and u["fit_words"] not in row.setdefault("fit_all", []):
+                row["fit_all"].append(u["fit_words"])
+                row["fit"] = u.get("fit") if len(row["fit_all"]) == 1 else "mixed"
+                row["fit_words"] = " / ".join(row["fit_all"])
     return uses
 
 

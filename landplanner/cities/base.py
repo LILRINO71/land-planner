@@ -142,6 +142,13 @@ class CityAdapter:
         [{"title", "quote", "source_name", "source_url", "plain"}]. Optional."""
         return []
 
+    def allowed_uses(self, code, plan_name="", layer_zone=""):
+        """What the city's own code allows in a parcel's zoning: for each use, allowed outright, with a permit, or
+        not at all (the answer of uses.UseTable.answer, read from a table recorded in this repository). `plan_name`
+        is the specific plan named at the spot and `layer_zone` the zone the city's zoning map gives there.
+        Optional: None means this city's table of allowed uses has not been read, and the pages say so."""
+        return None
+
     def describe(self):
         """The city card and page headers are drawn from this."""
         return {"id": self.id, "name": self.name, "region": self.region, "centre": self.centre,

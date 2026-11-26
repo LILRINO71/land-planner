@@ -62,7 +62,7 @@ class Menifee(CityAdapter):
         "Traffic counts on city streets (only state highways are counted)",
         "Water, sewer and power capacity, and airport noise and height zones",
         "What the owner paid, and current market prices",
-        "Which uses the zone allows outright, with a permit, or not at all",
+        "What each specific plan allows (the code adopts those plans by reference; their own documents are not read)",
         "Real quotes for costs and prices (the Plan page starts from editable figures)",
     )
     links = {"development_code": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1320"}
@@ -200,6 +200,14 @@ class Menifee(CityAdapter):
             if code.startswith(prefix):
                 return kind
         return "other"
+
+    def allowed_uses(self, code, plan_name="", layer_zone=""):
+        """Read from the Development Code's tables kept in records/menifee_allowed_uses.json (see menifee_uses.py)."""
+        from . import menifee_uses
+        try:
+            return menifee_uses.table().answer(code, plan_name, layer_zone)
+        except (OSError, ValueError, KeyError) as e:
+            raise SourceError(f"the recorded table of allowed uses could not be read: {e}") from e
 
     def zoning_notes(self, code):
         return ZONE_NOTES.get(str(code or "").strip(), [])

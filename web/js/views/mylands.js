@@ -102,6 +102,9 @@ export async function render(el, params, alive) {
     if ((h.needs_zoning_change || []).length) {
       html += `<p class="cmp-change"><span class="cmp-tag warn">needs a zoning change</span> <span>for ${esc(h.needs_zoning_change.join(", ").toLowerCase())}</span></p>`;
     }
+    if ((h.needs_permit || []).length) {
+      html += `<p class="cmp-change"><span class="cmp-tag">needs a conditional use permit</span> <span>for ${esc(h.needs_permit.join(", ").toLowerCase())}</span></p>`;
+    }
     return html;
   }
   function cellFor(col, row, h, best) {

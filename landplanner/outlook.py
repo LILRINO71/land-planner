@@ -422,6 +422,11 @@ def steps(site, forecast, plans, hazard, place, housing_block=None):
     if change:
         add(1, max(2, ready), "city", f"Ask for a general plan amendment and a zone change for: {', '.join(change).lower()}",
             f"The zoning today ({zoning}) is not meant for this use. The Planning Commission and the City Council decide.", planning)
+    permit = sorted({u["label"] for u in uses if u.get("fit") == "permit"})
+    if permit:
+        add(1, max(1, ready), "city", f"Apply for a conditional use permit for: {', '.join(permit).lower()}",
+            f"The city's table of allowed uses lets this into {zoning} only with a conditional use permit: a public hearing, "
+            "and conditions the city sets.", planning)
     if review:
         add(1, 1, "city", f"Confirm that the zone allows: {', '.join(review).lower()}",
             f"In {zoning} this depends on the city's review; it may need a permit of its own.", planning)

@@ -300,6 +300,7 @@ class LandPlanner:
         if group == "quick":
             out["zone_names"] = names
             out["zoning_notes"] = city.zoning_notes(parcel.get("zoning"))
+            out["allowed_uses"] = self._allowed_uses(city, parcel, out["parts"].get("zoning"))
         return out
 
     # ---- the plan for one land
@@ -339,7 +340,23 @@ class LandPlanner:
         for part in ("surface", "terrain"):
             known = self.cache.peek(f"{city.id}/site/{parcel['apn']}/{part}")
             parts[part] = known[0] if known else None
+        parts["allowed_uses"] = self._allowed_uses(city, parcel, parts.get("zoning"))
         return parts, sources, fetched
+
+    @staticmethod
+    def _allowed_uses(city, parcel, zoning):
+        """What the city's own code allows in this parcel's zoning, from the table kept in the repository (no
+        network). None when the city's table has not been read, or its file could not be read (noted in the log)."""
+        zoning = zoning or {}
+        try:
+            answer = city.allowed_uses(parcel.get("zoning"), plan_name=zoning.get("what_it_allows") or "",
+                                       layer_zone=zoning.get("abbrev") or "")
+            if answer:
+                answer["labels"] = {u["id"]: u["label"] for u in P.USES}
+            return answer
+        except Exception as e:  # noqa: BLE001 - a broken table must not take the page down
+            noted(f"{city.id} allowed uses for {parcel.get('zoning')!r}", e)
+            return None
 
     # ---- the forecast for one land, or for several as one site
 

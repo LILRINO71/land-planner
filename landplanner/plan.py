@@ -24,8 +24,12 @@ USES = (
 )
 USE_IDS = tuple(u["id"] for u in USES)
 BUILT = ("retail", "office", "apartments", "homes", "business")
-FIT_WORDS = {"fits": "Fits the zoning today", "review": "Depends on the city's review",
-             "change": "Needs a zoning change", "unknown": "Zoning not listed"}
+# How a use sits with today's zoning. With the city's own table of allowed uses (landplanner/uses.py) each use is
+# allowed outright, allowed with a permit, or not allowed; the words then come from the table's answer. Without
+# that table (a city whose code has not been read) only the family of the zone is known, and these words are used:
+# "fits" then means "this is what the zone is for", which the page says.
+FIT_WORDS = {"fits": "What the zone is for", "permit": "Allowed with a permit",
+             "review": "Depends on the city's review", "change": "Needs a zoning change", "unknown": "Zoning not listed"}
 
 # id: (label, unit, starting value, group). All of these are assumptions the owner can change.
 ASSUMPTIONS = {
@@ -100,8 +104,8 @@ def a_class(name):
 # ---------------------------------------------------------------- the facts, tidied for the rules
 
 def zoning_fit(kind, code, kind_of):
-    """How each use sits with the zoning, from the family the zone belongs to. The city's own table of allowed
-    uses is not read yet, so "fits" means "this is what the zone is for", not "permitted"."""
+    """How each use sits with the zoning, from the family the zone belongs to. Only used for a city whose own
+    table of allowed uses is not held (see gather): "fits" then means "this is what the zone is for", not "permitted"."""
     code = str(code or "").strip().upper()
     table = {
         "commercial": {"retail": "fits", "office": "fits"},
@@ -210,6 +214,12 @@ def gather(parcel, parts, kind_of):
          "zoning_name": parcel.get("zoning_name") or "", "fire": str(parcel.get("fire_hazard_zone") or ""),
          "several_pieces": len(polys) > 1, "missing": []}
     F["fit"] = zoning_fit(F["zoning_kind"], F["zoning"], kind_of)
+    # the city's own table of allowed uses, when the app holds it: each use is then allowed outright, allowed with
+    # a permit, or not allowed, as the table says, and the family of the zone is no longer used
+    rules = parts.get("allowed_uses")
+    F["rules"] = rules if rules and rules.get("basis") == "table" and rules.get("uses") else None
+    if F["rules"]:
+        F["fit"] = {u: (F["rules"]["uses"].get(u) or {}).get("fit") or "unknown" for u in BUILT} | {"park": "fits"}
     F["stated"] = density_from_plan(parts.get("general_plan"), F["zoning_name"])
     F["lot_rule"] = lot_rule(parcel, parts, F["zoning_kind"], F["stated"])
 
@@ -411,7 +421,34 @@ def score_uses(F, count_zoning=True):
 
     def zoning(use, fits, review, change):
         fit, name = F["fit"][use], F["zoning"] or "none listed"
-        if not count_zoning:
+        if F.get("rules"):
+            # read from the city's table of allowed uses: say what the table says, and where
+            read = F["rules"]["uses"].get(use) or {}
+            status, source = read.get("status"), "City development code" + (f", {read['table']}" if read.get("table") else "")
+            row = (read.get("read_from") or [{}])[0].get("use")
+            where = f"the {read.get('zone') or name} zone" if "&" in name else f"this zone ({name})"
+            needs = f" The table adds: {read['requirements']}" if read.get("requirements") else ""
+            if needs and not needs.endswith("."):
+                needs += "."
+            tail = "" if count_zoning else " Best use leaves zoning out of the score."
+            if status == "outright":
+                text, points = f"The city's table of allowed uses permits this outright in {where} (its row “{row}”).{needs}", fits
+            elif status == "permit":
+                text = (f"The city's table allows this in {where} only with a conditional use permit (its row “{row}”): "
+                        f"a public hearing, and conditions the city sets.{needs}")
+                points = round((fits + review) / 2)
+            elif status == "no":
+                text, points = (f"The city's table prohibits this in {where} (its row “{row}”), so it would need a zone change "
+                                "through the city."), change
+            elif status == "unlisted":
+                text, points = (f"The city's table for {where} does not list this use, and the code says an unlisted use is "
+                                "not permitted. It would need a zone change through the city."), change
+            elif status == "plan":
+                text, points = str(read.get("why") or "The uses here are set by a specific plan."), review
+            else:
+                text, points = str(read.get("why") or "What this zone allows could not be read from the city's code."), 0
+            add(use, points if count_zoning else 0, text + tail, source)
+        elif not count_zoning:
             words = {"fits": "is meant for this", "review": "may allow this, depending on the city's review",
                      "unknown": "is not listed", "change": "is not meant for this, so it would need a zoning change through the city"}[fit]
             add(use, 0, f"The zoning today ({name}) {words}. Best use leaves zoning out of the score.", "City zoning")
@@ -559,7 +596,7 @@ def retail_ceiling(F, scores):
 def suggest(F, scores, A, mode):
     """Acres for each use, and the notes that explain the sizes."""
     acres, notes = F["acres"], []
-    allowed = [u for u in BUILT if mode == "best" or scores[u]["fit"] in ("fits", "review", "unknown")]
+    allowed = [u for u in BUILT if mode == "best" or scores[u]["fit"] in ("fits", "permit", "review", "unknown")]
     if not allowed:
         # open space or public land: under today's zoning there is nothing to build
         return {u: (acres if u == "park" else 0.0) for u in USE_IDS}, notes, list(BUILT)
@@ -572,7 +609,7 @@ def suggest(F, scores, A, mode):
     caps = {"retail": min(cap_retail, max(1.5, 0.35 * acres)), "office": max(3.0, 0.08 * acres)}
     if F["zoning_kind"] != "denser-housing":
         caps["apartments"] = max(4.0, (0.4 if scores["apartments"]["fit"] == "fits" else 0.25) * acres)
-    if mode != "best" and scores["business"]["fit"] == "review":
+    if mode != "best" and scores["business"]["fit"] in ("review", "permit"):
         caps["business"] = max(4.0, 0.35 * acres)
     hard = ("retail", "office")                   # these two ceilings come from the market and are never stretched
     if set(keep) <= set(caps) and sum(caps[u] for u in keep) < 0.9 * acres:
@@ -1006,7 +1043,15 @@ def advise(F, parts, mode, suggested):
     if mode == "best" and kind not in ("open-space", "public", "other"):
         need = [u["label"].lower() for u in USES if u["id"] in BUILT and suggested[u["id"]] and F["fit"][u["id"]] == "change"]
         if need:
-            out.append("Best use ignores today's zoning. In this mix, " + ", ".join(need) + " would need a zoning change through the city, with public hearings.")
+            out.append("Best use ignores today's zoning. In this mix, " + ", ".join(need) + " would need a zoning change through the city, with public hearings."
+                       + (" That is read from the city's own table of allowed uses." if F.get("rules") else ""))
+    permit = [u["label"].lower() for u in USES if u["id"] in BUILT and suggested[u["id"]] and F["fit"][u["id"]] == "permit"]
+    if permit and kind not in ("open-space", "public", "other"):
+        out.append("In this mix, " + ", ".join(permit) + (" is" if len(permit) == 1 else " are") + " allowed by today's zoning only with a "
+                   "conditional use permit: an application to the city, a public hearing, and conditions the city sets.")
+    if not F.get("rules") and kind != "other":
+        out.append("The city's table of allowed uses is not read for this city, so “what the zone is for” comes from the kind "
+                   "of zone alone. Check each use against the city's own code before relying on it.")
     if "very high" in F["fire"].lower() or "high" in F["fire"].lower():
         out.append(f"The parcel is in a state fire hazard zone ({F['fire']}). Expect fire-safe building rules, wider clearings and a second way out to be asked for.")
     if not F["frontage"] and F["acres"] and any(suggested[u] for u in BUILT):
@@ -1040,6 +1085,34 @@ def clean_settings(settings):
     if land is not None and 0 <= land <= 1e11:
         out["land_cost"] = land
     return out
+
+
+def fit_words(F, use, fit):
+    """The short words beside a use: the table's own answer when the city's table is held, else the family's."""
+    if F.get("rules"):
+        return (F["rules"]["uses"].get(use) or {}).get("words") or FIT_WORDS[fit]
+    return FIT_WORDS[fit]
+
+
+def fit_read(F, use):
+    """What the city's table says about one use, for the page: the rows it was read from and close relatives."""
+    if not F.get("rules"):
+        return None
+    read = F["rules"]["uses"].get(use) or {}
+    return {k: read.get(k) for k in ("status", "words", "permit", "zone", "table", "read_from", "related", "requirements",
+                                     "why", "by_zone") if read.get(k)}
+
+
+def zoning_rules(F):
+    """Where "allowed" comes from on this plan: the city's recorded table (with its source and the day it was read),
+    or only the kind of zone."""
+    rules = F.get("rules")
+    if not rules:
+        return {"basis": "family", "says": "The city's table of allowed uses is not read for this city. “What the zone is for” "
+                                           "comes from the kind of zone alone; it is not the city's list of permitted uses."}
+    return {"basis": "table", "source": rules.get("source"), "says": rules.get("says") or "",
+            "zones": [{k: p.get(k) for k in ("zone", "kind", "table", "section", "url", "read_on", "says", "plan", "same_as") if p.get(k)}
+                      for p in rules.get("parts") or []]}
 
 
 def make_plan(parcel, parts, settings=None, kind_of=lambda code: "other"):
@@ -1076,13 +1149,15 @@ def make_plan(parcel, parts, settings=None, kind_of=lambda code: "other"):
         uses.append({**u, "acres": acres[u["id"]], "suggested_acres": suggested[u["id"]],
                      "share_pct": round(100 * acres[u["id"]] / F["acres"], 1) if F["acres"] else 0.0,
                      "score": s["score"] if s else None, "fit": s["fit"] if s else "fits",
-                     "fit_words": FIT_WORDS[s["fit"]] if s else "Allowed in every zone",
+                     "fit_words": fit_words(F, u["id"], s["fit"]) if s else "Part of any project",
+                     "fit_read": fit_read(F, u["id"]),
                      "reasons": s["reasons"] if s else [], **{k: v for k, v in amount[u["id"]].items() if k != "acres"}})
     return {
         "acres": F["acres"], "mode": settings["mode"], "edited": edited, "uses": uses, "notes": notes, "advice": advice,
         "nothing_to_build": not any(suggested[u] for u in BUILT),
         "left_out": [{"use": u, "label": next(x["label"] for x in USES if x["id"] == u), "score": scores[u]["score"],
-                      "fit": scores[u]["fit"], "fit_words": FIT_WORDS[scores[u]["fit"]]} for u in dropped],
+                      "fit": scores[u]["fit"], "fit_words": fit_words(F, u, scores[u]["fit"])} for u in dropped],
+        "zoning_rules": zoning_rules(F),
         "recorded_acres": F["recorded_acres"], "outline_acres": F["outline_acres"],
         "facts": {"zoning": F["zoning"], "zoning_name": F["zoning_name"], "zoning_kind": F["zoning_kind"], "frontage": _plain(F["frontage"]),
                   "corner": _plain(F["corner"]), "streets": [_plain(s) for s in F["streets"][:8]], "highway": F["highway"],
@@ -1104,6 +1179,7 @@ def headline(plan):
     return {"mode": plan["mode"], "edited": plan["edited"], "nothing_to_build": plan["nothing_to_build"], "uses": uses,
             "largest_use": max(built, key=lambda u: u["acres"])["label"] if built else None,
             "needs_zoning_change": [u["label"] for u in built if u["fit"] == "change"],
+            "needs_permit": [u["label"] for u in built if u["fit"] == "permit"],
             "homes": plan["economy"]["homes"], "floor_space_sq_ft": plan["economy"]["floor_space_sq_ft"],
             "jobs": plan["economy"]["jobs"], "residents": plan["economy"]["residents"],
             "trips_per_day": plan["traffic"]["per_day"], "signals_to_study": plan["traffic"]["signals_to_study"],

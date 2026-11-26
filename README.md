@@ -75,6 +75,9 @@ release workflow tests, builds and uploads it.
 - **My lands**: the parcels you saved, and a table that compares them side by side (mix, homes, jobs, trips, land
   sales, costs, profit) under today's zoning or best use.
 - **Each land** has its own pages: Overview, Zoning, Surroundings, Terrain 3D, Traffic, and Plan.
+  **Zoning** shows what the city's own code allows in the parcel's zone: every use the code's table lists, as
+  allowed outright, allowed with a conditional use permit, or not allowed, with the table number, a link to it and
+  the day it was read (see "Which uses each zone allows" below).
   Surroundings also maps what is being built nearby (the city's project lists), schools and traffic signals;
   Overview links to Google Maps and Street View.
 - **Plan** is the prediction: a suggested split of the land into shops, offices, apartments, houses, business
@@ -82,6 +85,9 @@ release workflow tests, builds and uploads it.
   building that kind of project nearby (from the city's own project lists); traffic, entrances and signals worth
   studying; a cost sheet you can edit or import from a .csv file; land sales and profit; jobs, residents and taxes.
   Two modes: follow today's zoning, or best use (what the location supports, which may need a zoning change).
+  Under today's zoning a use is only in the mix if the city's table allows it, and each use is marked "allowed
+  outright" or "allowed with a conditional use permit"; in best use, a use the table does not allow is marked as
+  needing a zone change. The same mark is carried to the Forecast, the slides, the one-page summary and My lands.
   Every number is tagged as measured from a record or as a starting figure to replace with your own.
 
 ### Where your data is kept
@@ -97,7 +103,8 @@ Copy the `data/` folder to back it up or to move to another computer.
 
 ### How the prediction works
 
-`landplanner/plan.py` scores each use from the facts the app holds: the zoning and what it is meant for, the
+`landplanner/plan.py` scores each use from the facts the app holds: the zoning and what the city's table of
+allowed uses says about that use in it (outright, with a permit, or not at all), the
 nearest state highway's traffic count (Caltrans), the class of the street the parcel fronts and existing signals
 (city), people and homes within 1, 3 and 5 miles (2020 Census), the zoning of the land around it, the slope of the
 ground (USGS), and what is on the city's project lists nearby. Shops are held to the size of centre the nearby
@@ -109,7 +116,28 @@ the back, drainage toward the lowest ground. These are rules of thumb, stated on
 python -m unittest discover -s tests                offline checks (recorded answers, no network)
 python tools/menifee.py selfcheck                   did every public source answer just now?
 python tests/record_fixtures.py forecast            re-record the forecast's sources (needs the internet)
+python tools/record_allowed_uses.py                 re-read the city's tables of allowed uses (needs the internet)
 ```
+
+### Which uses each zone allows
+
+The City of Menifee Development Code (Title 9 of the municipal code) has one "Allowed Uses and Approval
+Requirements" table per family of zones. `tools/record_allowed_uses.py` reads all six from the city's published
+code and keeps them, row for row, in `landplanner/cities/records/menifee_allowed_uses.json`, with the table
+number, the code section, the link and the day it was read. The app reads only that file: it never reads the
+city's code while it runs. Run the tool again when the city changes its code.
+
+- **P** is a permitted use (allowed outright), **C** needs a conditional use permit, **--** is prohibited. A use the
+  table does not list is not permitted: the code says so itself, and the page quotes it.
+- **Specific plans** (Menifee has 19) set their own uses. The code adopts each by reference, so the page names the
+  plan and says its document has not been read. It never answers from the tables instead.
+- **Planned developments** (PDO-1 to PDO-7) follow the zone the code names for each, quoted on the page. One of
+  them follows two zones in different parts, and the page says it depends on the part.
+- A zone the tables have no column for, a cell the city left blank, a row that could not be matched: each is
+  shown as exactly that. Nothing is filled in.
+- Land Planner plans in six broad uses; the code lists well over a hundred. The match between them is in one
+  file, `landplanner/cities/menifee_uses.py`, and is shown at the foot of every Zoning page: for each of the six,
+  the one row of the code that decides, and the close relatives shown beside it.
 
 ### When a source fails
 
@@ -182,8 +210,13 @@ switch, which the presentation shares.
 - Water, sewer and power capacity; airport noise and height zones (only the county serves them, behind a robot
   check); soil tests. Flood, fire, faults, wetlands and habitat are read, but a map is not a study.
 - Real prices and quotes. The Plan page starts from editable figures; replace them with the owner's own.
-- Which uses each zone allows outright, with a permit, or not at all (the city's table is not read yet; "fits the
-  zoning" means "this is what the zone is for").
+- What each specific plan allows. About a third of Menifee's parcels are inside one; the code adopts those plans
+  by reference and their own documents are not read, so those lands are marked "set by the specific plan".
+- Permits other than the conditional use permit (plot plans, design review, tract maps), the development
+  standards beside each table (setbacks, heights, lot sizes other than the rural minimums) and the special rules
+  an allowed use still has to meet. The table's own "additional requirements" note is shown; the chapters it
+  points to are not read.
+- Changes to the city's code after the day the table was read (the day is on every page that uses it).
 - City and agency fees.
 - Riverside County's own parcel site blocks automated reading, so the city's copy is used instead.
 - The aerial photo is the newest public one (its date is shown under each map); newer buildings are not in it.
@@ -207,4 +240,5 @@ owner, his engineer and the city's planners.
 8. The wider picture: the city's economy, weather, hazards, what is close by, residents, the steps to take. *(done)*
 9. Present to the city: the same facts as full-screen slides that print one per page. *(done)*
 10. One part at a time on the Forecast and Plan pages; the city's state housing target; the one-page summary. *(done)*
-11. Next: real quotes from the owner; the zone-by-zone table of allowed uses; a second city.
+11. The city's zone-by-zone table of allowed uses, on the Zoning page and in the Plan. *(done)*
+12. Next: real quotes from the owner; a second city.

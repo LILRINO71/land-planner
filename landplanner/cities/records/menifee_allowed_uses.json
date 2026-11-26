@@ -1,0 +1,5248 @@
+{
+ "city": "Menifee",
+ "code": "City of Menifee Development Code (Menifee Municipal Code, Title 9: Planning and Zoning)",
+ "publisher": "City of Menifee, published on enCodePlus",
+ "home": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1320",
+ "read_on": "2026-11-26",
+ "letters": {
+  "P": "permitted",
+  "C": "conditional use permit",
+  "--": "prohibited",
+  "NA": "not applicable to the zone",
+  "": "left blank in the city's table"
+ },
+ "tables": [
+  {
+   "table": "Table 9.125.030-1",
+   "title": "Table 9.125.030-1 Agricultural and Rural Residential Zones - Allowed Uses and Approval Requirements",
+   "zones": [
+    "AG",
+    "RM",
+    "RR5",
+    "RR2",
+    "RR1",
+    "RR1/2"
+   ],
+   "rows": [
+    {
+     "use": "Accessory Dwelling Unit (ADU)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.25 (Special Housing Types)"
+    },
+    {
+     "use": "Bed & breakfast establishment",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.245 (Bed & Breakfast Uses)"
+    },
+    {
+     "use": "Congregate care facilities",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.270 (Care Facilities)"
+    },
+    {
+     "use": "Duplex (two-family dwelling)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Emergency shelters",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Employee Housing",
+     "case": "6 or fewer residents",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Employee Housing",
+     "case": "No more than 12 units or 36 beds",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Family day care home, large",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.60 (Large Family Day Care Permit)"
+    },
+    {
+     "use": "Family day care home, small",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Farmworker Housing",
+     "case": "6 or fewer residents",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Farmworker Housing",
+     "case": "No more than 12 units or 36 beds",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Group Residential Facility",
+     "case": "6 or fewer residents",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Group Residential Facility",
+     "case": "7 or more residents",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Guest house",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Home Occupation",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.255 (Home Occupation and Home-Based Business)"
+    },
+    {
+     "use": "Home-Based Businesses",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.255 (Home Occupation and Home-Based Business)"
+    },
+    {
+     "use": "Junior Accessory Dwelling Unit (JADU)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Manufactured Home",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Mobile home park",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Multiple family",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Residential Care Facility",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Short-term rentals (less than 30 days)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Single- family detached",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Single-room occupancy units/Efficiency Units",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Supportive housing",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Transitional housing",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Animals, Small (e.g. hamsters, rabbits, chinchillas, and similar sized animals)",
+     "case": "Non-Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Small (e.g. hamsters, rabbits, chinchillas, and similar sized animals)",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Medium (e.g. sheep, goats, pigs, and similar sized animals)",
+     "case": "Non-commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Medium (e.g. sheep, goats, pigs, and similar sized animals)",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Large (e.g. cows, horses, camels, llamas, and other similar sized animals)",
+     "case": "Non-commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Large (e.g. cows, horses, camels, llamas, and other similar sized animals)",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "--",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animal rescue",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Apiary (non-commercial)",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Aquaculture (commercial raising of fish, frogs, shellfish, algae, etc.)",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Aviary (non-commercial)",
+     "case": "Fewer than 50 birds.",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Aviary (non-commercial)",
+     "case": "Greater than 50 birds",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Cemetery or Mausoleum",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Collection Containers",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Farms and agricultural operations",
+     "case": "Non-commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "C",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Farms and agricultural operations",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fowl, non-crowing (Non-commercial)",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Fowl, crowing (non-commercial)",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Future Farmers of America and 4-H Educational Programs",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Educational Institution",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Event Facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Golf Courses",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Governmental facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Kennels and catteries",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "--",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Marijuana dispensaries, mobile marijuana dispensaries, marijuana cultivation, and marijuana processing",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Nurseries (wholesale and open to the public)",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "--",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "--"
+     },
+     "requirements": "Does not include cultivation of marijuana/cannabis."
+    },
+    {
+     "use": "Parks and recreation areas",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "P",
+      "RR5": "P",
+      "RR2": "P",
+      "RR1": "P",
+      "RR1/2": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Petting Zoo",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping"
+    },
+    {
+     "use": "Public utility facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Religious Facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Shooting Ranges",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "--",
+      "RM": "--",
+      "RR5": "--",
+      "RR2": "--",
+      "RR1": "--",
+      "RR1/2": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Stable, riding academy, large animal boarding",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "P",
+      "RM": "--",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Vineyards and wineries",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wireless Communication Facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "AG": "C",
+      "RM": "C",
+      "RR5": "C",
+      "RR2": "C",
+      "RR1": "C",
+      "RR1/2": "C"
+     },
+     "requirements": "Chapter 9.290 (Wireless Communication Facilities)"
+    }
+   ],
+   "footnotes": [],
+   "chapter": "9.125",
+   "chapter_name": "Agricultural and Rural Residential Zones",
+   "section": "9.125.030",
+   "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1326",
+   "read_on": "2026-11-26",
+   "rules": {
+    "letters": "Where indicated with a letter “P” the use shall be a permitted use. A letter “C” indicates the use shall be conditionally permitted subject to the approval of a conditional use permit. Where indicated with a “--,” the use is prohibited within the zone.",
+    "unlisted": "Uses not specifically listed in this table shall be considered not permitted in all of the listed zones."
+   }
+  },
+  {
+   "table": "Table 9.130.030-1",
+   "title": "Table 9.130.030-1 Residential Zones - Allowed Uses and Approval Requirements",
+   "zones": [
+    "LDR-1",
+    "LDR-2",
+    "LMDR",
+    "MDR",
+    "MHDR",
+    "HDR"
+   ],
+   "rows": [
+    {
+     "use": "Accessory Dwelling Unit (ADU)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Affordable Housing Development with a minimum of 20 percent of units affordable to lower income households on nonvacant HDR zoned sites identified to accommodate lower income RHNA in the current housing element and used in a prior housing element.1",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "NA",
+      "LDR-2": "NA",
+      "LMDR": "NA",
+      "MDR": "NA",
+      "MHDR": "NA",
+      "HDR": "P"
+     },
+     "requirements": "Per Government Code §65583.2(i), such use shall be by-right and shall not require discretionary review that would constitute a “project” as defined in Section 21100 of the Public Resources Code (California Environmental Quality Act “CEQA”) Subject to Multifamily Objective Design Standards"
+    },
+    {
+     "use": "Affordable Housing Development with a minimum of 20 percent of units affordable to lower income households on vacant HDR zoned sites identified to accommodate lower income RHNA in the current housing element and used in two prior housing elements.2",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "NA",
+      "LDR-2": "NA",
+      "LMDR": "NA",
+      "MDR": "NA",
+      "MHDR": "NA",
+      "HDR": "P"
+     },
+     "requirements": "Per Government Code §65583.2(i), such use shall be by-right and shall not require discretionary review that would constitute a “project” as defined in Section 21100 of the Public Resources Code (California Environmental Quality Act “CEQA”) Subject to Multifamily Objective Design Standards"
+    },
+    {
+     "use": "Bed & breakfast establishment",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.245 (Bed and Breakfast)"
+    },
+    {
+     "use": "Congregate care facilities",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Duplex (two-family dwelling)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Emergency shelters",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "P"
+     },
+     "requirements": "As mandated by State law and City Housing Element. Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Family day care home, large",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.60 (Large Family Day Care Permit)"
+    },
+    {
+     "use": "Family day care home, small",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Group Residential Facility",
+     "case": "Six or Fewer Residents",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Group Residential Facility",
+     "case": "Seven or More Residents",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Guest house, accessory to single-family detached",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Home Occupation",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.255 (Home Occupation and Home-Based Business)"
+    },
+    {
+     "use": "Home-Based Businesses",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.255 (Home Occupation and Home-Based Business)"
+    },
+    {
+     "use": "Junior Accessory Dwelling Unit (JADU)",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Low Barrier Navigation Center",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Manufactured Home",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Mobile home park",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Multiple family",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Residential Care Facility",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Short-term rental",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Single- family detached",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Single-room occupancy units",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Supportive housing",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Transitional housing",
+     "group": "RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Animals, Small (e.g. hamsters, rabbits, chinchillas, and similar sized animals)",
+     "case": "Non-Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Small (e.g. hamsters, rabbits, chinchillas, and similar sized animals)",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Medium (e.g. sheep, goats, pigs, and similar sized animals)",
+     "case": "Non-commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Medium (e.g. sheep, goats, pigs, and similar sized animals)",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Large (e.g. cows, horses, camels, llamas, and other similar sized animals)",
+     "case": "Non-commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Large (e.g. cows, horses, camels, llamas, and other similar sized animals)",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Apiary (non-commercial)",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Collection Containers",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Educational Institutions",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Farms and agricultural operations",
+     "case": "Non-commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Farms and agricultural operations",
+     "case": "Commercial",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Future Farmers of America and 4-H Programs",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Fowl, Non Crowing",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Golf courses",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Governmental facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Kennels and catteries",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Marijuana dispensaries, mobile marijuana dispensaries, marijuana cultivation, or marijuana processing",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "--",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Nurseries",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "--",
+      "LMDR": "--",
+      "MDR": "--",
+      "MHDR": "--",
+      "HDR": "--"
+     },
+     "requirements": "Does not include cultivation of marijuana/cannabis."
+    },
+    {
+     "use": "Parks and recreation areas",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Public utility facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Religious Institutions",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Temporary real estate tract offices",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "P",
+      "LDR-2": "P",
+      "LMDR": "P",
+      "MDR": "P",
+      "MHDR": "P",
+      "HDR": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wireless Communication Facilities",
+     "group": "NON-RESIDENTIAL USES",
+     "cells": {
+      "LDR-1": "C",
+      "LDR-2": "C",
+      "LMDR": "C",
+      "MDR": "C",
+      "MHDR": "C",
+      "HDR": "C"
+     },
+     "requirements": "Chapter 9.290 (Wireless Communication Facilities)"
+    }
+   ],
+   "footnotes": [
+    "1 For list of sites, refer to the latest adopted Housing Element (For the 6th Cycle, 2021-2029 Housing Element, these sites are listed in Figure B-1 and Table B-12 of Appendix B) 2 For list of sites, refer to the latest adopted Housing Element"
+   ],
+   "chapter": "9.130",
+   "chapter_name": "Residential Zones",
+   "section": "9.130.030",
+   "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1331",
+   "read_on": "2026-11-26",
+   "rules": {
+    "letters": "Where indicated with a letter “P” the use shall be a permitted use. A letter “C” indicates the use shall be conditionally permitted subject to the approval of a conditional use permit. Where indicated with a “--,” the use is prohibited within the zone.",
+    "unlisted": "Uses not specifically listed in this table shall be considered not permitted in all of the listed zones."
+   }
+  },
+  {
+   "table": "Table 9.135.030-1",
+   "title": "Table 9.135.030-1 Commercial and Industrial Zones - Allowed Uses and Approval Requirements",
+   "zones": [
+    "CR",
+    "CO",
+    "BP",
+    "HI"
+   ],
+   "rows": [
+    {
+     "use": "Adult businesses",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Airport",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Ambulance services",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Amusement arcade",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Amusement park, (including multiple activities such as simulated flying, racing, mini-golf, etc.)",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Amusement park, (including multiple activities such as simulated flying, racing, mini-golf, etc.)",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Animals, Small (e.g. hamsters, rabbits, chinchillas, and similar sized animals)",
+     "case": "Non-Commercial",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animals, Small (e.g. hamsters, rabbits, chinchillas, and similar sized animals)",
+     "case": "Commercial",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Animal hospitals and veterinary services / (with outdoor facilities)",
+     "case": "Animal hospitals and veterinary services",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Animal hospitals and veterinary services / (with outdoor facilities)",
+     "case": "(with outdoor facilities)",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Animal Rescue",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Antique shops, pawn shops, thrift stores",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": "Outside collection bins prohibited"
+    },
+    {
+     "use": "Art gallery, library, reading room, museum.",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Art supply shops and studios.",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Auction Houses",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Auditoriums, event centers and assembly areas, including live entertainment",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Auditoriums, event centers and assembly areas, including live entertainment",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Bakery goods distributors.",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Bakery shops, Coffeehouse, Cybercafé, Delicatessens, Ice cream shops",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Banks and financial institutions.",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Banquet facilities.",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Batting cages – indoor / Outdoor",
+     "case": "Batting cages – indoor",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Batting cages – indoor / Outdoor",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Billiard and pool halls, Bowling alleys",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Breweries, distilleries, and wine making facilities with on-site tasting room and sales for off-site consumption",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Business services",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cannabis Dispensary (Recreational Retail Storefront)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cannabis Cultivation, Delivery, Dispensary, and Processing",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cannabis, Medicinal Cannabis Delivery Service (Physical Delivery Logistics Location)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.275 (Hookah and Cannabis Uses)"
+    },
+    {
+     "use": "Car washes",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": ""
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Caretaker residence or on-site operator residence, only as accessory to primary use",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Catering services",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cemeteries and mausoleums",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Clinics, including but not limited to medical and urgent care",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Collection Containers",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Commercial television and radio broadcast structures",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Concrete batch plants and asphalt plants",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Congregate care facility",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Contractor, landscape and building materials storage yard",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Convenience stores, not including the sale of motor vehicle fuel",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Dance Halls, night clubs, discos, cabarets, cocktail lounges, lodges and incidental dancing areas, and similar facilities where dancing is the principal use",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Day Care Center",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Department stores",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Drug Store",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Dry cleaning and laundromats (except uniform supply and industrial launderers);",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Educational Institution",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Emergency shelters",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": "As mandated by State law and City Housing Element. Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Battery Energy Storage Facility, Utility Scale",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.297 (Energy Storage Facilities)"
+    },
+    {
+     "use": "Equipment sales and rental, Large (including large vehicles, trucks with beds over 18 feet in length, eighteen plus (18+) wheelers, and construction equipment)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Equipment sales and rental, Small (including rototillers, power mowers, sanders, power saws, cement and plaster mixers not exceeding 20 cubic feet in capacity and other similar equipment)",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fast food/quick service, with drive-through",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fast food/quick service, without drive-through",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Feed and grain sales",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fertilizer production and processing (organic or inorganic)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Funeral parlor, mortuary with crematorium",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Funeral parlor, mortuary without crematorium",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Gas station with/without convenience store, with or without alcoholic beverage sales, and with or without car wash",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "General retail",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Golf Course",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Golf driving range (not in association with full scale course)",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Governmental facility",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Grocery Store",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Hardware and Building Supplies",
+     "case": "without outdoor sales/storage",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hardware and Building Supplies",
+     "case": "with outdoor sales/storage",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Health, fitness, dance, martial arts studio",
+     "case": "<5,000 sq.ft.",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Health, fitness, dance, martial arts studio",
+     "case": ">5,000 sq.ft",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Heliports",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hospital",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hotels and resort hotels",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Kennel or cattery",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Live/work units",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Lumber yard",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Handcraft",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Light-Intensity",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "C",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Medium-Intensity",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "C",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Heavy-Intensity",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Massage Establishment",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Material storage yard",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Membership clubs, organizations, and lounges",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Mobile home sales and storage, trailer sales and rental house trailers",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motels",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motocross Facilities, Bicycle (BMX) course",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motor vehicle body, paint and upholstery shops",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle parts and supply stores",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motor vehicle repair/services (e.g. tune-ups, emission tests, brakes, tires, batteries, electrical)",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle repairs/services - major (e.g., engine and transmission repair/rebuild, etc.)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle sales and rental (including outdoor display area and repairs associated with sales)",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle wholesale, with no outdoor display",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motor vehicle impound, wrecking and junk yards",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle, trailer or boat storage",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)",
+     "cell_notes": {
+      "BP": "indoor only"
+     }
+    },
+    {
+     "use": "Multi-family dwellings in commercial zones per AB 2011 & SB 6",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types) must meet affordable or mixed income criteria per AB 2011 or criteria per SB 6."
+    },
+    {
+     "use": "Nurseries and garden supply, indoor and outdoor (retail sales only)",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": "Does not include cultivation of cannabis."
+    },
+    {
+     "use": "Offices, professional and medical",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Parking lots and parking structures",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Personal Services",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Public utility substations and storage buildings",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Radio and television broadcasting and recording studios",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Recreational vehicle, trailer and mobile home sales and rental.",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Recycling collection facilities",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.280 (Recycling Facilities)"
+    },
+    {
+     "use": "Recycling processing facilities",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.280 (Recycling Facilities)"
+    },
+    {
+     "use": "Religious institutions",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Research & Development (except noxious, explosives, or dangerous materials)",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Restaurant",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol sales)"
+    },
+    {
+     "use": "Residential care facility",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "C",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Restaurants with breweries, distilleries and/or wine making facilities with sales for on-site and off-site consumption",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.250 (Alcohol sales)"
+    },
+    {
+     "use": "Self-Storage, public storage facilities",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Shooting range; Indoor",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Shooting range; Outdoor",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Simulated shooting games, Indoor (laser tag, etc.)",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Simulated shooting games, Outdoor (paintball, etc.)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Solid Waste Disposal",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Specialized Retail",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Sports and recreational facilities (not including motor driven vehicles and riding academies, but including archery ranges, athletic playgrounds, athletic fields, sports arenas, skating rinks, skate parks stadiums, and commercial swimming pools)",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Sports and recreational facilities (not including motor driven vehicles and riding academies, but including archery ranges, athletic playgrounds, athletic fields, sports arenas, skating rinks, skate parks stadiums, and commercial swimming pools)",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Studios for professional work in or teaching of any form of fine arts",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "C",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Swap Meets (Indoor only)",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": "All activities must be conducted indoors."
+    },
+    {
+     "use": "Tattoo Establishments",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "--"
+     },
+     "requirements": "See allowed use - \"Personal Services\""
+    },
+    {
+     "use": "Theater",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Tourist information centers",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Towing services (with tow truck parking - no auto storage)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Towing services (with tow truck parking and auto storage)",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Transportation Stations (bus, railroad and taxi)",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Trucking and freighting operations",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Uniform supplier and industrial launderers",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Utility offices, uses, and structures",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "P",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Vehicle storage and impoundment within an enclosed building",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "P",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Vocational/trade school;",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "P",
+      "HI": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehouse (expect noxious, explosives, or dangerous materials)",
+     "group": "",
+     "cells": {
+      "CR": "",
+      "CO": "",
+      "BP": "",
+      "HI": ""
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fulfillment Center",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehousing, logistics and distribution facility",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "--",
+      "HI": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehouse/club store, Standalone facility 50,000 sq. ft. or larger",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wholesale businesses with samples on the premises but not including storage",
+     "group": "",
+     "cells": {
+      "CR": "P",
+      "CO": "--",
+      "BP": "P",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wholesale stores and distributors",
+     "group": "",
+     "cells": {
+      "CR": "--",
+      "CO": "--",
+      "BP": "C",
+      "HI": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wireless Communication Facilities",
+     "group": "",
+     "cells": {
+      "CR": "C",
+      "CO": "C",
+      "BP": "C",
+      "HI": "C"
+     },
+     "requirements": "Chapter 9.290 (Wireless Communications Facilities)"
+    }
+   ],
+   "footnotes": [],
+   "chapter": "9.135",
+   "chapter_name": "Commercial and Industrial Zones",
+   "section": "9.135.030",
+   "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1336",
+   "read_on": "2026-11-26",
+   "rules": {
+    "letters": "Where indicated with a letter “P” the use shall be a permitted use. A letter “C” indicates the use shall be conditionally permitted subject to the approval of a conditional use permit. Where indicated with a “--,” the use is prohibited within the zone.",
+    "unlisted": "Uses not specifically listed in this table shall be considered not permitted in all of the listed zones."
+   }
+  },
+  {
+   "table": "Table 9.140.030-1",
+   "title": "Table 9.140.030-1 Economic Development Corridors Zones Allowed Uses and Approval Requirements",
+   "zones": [
+    "EDC-NG",
+    "EDC-MB",
+    "EDC-CC",
+    "EDC-NR",
+    "EDC-SG"
+   ],
+   "rows": [
+    {
+     "use": "Accessory dwelling units",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "As allowed by State law"
+    },
+    {
+     "use": "Adult businesses",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Airport",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Ambulance services",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Amusement and game arcade",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "P",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Amusement park(including multiple activities such as simulated flying, racing, mini-golf, etc.)",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Amusement park(including multiple activities such as simulated flying, racing, mini-golf, etc.)",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Art gallery, art studio, library, reading room, museum",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Auction Houses",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Auction Houses",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Auditoriums, event centers and assembly areas, including live entertainment",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "P",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Auditoriums, event centers and assembly areas, including live entertainment",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Banks and financial institutions",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Batting cages – indoor / Outdoor",
+     "case": "Batting cages – indoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Batting cages – indoor / Outdoor",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Billiard and pool halls, Bowling alleys",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "P",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Breweries, distilleries, and wine making facilities with on-site tasting room and sales for off-site consumption",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Business Services",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cannabis Dispensary (Recreational Retail Storefront)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cannabis, Cultivation, Delivery, Dispensary, and Processing",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cannabis, Medicinal Cannabis Delivery Service (Physical Delivery Logistics Location)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Car washes",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "P",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Caretaker residence or on-site operator residence, only as accessory to primary use",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Catering services",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": "Includes truck parking"
+    },
+    {
+     "use": "Cemeteries, crematories and mausoleums",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "--",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Clinics, including but not limited to medical and urgent care.",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Collection Containers",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Commercial radio and television broadcasting",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Community center",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Concrete batch plants and asphalt plants",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Congregate care facility",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Contractor, landscape and building materials storage yards (new)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Contractor, landscape and building materials storage yards (legally existing as of the effective date of this ordinance)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Convalescent hospital/care facility",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "P",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Dance Halls, night clubs, discos, cabarets, cocktail lounges, lodges and incidental dancing areas, and similar facilities where dancing is the principal use",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Day Care Center",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Dry cleaning and laundromat (except uniform supply and industrial launderers);",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "C",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Educational Institution",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Emergency shelters",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "As mandated by State law and City Housing Element. Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Equipment (new) sales, Large (including large vehicles, trucks with beds over 18 feet in length, eighteen plus (18+) wheelers, and construction equipment)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "C"
+     },
+     "requirements": "May not be located within 1,000 feet of the freeway right-of-way."
+    },
+    {
+     "use": "Equipment (new) sales Small (including rototillers, power mowers, sanders, power saws, cement and plaster mixers not exceeding 20 cubic feet in capacity and other similar equipment)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "May not be located within 1,000 feet of the freeway right-of-way."
+    },
+    {
+     "use": "Fast food/quick service, with drive-through;",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fast food/quick service, without drive-through",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Feed and grain sales",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "P",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fertilizer production and processing organic or inorganic",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Gas station with or without a convenience store, with or without alcoholic beverage sales, and with or without car wash",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales). In SG-May not be located south of Scott Road."
+    },
+    {
+     "use": "General Retail",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Golf Course",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Golf driving range (not in association with full scale course)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Governmental facility",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Grocery Store, Drug Store",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Guns and ammunition store",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hardware or Building Supplies Sales",
+     "case": "without outdoor sales/storage",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hardware or Building Supplies Sales",
+     "case": "with outdoor sales/storage",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Health, fitness, dance, martial arts studio",
+     "case": "<5,000 sq.ft.",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Health, fitness, dance, martial arts studio",
+     "case": ">5,000 sq.ft",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Heliports",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hospital",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hotels and resort hotels",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Kennel or cattery",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.235 (Animal Keeping)"
+    },
+    {
+     "use": "Live/work units (2)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Low Barrier Navigation Center",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types)"
+    },
+    {
+     "use": "Manufacturing, Handcraft",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "P",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Light-Intensity",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "P",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Medium-Intensity",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Manufacturing, Heavy-Intensity",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Massage Establishment",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Meat packaging plants, poultry and egg processing, processing and rendering of fats and oils",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Membership clubs, organizations, and lounges",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Mobile home sales and storage, trailer sales and rental house trailers",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motocross Facilities, Bicycle (BMX) course",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motor vehicle body, paint and upholstery shops",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "--",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle repair/services (e.g. tune-ups, emission tests, brakes, tires, batteries, electrical",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "C",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle repairs - major (e.g., engine and transmission repair/rebuild, etc.)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "--",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle sales and rental (including outdoor display area and repairs associated with sales)",
+     "case": "Automobiles Sales",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses). *P - Permitted in the EDC-CC Auto Overlay",
+     "cell_notes": {
+      "EDC-CC": "see the note"
+     }
+    },
+    {
+     "use": "Motor vehicle sales and rental (including outdoor display area and repairs associated with sales)",
+     "case": "Automobile Rental",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses). *P - Permitted in the EDC-CC Auto Overlay"
+    },
+    {
+     "use": "Motor vehicle sales and rental (including outdoor display area and repairs associated with sales)",
+     "case": "Boats and RVs Sales and Rental",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses). *P - Permitted in the EDC-CC Auto Overlay"
+    },
+    {
+     "use": "Motor vehicle wholesale, with no outdoor display",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motor vehicle wrecking and junk yards",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": "Chapter 9.240 (Motor Vehicle and Related Uses)"
+    },
+    {
+     "use": "Motor vehicle, trailer or boat storage –",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motor vehicle, trailer or boat storage –",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Motorcycle sales/service",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "P",
+      "EDC-CC": "C",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Multi-family dwellings",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Subject to Section 9.140.050 (Special Requirements for Mixed Uses and Residential Uses in EDC Zones). May not be located within 1,000 feet of the I-215 right-of-way."
+    },
+    {
+     "use": "Multi-family dwellings in commercial zones per AB 2011 & SB 6.",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "--"
+     },
+     "requirements": "Chapter 9.295 (Special Housing Types) must meet affordable or mixed-income criteria per AB 2011 or criteria per SB6."
+    },
+    {
+     "use": "Natural gas, above ground storage",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Nurseries and garden supply, indoor and outdoor (retail sales only)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Does not include cultivation of marijuana/cannabis. No outdoor bulk materials."
+    },
+    {
+     "use": "Offices (professional and medical)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Outdoor dining",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.260 (Outdoor Sales, Display, and Dining)"
+    },
+    {
+     "use": "Parking lots and parking structures.",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Personal Services",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Pet shops, pet supply, and pet care and grooming",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Public utility substations, offices and storage buildings",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Recording studios",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Recycling collection facilities",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "--",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.280 (Recycling Facilities); May not be located within 1,000 feet of the freeway right-of-way."
+    },
+    {
+     "use": "Recycling processing facilities",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": "Chapter 9.280 (Recycling Facilities); May not be located within 1,000 feet of the freeway right-of-way."
+    },
+    {
+     "use": "Religious Institutions",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Research and development (except noxious, explosives, or dangerous materials)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "--",
+      "EDC-CC": "P",
+      "EDC-NR": "--",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Residential care facility",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "May not be located within 1,000 feet of the I-215 right-of-way."
+    },
+    {
+     "use": "Restaurants",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol sales)"
+    },
+    {
+     "use": "Restaurants with ancillary breweries, distilleries and/or wine making facilities with sales for on-site and off-site consumption",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": "Chapter 9.250 (Alcohol sales)"
+    },
+    {
+     "use": "Self-Storage, public storage facilities (new)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Self-Storage, public storage facilities with or without manager's residence onsite (existing as of the effective date of this ordinance)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "May expand only within the footprint of the existing development/property."
+    },
+    {
+     "use": "Shooting range; Indoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Shooting range; Outdoor",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Single-family residences",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Requires tentative tract map approval. May not be located within 1,000 feet of the I-215 right-of-way."
+    },
+    {
+     "use": "Smoking Lounge",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Solid Waste Disposal",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Sports and recreational facilities (not including motor driven vehicles and riding academies, but including archery ranges, athletic playgrounds, athletic fields, sports arenas, skating rinks, skate parks, stadiums, and commercial swimming pools)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "--",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Supportive Housing",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Swap Meets (Indoor only)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Tattoo Establishments",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": "See Allowed Use - \"Personal Services\""
+    },
+    {
+     "use": "Theaters",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "P",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Transitional Housing",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Towing services (with tow truck parking, no auto storage)",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Truck stops",
+     "group": "",
+     "cells": {
+      "EDC-NG": "--",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Trucking and freighting operations",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Vocational/trade school;",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehouse (except noxious, explosives, or dangerous materials)",
+     "case": "Fulfillment Center",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehouse (except noxious, explosives, or dangerous materials)",
+     "case": "Warehousing, logistics and distribution facility",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "--",
+      "EDC-CC": "--",
+      "EDC-NR": "--",
+      "EDC-SG": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehouse/club store, Standalone facility 50,000 sq. ft. or larger",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Warehouse/club store, Standalone facility under 50,000 sq. ft.",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wedding chapels",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wholesale businesses with samples on the premises but not including storage.",
+     "group": "",
+     "cells": {
+      "EDC-NG": "P",
+      "EDC-MB": "P",
+      "EDC-CC": "P",
+      "EDC-NR": "P",
+      "EDC-SG": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wholesale stores and distributors",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wireless Communication Facilities",
+     "group": "",
+     "cells": {
+      "EDC-NG": "C",
+      "EDC-MB": "C",
+      "EDC-CC": "C",
+      "EDC-NR": "C",
+      "EDC-SG": "C"
+     },
+     "requirements": "Chapter 9.290 (Wireless Communication Facilities)"
+    }
+   ],
+   "footnotes": [],
+   "chapter": "9.140",
+   "chapter_name": "Economic Development Corridor Zones",
+   "section": "9.140.030",
+   "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1341",
+   "read_on": "2026-11-26",
+   "rules": {
+    "letters": "Where indicated with a letter “P” the use shall be a permitted use. A letter “C” indicates the use shall be conditionally permitted subject to the approval of a conditional use permit. Where indicated with a “--,” the use is prohibited within the zone.",
+    "unlisted": "Uses not specifically listed in this table shall be considered not permitted in all of the listed zones."
+   }
+  },
+  {
+   "table": "Table 9.145.030-1",
+   "title": "Table 9.145.030-1 Open Space/Conservation Zones - Allowed Uses and Approval Requirements",
+   "zones": [
+    "OS-C",
+    "OS-R",
+    "OS-W"
+   ],
+   "rows": [
+    {
+     "use": "Athletic field and clubhouse",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "P",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Bicycle paths, trails",
+     "group": "",
+     "cells": {
+      "OS-C": "P",
+      "OS-R": "P",
+      "OS-W": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Camps",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Campgrounds and recreational vehicle parks",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Cemeteries",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "--",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Collection Containers",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "--",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Commercial stables and riding academies",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Commercial fairgrounds and exhibitions",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Community center",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Community garden",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "P",
+      "OS-W": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Community recreation facilities as a part of a development",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "P",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Conservation lands, natural and scenic resource protection",
+     "group": "",
+     "cells": {
+      "OS-C": "P",
+      "OS-R": "P",
+      "OS-W": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Game courts, badminton, tennis, racquetball",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "P",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Golf course and clubhouse",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Government and public utilities facilities",
+     "group": "",
+     "cells": {
+      "OS-C": "C",
+      "OS-R": "C",
+      "OS-W": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Greenway",
+     "group": "",
+     "cells": {
+      "OS-C": "P",
+      "OS-R": "P",
+      "OS-W": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Hunting clubs, skeet, trap, rifle and pistol ranges",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "C",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Marijuana dispensaries, mobile marijuana dispensaries, marijuana cultivation, and marijuana processing",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "--",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Nature and visitor centers",
+     "group": "",
+     "cells": {
+      "OS-C": "P",
+      "OS-R": "P",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Nurseries",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "--",
+      "OS-W": "--"
+     },
+     "requirements": "Does not include cultivation of marijuana/cannabis."
+    },
+    {
+     "use": "Parks and recreation areas",
+     "group": "",
+     "cells": {
+      "OS-C": "C",
+      "OS-R": "P",
+      "OS-W": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Public square or plaza",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "P",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Waterbodies, flood control facilities, including drainage channels, basins and any other drainage infrastructure improvements",
+     "group": "",
+     "cells": {
+      "OS-C": "P",
+      "OS-R": "P",
+      "OS-W": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wireless Communication Facilities",
+     "group": "",
+     "cells": {
+      "OS-C": "--",
+      "OS-R": "--",
+      "OS-W": "--"
+     },
+     "requirements": ""
+    }
+   ],
+   "footnotes": [],
+   "chapter": "9.145",
+   "chapter_name": "Open Space/Conservation Zones",
+   "section": "9.145.030",
+   "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1346",
+   "read_on": "2026-11-26",
+   "rules": {
+    "letters": "Where indicated with a letter “P” the use shall be a permitted use. A letter “C” indicates the use shall be conditionally permitted subject to the approval of a conditional use permit. Where indicated with a “--,” the use is prohibited within the zone.",
+    "unlisted": "Uses not specifically listed in this table shall be considered not permitted in all of the listed zones."
+   }
+  },
+  {
+   "table": "Table 9.150.030-1",
+   "title": "Table 9.150.030-1 Public/Quasi Public Zones - Allowed Uses and Approval Requirements",
+   "zones": [
+    "PF",
+    "PUC",
+    "RX"
+   ],
+   "rows": [
+    {
+     "use": "Auditoriums, event centers and assembly areas, including live entertainment",
+     "case": "Indoor",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Auditoriums, event centers and assembly areas, including live entertainment",
+     "case": "Outdoor",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": "Chapter 9.250 (Alcohol Sales)"
+    },
+    {
+     "use": "Cemetery",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Churches, synagogues, temples and other religious facilities",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Collection Containers",
+     "group": "",
+     "cells": {
+      "PF": "--",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "College or university",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Community center",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Congregate care facilities",
+     "group": "",
+     "cells": {
+      "PF": "--",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Day care center",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Educational Institution",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Fire or EMS facility",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Garages, public parking",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Government maintenance, storage, or distribution facility",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "C",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Government office",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Library",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Marijuana dispensaries, mobile marijuana dispensaries, marijuana cultivation, and marijuana processing",
+     "group": "",
+     "cells": {
+      "PF": "--",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Museum",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Nursery",
+     "group": "",
+     "cells": {
+      "PF": "--",
+      "PUC": "P",
+      "RX": "--"
+     },
+     "requirements": "Does not include cultivation of marijuana/cannabis."
+    },
+    {
+     "use": "Park and recreation areas",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "P",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Park and Ride",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "P",
+      "RX": "P"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Police station or substation",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Post office",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Public utility use and facilities",
+     "group": "",
+     "cells": {
+      "PF": "P",
+      "PUC": "P",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Railroad tracks, station, transportation hub, passenger terminal",
+     "group": "",
+     "cells": {
+      "PF": "--",
+      "PUC": "--",
+      "RX": "C"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Residential Care Facility",
+     "group": "",
+     "cells": {
+      "PF": "--",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": "Chapter 9.270 (Community Care Facilities)"
+    },
+    {
+     "use": "Senior center",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "--",
+      "RX": "--"
+     },
+     "requirements": ""
+    },
+    {
+     "use": "Wireless Communication Facilities",
+     "group": "",
+     "cells": {
+      "PF": "C",
+      "PUC": "C",
+      "RX": "C"
+     },
+     "requirements": "Chapter 9.290 (Wireless Communications Facilities)"
+    }
+   ],
+   "footnotes": [],
+   "chapter": "9.150",
+   "chapter_name": "Public/Quasi-Public Facilities",
+   "section": "9.150.030",
+   "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1351",
+   "read_on": "2026-11-26",
+   "rules": {
+    "letters": "Where indicated with a letter “P” the use shall be a permitted use. A letter “C” indicates the use shall be conditionally permitted subject to the approval of a conditional use permit. Where indicated with a “--,” the use is prohibited within the zone.",
+    "unlisted": "Uses not specifically listed in this table shall be considered not permitted in all of the listed zones."
+   }
+  }
+ ],
+ "special": {
+  "specific_plans": [
+   {
+    "number": "SP-1",
+    "name": "Audie Murphy Ranch"
+   },
+   {
+    "number": "SP-2",
+    "name": "Cal Neva"
+   },
+   {
+    "number": "SP-3",
+    "name": "Cantalena"
+   },
+   {
+    "number": "SP-4",
+    "name": "Canyon Cove"
+   },
+   {
+    "number": "SP-5",
+    "name": "Canyon Heights"
+   },
+   {
+    "number": "SP-6",
+    "name": "Cimarron Ridge"
+   },
+   {
+    "number": "SP-7",
+    "name": "Countryside"
+   },
+   {
+    "number": "SP-8",
+    "name": "Legado"
+   },
+   {
+    "number": "SP-9",
+    "name": "Menifee East"
+   },
+   {
+    "number": "SP-10",
+    "name": "Menifee Commercial (Walmart)"
+   },
+   {
+    "number": "SP-11",
+    "name": "Menifee North"
+   },
+   {
+    "number": "SP-12",
+    "name": "Menifee Valley"
+   },
+   {
+    "number": "SP-13",
+    "name": "Menifee Valley Ranch"
+   },
+   {
+    "number": "SP-14",
+    "name": "Menifee Village"
+   },
+   {
+    "number": "SP-15",
+    "name": "Newport Estates"
+   },
+   {
+    "number": "SP-16",
+    "name": "Newport Hub"
+   },
+   {
+    "number": "SP-17",
+    "name": "Plaza Del Sol"
+   },
+   {
+    "number": "SP-18",
+    "name": "Rockport Ranch"
+   },
+   {
+    "number": "SP-19",
+    "name": "Town Center"
+   }
+  ],
+  "specific_plans_wording": "The following specific plans have been approved by the City, or by the County of Riverside prior to incorporation of the City. They are designated on the official zoning map of the City and are hereby incorporated into this Title in their entirety by reference.",
+  "planned_developments": [
+   {
+    "number": "PDO-1",
+    "written_as": "PD-1",
+    "name": "Underwood (TR 29835)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the LMDR zone listed in 9.130.030.",
+    "same_uses_as": [
+     "LMDR"
+    ]
+   },
+   {
+    "number": "PDO-2",
+    "written_as": "PD-2",
+    "name": "McCall South (TR 17730)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the MDR zone listed in 9.130.030.",
+    "same_uses_as": [
+     "MDR"
+    ]
+   },
+   {
+    "number": "PDO-3",
+    "written_as": "PD-3",
+    "name": "McCall SouthWest (TR 15383)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the MDR zone listed in 9.130.030.",
+    "same_uses_as": [
+     "MDR"
+    ]
+   },
+   {
+    "number": "PDO-4",
+    "written_as": "PD-4",
+    "name": "Stonegate (TR 31456)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the LDR-2 zone listed in 9.130.030.",
+    "same_uses_as": [
+     "LDR-2"
+    ]
+   },
+   {
+    "number": "PDO-5",
+    "written_as": "PD-5",
+    "name": "Golden Meadows (TR 31194)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the LDR-2 zone for those lots within the area indicated as \"R-1\" and LMDR zone for those lots within the area indicated as \"R-4\" as listed in 9.130.030 (see map below). Areas designated as \"R-5\" in the map below, have been approved for recreational uses, roads, water quality basins or drainage, and open space per the approved map. Uses within these areas shall be consistent with the approved map.",
+    "same_uses_as": [
+     "LDR-2",
+     "LMDR"
+    ]
+   },
+   {
+    "number": "PDO-6",
+    "written_as": "PD-6",
+    "name": "Nautical Cove (TR 31229)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the LMDR zone listed in 9.130.030.",
+    "same_uses_as": [
+     "LMDR"
+    ]
+   },
+   {
+    "number": "PDO-7",
+    "written_as": "PD-7",
+    "name": "Tierra Shores (TR 29837)",
+    "uses_sentence": "The uses permitted in this PDO shall be the same as those allowed in the LMDR zone listed in 9.130.030.",
+    "same_uses_as": [
+     "LMDR"
+    ]
+   }
+  ],
+  "chapter": "9.155",
+  "chapter_name": "Special Planning Areas",
+  "url": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1356",
+  "read_on": "2026-11-26"
+ }
+}

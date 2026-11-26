@@ -38,7 +38,7 @@ const usd = (v) => (has(v) && !isNaN(Number(v)) ? (Number(v) < 0 ? "-$" + num(-N
 const colourOf = (c) => (/^#[0-9a-f]{3,8}$/i.test(String(c || "")) ? c : "#9aa0a6");
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const LOW = { retail: "shops", office: "offices", apartments: "apartments", homes: "houses", business: "business park", park: "parks" };
-const FIT_CLASS = { fits: "fits", review: "review", change: "change", unknown: "unknown" };
+const FIT_CLASS = { fits: "fits", permit: "permit", review: "review", change: "change", unknown: "unknown" };
 const KIND_WORDS = { measured: "Measured here", assumption: "Starting figure", yours: "Your figure" };
 const SIGNAL_WORDS = { existing: "Uses a signal that is already there", study: "A new signal is worth studying", none: "No signal likely needed",
   unknown: "Not known whether a signal already stands there" };
@@ -81,6 +81,25 @@ function amountWords(u) {
   if (has(u.sq_ft)) return `${num(u.sq_ft)} sq ft of floor space, about ${num(u.jobs)} ${plural(u.jobs, "job")}`;
   if (u.id === "park") return "parks, open space and drainage basins";
   return "";
+}
+// Where "allowed" comes from on this plan: the city's own table (with its source and the day it was read), or only
+// the kind of zone when that city's table has not been read.
+function rulesNote(data) {
+  const R = data.zoning_rules || {};
+  if (R.basis !== "table") {
+    return `<p class="plan-rules"><b>How each use sits with today's zoning:</b> ${esc(R.says || "the city's table of allowed uses is not read for this city.")}</p>`;
+  }
+  const S = R.source || {};
+  const zones = (R.zones || []).map((z) => z.table ? `${esc(z.zone)}: ${z.url ? `<a href="${esc(z.url)}" target="_blank" rel="noopener">${esc(z.table)}</a>` : esc(z.table)}` : `${esc(z.zone)}: ${z.kind === "specific_plan" ? "set by its specific plan" : "not in the tables"}`).join("; ");
+  return `<p class="plan-rules"><b>How each use sits with today's zoning</b> is read from the city's own table of allowed uses (${esc(S.name || "the city's code")}${S.read_on ? `, read on ${esc(S.read_on)}` : ""}): allowed outright, allowed with a conditional use permit, or not allowed (it needs a zone change).${zones ? ` ${zones}.` : ""} The whole table is on this land's Zoning page.</p>`;
+}
+function readNote(u) {
+  const r = u.fit_read;
+  if (!r) return "";
+  const rows = (r.read_from || []).map((x) => `“${esc(x.use)}”`).join(", ");
+  const related = (r.related || []).filter((x) => x.status === "outright" || x.status === "permit")
+    .map((x) => `${esc(x.use)} (${x.status === "outright" ? "outright" : "with a permit"})`).join("; ");
+  return `<p class="plan-read">${rows ? `Read from the code's row ${rows}${r.table ? ` in ${esc(r.table)}` : ""}.` : esc(r.why || "")}${related ? ` Close relatives the same zone does allow: ${related}.` : ""}</p>`;
 }
 function fitChip(u) {
   return `<span class="chip plan-fit plan-fit-${FIT_CLASS[u.fit] || "unknown"}">${esc(u.fit_words || NONE)}</span>`;
@@ -598,16 +617,19 @@ export function plan(box, ctx) {
       ? folded(`why:${u.id}`, u.reasons.length === 1 ? "Show the reason" : `Show the ${u.reasons.length} reasons`, reasons(u)) : "";
     box.querySelector("#planWhy").innerHTML = `<h2>Why this mix</h2>
       <p class="plan-lead">Each use gets a score out of 100 from the facts of this land. Each fact adds or takes away points; the source of each fact is in the small tag.${settings.mode === "best" ? " In Best use the zoning is left out of the score, so the zoning line counts 0." : ""}</p>
+      ${rulesNote(data)}
       <div class="plan-cards">${kept.map((u) => `
         <article class="card plan-why">
           <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)} <span class="plan-acres">${ac(u.acres)} ${plural(u.acres, "acre", "acres", 1)}</span></h3>
           ${bar(u)} ${fitChip(u)}
+          ${readNote(u)}
           ${showReasons(u)}
         </article>`).join("")}
         ${out.map((u) => `
         <article class="card plan-why plan-left">
           <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)} <span class="plan-acres">left out</span></h3>
           <p>Score ${has(u.score) ? num(u.score) + " out of 100" : NONE} · ${esc(u.fit_words || NONE)}.${(data.left_out || []).some((x) => x.use === u.id) ? " Too low a score, or too little room, to make the suggestion." : ""}</p>
+          ${readNote(u)}
           ${showReasons(u)}
         </article>`).join("")}
       </div>`;

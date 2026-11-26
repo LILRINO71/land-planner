@@ -95,7 +95,12 @@
 /* zoning fit: words and colour together */
 .plan-fit{font-size:12.5px;padding:4px 10px}
 .plan-fit-fits{background:#e3f3e7;color:#1d6b38}
-.plan-fit-review{background:#fdf0d2;color:#7d5300}
+.plan-fit-review{background:#dfeef6;color:#1f5673}
+.plan-fit-permit{background:#fdf0d2;color:#7d5300}
+.plan-rules{margin:10px 0 0;font-size:13.5px;color:var(--muted);max-width:none}
+.plan-rules a{color:inherit}
+.plan-read{margin:8px 0 0;font-size:13px;color:var(--muted);line-height:1.5}
+.plan-read b{color:var(--ink);font-weight:600}
 .plan-fit-change{background:#fbe3df;color:#8f2a1d}
 .plan-fit-unknown{background:#eceee9;color:var(--muted)}
 

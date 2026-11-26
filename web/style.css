@@ -447,3 +447,33 @@ table.cmp-table{min-width:1280px}
   .calm-wait .calm-data,.calm-draw .calm-data{clip-path:none!important;animation:none!important}
   .calm-enter{animation:none!important}
 }
+
+/* what the zone allows, from the city's own table (Zoning page) */
+.uses-card{margin-top:18px}
+.uses-card h3{margin:20px 0 6px;font-size:18px}
+.uses-card h4{margin:16px 0 2px;font-size:14.5px;color:var(--muted);font-weight:600}
+.use-chip{display:inline-block;font-size:12.5px;font-weight:600;line-height:1.3;padding:4px 10px;border-radius:99px}
+.use-outright{background:#e3f3e7;color:#1d6b38}
+.use-permit{background:#fdf0d2;color:#7d5300}
+.use-no{background:#fbe3df;color:#8f2a1d}
+.use-plan{background:#dfeef6;color:#1f5673}
+.use-unread{background:#eceee9;color:var(--muted)}
+.table-wrap{overflow-x:auto;max-width:100%}
+table.uses-six{border-collapse:collapse;width:100%;margin:8px 0 4px;font-size:14.5px}
+table.uses-six th,table.uses-six td{text-align:left;vertical-align:top;padding:9px 12px 9px 0;border-bottom:1px solid #e3e7e1}
+table.uses-six thead th{font-size:12.5px;color:var(--muted);font-weight:600}
+table.uses-six tbody th{font-weight:600;min-width:150px}
+table.uses-six small,.uses-list small{display:block;color:var(--muted);font-size:12.5px;line-height:1.45;margin-top:2px}
+.uses-row{display:block}
+.uses-row i{font-style:normal;color:var(--muted);font-size:12.5px;white-space:nowrap}
+.uses-note{color:var(--muted);font-size:13px}
+.uses-related{margin-top:6px!important}
+.uses-list{margin:4px 0 10px;padding-left:20px;columns:2 320px;column-gap:36px}
+.uses-list li{break-inside:avoid;margin:0 0 6px;font-size:14px;max-width:none}
+.uses-list li b{font-weight:600}
+@media(max-width:600px){
+  table.uses-six thead{display:none}
+  table.uses-six,table.uses-six tbody,table.uses-six tr,table.uses-six th,table.uses-six td{display:block;width:auto}
+  table.uses-six tr{padding:10px 0;border-bottom:1px solid #e3e7e1}
+  table.uses-six th,table.uses-six td{border:0;padding:2px 0}
+}

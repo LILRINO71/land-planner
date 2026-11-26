@@ -242,7 +242,7 @@ export async function render(main, route, alive) {
   function mix() {
     const parkAcres = pieces.filter((p) => p.use === "park").reduce((t, p) => t + (Number(p.acres) || 0), 0);
     let rows = uses.map((u) => ({
-      colour: u.colour, label: u.label, acres: u.acres,
+      colour: u.colour, label: u.label, acres: u.acres, why: u.fit_words ? `Today's zoning: ${u.fit_words.toLowerCase()}` : "",
       amount: isNum(u.amount) ? `${num(u.amount)} ${esc(u.unit || "")}` : NONE, when: soldBy(u),
     }));
     // uses the plan holds but the forecast could not size (no reading for their kind)

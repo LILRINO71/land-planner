@@ -649,7 +649,7 @@ export async function render(main, route, alive) {
         const feet = uses.filter((u) => u.kind !== "homes").reduce((t, u) => t + (Number(u.amount) || 0), 0);
         const h = homes && feet ? `${big(homes)} ${plural(homes, "home")} and ${big(feet)}&nbsp;sq&nbsp;ft of shops and work space` : homes ? `Room for ${big(homes)} ${plural(homes, "home")}` : feet ? `${big(feet)}&nbsp;sq&nbsp;ft of shops and work space` : "The plan";
         const parkAcres = pieces.filter((p) => p.use === "park").reduce((t, p) => t + (Number(p.acres) || 0), 0);
-        const rows = uses.map((u) => `<li data-rise><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b><small>${isNum(u.amount) ? num(u.amount) + " " + esc(u.unit || "") : NONE}</small></span><em>${num(u.acres, 1)} ${plural(u.acres, "acre", "acres", 1)}</em></li>`).join("") +
+        const rows = uses.map((u) => `<li data-rise><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b><small>${isNum(u.amount) ? num(u.amount) + " " + esc(u.unit || "") : NONE}${u.fit_words ? ` · ${esc(u.fit_words.toLowerCase())}` : ""}</small></span><em>${num(u.acres, 1)} ${plural(u.acres, "acre", "acres", 1)}</em></li>`).join("") +
           (parkAcres ? `<li data-rise><i style="background:${PARK.colour}"></i><span><b>${esc(PARK.label)}</b><small>built with the uses around them</small></span><em>${num(parkAcres, 1)} ${plural(parkAcres, "acre", "acres", 1)}</em></li>` : "");
         const why = [...new Set(drawings.flatMap((d) => d.why || []))];
         return `<div class="pr-mapleft pr-plan">

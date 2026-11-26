@@ -267,6 +267,80 @@ function overview(box, ctx) {
 
 // ---------------------------------------------------------------- Zoning
 
+// What the city's own table of allowed uses says about this parcel's zoning (the server reads it from a table kept
+// with the app; see landplanner/uses.py). Every list says where it was read and when; a gap is said as a gap.
+const USE_CHIP = { outright: "outright", permit: "permit", no: "no", unlisted: "no", plan: "plan", depends: "unread", unread: "unread" };
+const LETTER_WORDS = { P: "P, permitted", C: "C, conditional use permit", "--": "--, prohibited", NA: "NA, not applicable", "": "left blank" };
+
+function useList(title, rows, open = false) {
+  if (!rows || !rows.length) return "";
+  return `<details class="calm-fold uses-fold"${open ? " open" : ""}><summary>${esc(title)} (${num(rows.length)} ${plural(rows.length, "use")})</summary>
+    <ul class="uses-list">${rows.map((r) => `<li><b>${esc(r.use)}</b>${r.note ? ` <span class="uses-note">(${esc(r.note)})</span>` : ""}${r.why ? ` <span class="uses-note">${esc(r.why)}</span>` : ""}${r.requirements ? `<small>${esc(r.requirements)}</small>` : ""}</li>`).join("")}</ul></details>`;
+}
+
+function useRows(A, uses) {
+  const labels = A.labels || {};
+  return `<div class="table-wrap"><table class="uses-six"><thead><tr><th scope="col">Land Planner's use</th><th scope="col">Under today's zoning</th><th scope="col">Read from the code's row</th></tr></thead><tbody>
+    ${Object.keys(uses).map((id) => {
+      const u = uses[id] || {};
+      const read = (u.read_from || []).map((r) => `<span class="uses-row">“${esc(r.use)}” <i>${esc(LETTER_WORDS[r.letter] || r.letter || "")}</i>${r.requirements ? `<small>${esc(r.requirements)}</small>` : ""}</span>`).join("");
+      const how = { P: "outright", C: "with a permit", "--": "not allowed", NA: "not applicable", "": "left blank" };
+      const related = (u.related || []).map((r) => `${esc(r.use)} (${esc(how[r.letter] || r.letter)})`).join("; ");
+      return `<tr><th scope="row">${esc(labels[id] || id)}</th>
+        <td><span class="use-chip use-${id === "park" && u.status === "unlisted" ? "unread" : USE_CHIP[u.status] || "unread"}">${esc(u.words || NONE)}</span></td>
+        <td>${read || `<span class="uses-note">${esc(u.why || "No row of the table was read for this use.")}</span>`}${related ? `<small class="uses-related">Close relatives in the same table: ${related}</small>` : ""}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function usePart(A, p) {
+  const where = p.table
+    ? `${esc(p.table)}, section ${esc(p.section || "")} of the Development Code${p.chapter_name ? ` (${esc(p.chapter_name)})` : ""}`
+    : p.chapter ? `Chapter ${esc(p.chapter)} of the Development Code${p.chapter_name ? ` (${esc(p.chapter_name)})` : ""}` : "";
+  const source = where ? `<p class="fine">Read from ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${where}</a>` : where}${p.read_on ? `, on ${esc(p.read_on)}` : ""}.</p>` : "";
+  let html = `<div class="uses-part"><h3>${esc(p.zone)}${p.district ? `: ${esc(p.district)}` : ""}${p.plan ? `: ${esc(p.plan)} Specific Plan` : ""}</h3>`;
+  if (p.says) html += `<p>${esc(p.says)}</p>`;
+  if (p.sentence) html += `<blockquote>“${esc(p.sentence)}”</blockquote>`;
+  if (p.kind === "specific_plan" && p.wording) html += `<blockquote>“${esc(p.wording)}”</blockquote>`;
+  if (p.uses && (p.kind === "table" || p.kind === "planned_development")) html += useRows(A, p.uses);
+  (p.areas || []).forEach((a) => {
+    html += `<h4>The part that follows ${esc(a.column)}</h4>` + useList("Allowed outright", a.outright) + useList("Allowed with a conditional use permit", a.permit) + useList("Not allowed", a.not_allowed);
+  });
+  if (p.outright) {
+    html += `<h4>Every use the table lists for ${esc(p.column || p.zone)}</h4>` +
+      useList("Allowed outright", p.outright) + useList("Allowed with a conditional use permit", p.permit) +
+      useList("Not allowed", p.not_allowed) + useList("Could not be read", p.other);
+    const rules = p.rules || {};
+    if (rules.unlisted) html += `<p class="fine">A use the table does not list: “${esc(rules.unlisted)}”</p>`;
+  }
+  return html + source + "</div>";
+}
+
+function allowedUses(A, c) {
+  const code = c.links && c.links.development_code;
+  const change = '<p class="fine">Changing what is allowed goes through the city: a general plan amendment, a zone change or a specific plan, each with public hearings. An allowed use still has to meet the code\'s standards and get its building permits.</p>';
+  if (!A) {
+    return `<section class="card uses-card"><h2>What the zone allows, use by use</h2>
+      <p class="missing">The table of allowed uses in ${esc(c.name)}'s own code has not been read, so this page cannot say which uses are allowed outright, need a permit or are not allowed. On the Plan page, “what the zone is for” comes from the kind of zone alone.</p>
+      ${code ? `<p>The rules themselves are in the <a href="${esc(code)}" target="_blank" rel="noopener">city's code</a>.</p>` : ""}${change}</section>`;
+  }
+  const S = A.source || {};
+  const labels = A.labels || {};
+  let html = `<section class="card uses-card"><p class="kicker dark">From the city's own code</p><h2>What the zone allows, use by use</h2>
+    <p>Each use is <span class="use-chip use-outright">allowed outright</span> <span class="use-chip use-permit">allowed with a conditional use permit</span> or <span class="use-chip use-no">not allowed</span>, as the city's table says. Nothing here is filled in: where the code could not be read, that is what it says.</p>`;
+  if (A.says) html += `<p class="missing">${esc(A.says)}</p>`;
+  html += (A.parts || []).map((p) => usePart(A, p)).join("");
+  if ((A.parts || []).length > 1) html += `<p class="fine">This parcel carries more than one zone, so each has its own answer; which part of the land each covers is on the city's zoning map.</p>`;
+  if ((A.matches || []).length) {
+    html += `<details class="calm-fold uses-fold"><summary>How Land Planner's six uses were matched to the code's use names</summary>
+      <div class="table-wrap"><table class="uses-six"><thead><tr><th scope="col">Land Planner's use</th><th scope="col">The code's row that decides</th><th scope="col">Shown beside it</th><th scope="col">Why</th></tr></thead><tbody>
+      ${A.matches.map((m) => `<tr><th scope="row">${esc(labels[m.use] || m.use)}</th><td>${m.lead.map((n) => `“${esc(n)}”`).join(" or ")}</td><td>${m.also.map((n) => esc(n)).join("; ")}</td><td>${esc(m.why)}</td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="fine">Two spellings are listed where two of the city's tables word the same use differently. The match is kept in one file of the app (landplanner/cities/${esc(c.id)}_uses.py), so a different row can be made to decide.</p></details>`;
+  }
+  html += `<p class="fine">Source: ${S.url ? `<a href="${esc(S.url)}" target="_blank" rel="noopener">${esc(S.name || "the city's code")}</a>` : esc(S.name || "the city's code")}${S.publisher ? `, ${esc(S.publisher)}` : ""}${S.read_on ? `. Read on ${esc(S.read_on)}; the city may have changed it since` : ""}. The code is the authority, not this page.</p>${change}</section>`;
+  return html;
+}
+
 function zoning(box, ctx) {
   const { P, c, parts, quick } = ctx, Z = parts.zoning, G = parts.general_plan;
   let html = '<section class="two">';
@@ -289,11 +363,7 @@ function zoning(box, ctx) {
       <dt>General plan code</dt><dd>${show(P.general_plan)}</dd></dl>
       ${split ? '<p class="fine">This parcel carries more than one zone. The “zoning today” above is the zone at the parcel\'s centre point; the other parts of the parcel follow the other zones.</p>' : '<p class="fine">The “zoning today” above is read at the parcel\'s centre point.</p>'}
     </div>
-    <div class="card"><h2>What the zone allows, use by use</h2>
-      <p class="missing">Which uses are allowed outright, need a permit or are not allowed: not covered yet.</p>
-      ${c.links.development_code ? `<p>The rules themselves are in the <a href="${esc(c.links.development_code)}" target="_blank" rel="noopener">city development code</a>.</p>` : ""}
-      <p class="fine">Changing what is allowed goes through the city: a general plan amendment, a zone change or a specific plan, each with public hearings.</p>
-    </div></section>`;
+    </section>${allowedUses(quick.allowed_uses, c)}`;
   (quick.zoning_notes || []).forEach((n) => {
     html += `<section class="card"><h2>${esc(n.title)}</h2><div class="note-cols">
       <div><blockquote>“${esc(n.quote)}”</blockquote>
