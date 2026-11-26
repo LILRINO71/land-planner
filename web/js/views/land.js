@@ -11,6 +11,9 @@ export const PAGES = [
   ["overview", "Overview"], ["zoning", "Zoning"], ["surroundings", "Surroundings"],
   ["terrain", "Terrain 3D"], ["traffic", "Traffic"], ["plan", "Plan"],
 ];
+// The Forecast page is its own address (it can cover several parcels as one site); one land links to it beside Plan.
+export const FORECAST_ICON = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M4 16l5-5 4 3 7-8M15 6h5v5"/></svg>';
+export function forecastLink(cityId, apns) { return `#/forecast/${encodeURIComponent(cityId)}/${apns.map((a) => String(a).replace(/\D/g, "")).join("+")}`; }
 const PART_NAMES = {
   parcel: "Parcel outline and facts", zoning: "Zoning", general_plan: "General plan", surroundings: "Zoning around the parcel",
   neighbour_shapes: "Neighbouring outlines", state_highway_traffic: "Highway traffic", terrain: "Five spot heights",
@@ -54,7 +57,7 @@ export async function render(el, params, alive) {
           <button type="button" class="btn" id="again" title="Ask the public records again for this parcel">${icon("refresh")} Read the facts again</button></div>
       </div>
       <nav class="tabs" aria-label="This land's pages">${PAGES.map(([id, label]) =>
-        `<a href="${ctx.link(id)}"${id === page ? ' class="on" aria-current="page"' : ""}>${icon(id)}${label}</a>`).join("")}</nav>
+        `<a href="${ctx.link(id)}"${id === page ? ' class="on" aria-current="page"' : ""}>${icon(id)}${label}</a>`).join("")}<a href="${forecastLink(c.id, [P.apn])}">${FORECAST_ICON}Forecast</a></nav>
     </header>
     ${quick.parcel_stale ? `<div class="notice warn"><p>${esc(c.name)}'s map service did not answer just now. These are the parcel's facts as they were read ${esc(when(quick.parcel_fetched))}.</p></div>` : ""}
     <div id="pageBody" class="page-body"></div>`;

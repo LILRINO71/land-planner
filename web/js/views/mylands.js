@@ -2,6 +2,7 @@
 // so it is still here after the app is closed and started again.
 // Under the cards, "Compare my lands" puts the saved lands side by side (two or more; one shows its own row).
 import { saved, compareLands } from "../api.js";
+import { forecastLink, FORECAST_ICON } from "./land.js";
 import { NONE, esc, has, num, money, dateOnly, icon, loading, problem, toast, shapeSvg, apnText } from "../util.js";
 
 // The columns of the compare table. `from` is where a value is read: "land" = the row itself, "plan" = the plan
@@ -38,6 +39,7 @@ export async function render(el, params, alive) {
     <p class="fine foot" id="keptIn" hidden></p>`;
   const box = el.querySelector("#mine"), keptIn = el.querySelector("#keptIn"), cmpBox = el.querySelector("#cmp");
   let asking = null;   // the land whose "Remove" was pressed once and is waiting for a yes
+  const unticked = new Set();   // lands left out of "Forecast selected lands together" (every land starts ticked)
   let cmpKey = "", cmpRows = null, cmpToken = 0, cmpMode = "kept", cmpSort = null, cmpFocus = "";
 
   function drawKeptIn() {
@@ -216,7 +218,8 @@ export async function render(el, params, alive) {
         <a class="btn primary" href="#/lands">Go to Lands ${icon("arrow")}</a></div>`;
       return;
     }
-    box.innerHTML = `<p class="count-line"><b>${lands.length}</b> saved ${lands.length === 1 ? "land" : "lands"}</p>
+    box.innerHTML = `<div class="mine-tools"><p class="count-line"><b>${lands.length}</b> saved ${lands.length === 1 ? "land" : "lands"}</p>
+        <div class="mine-forecast" id="mineForecast"></div></div>
       <div class="mine-grid">${lands.map((x) => {
         const p = x.parcel || {}, key = x.city + "/" + x.apn, link = `#/land/${esc(x.city)}/${esc(x.apn)}`;
         return `<article class="card mine">
@@ -228,6 +231,7 @@ export async function render(el, params, alive) {
             <p><b>${esc(p.zoning || "No zoning listed")}</b>${p.zoning_name && p.zoning_name !== p.zoning ? " · " + esc(p.zoning_name) : ""}</p>
             <p class="fine">Saved ${esc(dateOnly(x.saved_at))} · ${p.looks_vacant ? "no buildings on the assessor's records" : "buildings on the assessor's records"}</p>
             <div class="mine-actions">
+              <label class="check mine-pick"><input type="checkbox" data-pick="${esc(key)}"${unticked.has(key) ? "" : " checked"}> In the forecast</label>
               <a class="btn small primary" href="${link}">Open ${icon("arrow")}</a>
               ${asking === key
                 ? `<span class="confirm">Take it off My lands? <button type="button" class="btn small danger" data-yes="${esc(key)}">Yes, remove</button> <button type="button" class="btn small" data-no>Keep</button></span>`
@@ -236,7 +240,33 @@ export async function render(el, params, alive) {
           </div></article>`;
       }).join("")}</div>
       <p class="fine foot">Each card shows the parcel's facts as they were on the day it was saved; opening a land reads them again. Outlines are the assessor's drawings, not a survey.</p>`;
+    drawForecastPick();
   }
+
+  // "Forecast selected lands together": the ticked lands, as one site. A forecast covers one city.
+  function drawForecastPick() {
+    const slot = box.querySelector("#mineForecast");
+    if (!slot) return;
+    const ticked = saved.list().filter((x) => !unticked.has(x.city + "/" + x.apn));
+    const cities = [...new Set(ticked.map((x) => x.city))];
+    let words, ok = false;
+    if (!ticked.length) words = "Tick at least one land to forecast it.";
+    else if (cities.length > 1) words = `The ticked lands are in ${cities.length} cities. A forecast covers one city: untick the lands of the others.`;
+    else {
+      ok = true;
+      words = ticked.length === 1 ? "One land ticked: it is forecast on its own." : `${ticked.length} lands ticked, forecast as one site.`;
+    }
+    const href = ok ? forecastLink(cities[0], ticked.map((x) => x.apn)) : "";
+    slot.innerHTML = `${ok ? `<a class="btn primary" href="${esc(href)}">${FORECAST_ICON} Forecast selected lands together</a>`
+      : `<button type="button" class="btn primary" disabled>${FORECAST_ICON} Forecast selected lands together</button>`}
+      <span class="fine">${esc(words)}</span>`;
+  }
+  box.addEventListener("change", (e) => {
+    const pick = e.target.closest("[data-pick]");
+    if (!pick) return;
+    if (pick.checked) unticked.delete(pick.dataset.pick); else unticked.add(pick.dataset.pick);
+    drawForecastPick();
+  });
 
   box.addEventListener("click", async (e) => {
     const remove = e.target.closest("[data-remove]"), yes = e.target.closest("[data-yes]");

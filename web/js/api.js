@@ -37,6 +37,10 @@ export const api = {
   // every parcel inside a box of the map (west, south, east, north in degrees)
   parcels: (city, box) => call("GET", `/api/cities/${city}/parcels` + query(box)),
   land: (city, apn, group, fresh) => call("GET", `/api/cities/${city}/lands/${apn}` + query({ group, fresh })),
+  // the year-by-year forecast for one parcel, or several as one site; the owner's own figures are kept by the server
+  forecast: (city, apns) => call("GET", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") })),
+  forecastSet: (city, apns, assumptions) => call("POST", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") }), { assumptions }),
+  forecastReset: (city, apns) => call("DELETE", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") })),
 };
 
 // ---- when a map's records and photo were last updated, asked once per place while the app is open

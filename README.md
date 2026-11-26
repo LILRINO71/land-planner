@@ -108,11 +108,36 @@ the back, drainage toward the lowest ground. These are rules of thumb, stated on
 ```
 python -m unittest discover -s tests                offline checks (recorded answers, no network)
 python tools/menifee.py selfcheck                   did every public source answer just now?
+python tests/record_fixtures.py forecast            re-record the forecast's sources (needs the internet)
 ```
+
+### How the forecast works
+
+The Forecast page (`landplanner/forecast.py`) looks ten years ahead, year by year, for one parcel or for several
+parcels treated as one site. Open it from a land's own page, or tick lands on My lands and forecast them together.
+
+1. **Growth.** Homes within 1, 3 and 5 miles have a measured past (2010 and 2020 Census) and two official forecasts
+   (the regional planning agency's adopted plan and its draft update). Each gives a yearly growth rate. The
+   expected line follows the middle one; the low and high lines are the lowest and the highest. No rate is made up:
+   when none answers, there is no forecast.
+2. **Income areas.** Median household income, renters and owners by census tract (American Community Survey),
+   with where incomes run higher and lower around the site.
+3. **Needs, set beside what is already coming.** New homes a year are that growth. New shop space is what the new
+   households' income supports. New work space is what the forecast jobs need. Each is shown beside the projects
+   already on the city's lists, spread over the years they are likely to open by how far along each one is.
+4. **Traffic.** The nearest highway count, grown with the homes around it, and the trips the site itself adds.
+5. **The site's own land.** Its plan is taken up at the share of each year's need one site can win, which gives
+   what can be sold in years 1 to 2, 3 to 5 and 6 to 10, and what would still be unsold. Neighbouring parcels in
+   one zone are planned as one block, so the area's need for shops is counted once.
+
+Everything that is not measured or an official forecast (the share of income spent in shops, floor space per job,
+the share of demand one site wins and so on) is a starting figure shown on the page, and the owner can change it.
 
 ## What it cannot tell you yet
 
-- Income and spending around the site (people and homes are counted; the Census income tables want a free key).
+- The shops and offices that exist today (no public list), so the forecast shows what growth adds, not whether the
+  area is short of shops now.
+- Traffic counts by year (only the latest highway count is published as open data).
 - Traffic counts on city streets (only state highways are counted). Menifee publishes its own counts.
 - Utilities, flood zones, protected habitat, soil and other limits on what can be built.
 - Real prices and quotes. The Plan page starts from editable figures; replace them with the owner's own.

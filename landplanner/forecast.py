@@ -526,8 +526,8 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
             c = homes["pipeline_covers_years"]
             advice.append("Homes already on the city's lists cover about "
                           f"{c:g} years of the expected need. "
-                          + ("New housing land here competes with a full pipeline for the next few years; the opening is later in the decade."
-                             if c >= 6 else "The pipeline is thinner than the need: housing land is likely to find a buyer early."
+                          + ("New housing land here competes with many homes already on the way for the next few years; the opening is later in the decade."
+                             if c >= 6 else "Fewer homes are on the way than the area needs: housing land is likely to find a buyer early."
                              if c <= 3 else "Housing land should sell through the decade at a steady pace."))
         slow = [u for u in taken if u["pct_by_year_10"] < 60]
         quick = [u for u in taken if u["filled_in"]]

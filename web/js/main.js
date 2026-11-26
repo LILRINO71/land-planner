@@ -6,6 +6,7 @@ import * as citiesView from "./views/cities.js";
 import * as landsView from "./views/lands.js";
 import * as myLandsView from "./views/mylands.js";
 import * as landView from "./views/land.js";
+import * as forecastView from "./views/forecast.js";
 
 const main = document.getElementById("main"), side = document.getElementById("side");
 let visit = 0, leaving = [], lastCity = null, openLand = null;
@@ -16,6 +17,8 @@ function parse() {
   if (first === "lands") return { name: "lands", city: a || null };
   if (first === "my-lands") return { name: "my-lands" };
   if (first === "land" && a && b) return { name: "land", city: a, apn: b.replace(/\D/g, ""), page: c || "overview" };
+  // #/forecast/menifee/360350024+360350017: one parcel, or several forecast as one site
+  if (first === "forecast" && a) return { name: "forecast", city: a, apns: (b || "").split(/[+,\s]+/).map((x) => x.replace(/\D/g, "")).filter(Boolean) };
   return { name: "cities" };
 }
 
@@ -34,12 +37,13 @@ function drawSide(route) {
     </nav>`;
   if (openLand) {
     const base = `#/land/${esc(openLand.city)}/${esc(openLand.apn)}`;
-    html += `<div class="side-land"><p class="side-title">${route.name === "land" ? "This land" : "Last opened"}</p>
+    const forecastOn = route.name === "forecast" && route.apns.length === 1 && route.apns[0] === openLand.apn && route.city === openLand.city;
+    html += `<div class="side-land"><p class="side-title">${route.name === "land" || forecastOn ? "This land" : "Last opened"}</p>
       <a class="side-parcel" href="${base}"><b>${esc(openLand.number || openLand.apn)}</b>${openLand.acres != null ? `<span>${num(openLand.acres, 2)} acres</span>` : ""}</a>
       <nav aria-label="This land's pages">${landView.PAGES.map(([id, label]) => {
         const on = route.name === "land" && route.apn === openLand.apn && route.page === id;
         return `<a href="${base}/${id}" class="nav sub${on ? " on" : ""}"${on ? ' aria-current="page"' : ""}>${icon(id)}<span>${label}</span></a>`;
-      }).join("")}</nav></div>`;
+      }).join("")}<a href="${landView.forecastLink(openLand.city, [openLand.apn])}" class="nav sub${forecastOn ? " on" : ""}"${forecastOn ? ' aria-current="page"' : ""}>${landView.FORECAST_ICON}<span>Forecast</span></a></nav></div>`;
   }
   html += `<p class="side-foot">Real public records only. Outlines are not a survey, and zoning changes go through the city.</p>`;
   side.innerHTML = html;
@@ -65,12 +69,13 @@ async function show() {
     lastCity = route.city;
     if (!openLand || openLand.apn !== route.apn || openLand.city !== route.city) openLand = { city: route.city, apn: route.apn };
   }
-  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land" }[route.name] + " · Land Planner";
+  if (route.name === "forecast") lastCity = route.city;
+  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast" }[route.name] + " · Land Planner";
   drawSide(route);
   main.scrollTop = 0;
   window.scrollTo(0, 0);
   main.className = "main " + route.name;
-  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView }[route.name];
+  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView }[route.name];
   try {
     await view.render(main, route, alive);
   } catch (e) {
