@@ -70,6 +70,59 @@ class MenifeeAdapter(unittest.TestCase):
         self.assertEqual(set(part["terrain"]["feet_above_sea_level"]), {"centre", "north", "south", "east", "west"})
         self.assertEqual(part["terrain"]["reading"], "nearly flat")
         self.assertIsNone(self.city.site_part("no-such-part", p))
+        # what a land-use plan starts from
+        self.assertEqual([r["miles"] for r in part["people"]["rings"]], [1, 3, 5])
+        self.assertEqual(part["people"]["rings"][0]["people"], 8799)
+        self.assertEqual(part["people"]["year"], 2020)
+        streets = part["streets"]
+        self.assertAlmostEqual(streets["within_miles"], 0.68, places=6, msg="the parcel's own reach (0.33) plus 0.35")
+        self.assertEqual(len(streets["streets"]), 20)
+        self.assertTrue(all(s["paths"] and s["rank"] >= 1 for s in streets["streets"]))
+        signals = part["signals"]
+        self.assertAlmostEqual(signals["within_miles"], 1.33, places=6, msg="the parcel's own reach plus 1 mile")
+        self.assertEqual(len(signals["signals"]), 10)
+        distances = [s["miles_away"] for s in signals["signals"]]
+        self.assertEqual(distances, sorted(distances))
+        self.assertTrue(all(d <= 1.4 for d in distances))
+        self.assertEqual(part["projects"]["within_miles"], 3.0)
+        self.assertEqual(len(part["projects"]["projects"]), 56)
+        self.assertEqual(part["projects"]["lists_updated"]["development projects"], "2023-09-14")
+        self.assertEqual(part["schools"]["within_miles"], 2.0)
+        self.assertEqual(len(part["schools"]["schools"]), 8)
+        self.assertEqual(part["schools"]["schools"][0]["name"], "Revival Christian Academy")
+
+    def test_the_reach_of_a_parcel_is_half_its_corner_to_corner_distance_in_miles(self):
+        self.assertEqual(Menifee._reach({"size_feet": {"east_west": 5280, "north_south": 0}}), 0.5)
+        self.assertEqual(Menifee._reach({"size_feet": {"east_west": 3 * 5280, "north_south": 4 * 5280}}), 2.5)
+        self.assertEqual(Menifee._reach({}), 0.0, "a parcel with no size reaches nowhere")
+        self.assertEqual(Menifee._reach(self.city.parcel(EXAMPLE)), 0.33)
+
+    def test_the_market_parts_ask_for_the_parcels_own_centre(self):
+        p = self.city.parcel(EXAMPLE)
+        self.replay.asked.clear()
+        for name in ("people", "streets", "signals", "projects", "schools"):
+            self.assertTrue(self.city.site_part(name, p))
+        self.assertTrue(any("Circulation_Element" in u for u in self.replay.asked))
+        self.assertTrue(any("Traffic_Signals" in u for u in self.replay.asked))
+        self.assertTrue(any("TIGERweb" in u for u in self.replay.asked))
+
+    def test_the_records_date_and_the_photo_date_come_through_the_adapter(self):
+        p = self.city.parcel(EXAMPLE)
+        self.assertEqual(self.city.records_updated()["parcels"], "2026-10-28")
+        photo = self.city.photo_date(round(p["centre"]["lon"], 2), round(p["centre"]["lat"], 2))
+        self.assertEqual((photo["taken"], photo["year"]), ("2022-04-15", 2022))
+
+    def test_the_parcels_in_a_view_come_through_the_adapter(self):
+        out = self.city.parcels_in_box(-117.1715, 33.6500, -117.1615, 33.6550)
+        self.assertEqual(len(out["parcels"]), 5)
+        self.assertFalse(out["more"])
+
+    def test_a_silent_market_service_is_the_apps_error_and_the_others_still_answer(self):
+        p = self.city.parcel(EXAMPLE)
+        self.replay.down.append("Traffic_Signals")
+        with self.assertRaises(SourceError):
+            self.city.site_part("signals", p)
+        self.assertTrue(self.city.site_part("streets", p))
 
     def test_the_height_grid_says_what_the_samples_say(self):
         p = self.city.parcel(EXAMPLE)

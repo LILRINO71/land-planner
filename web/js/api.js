@@ -33,9 +33,24 @@ function query(params) {
 export const api = {
   summary: (city, fresh) => call("GET", `/api/cities/${city}/summary` + query({ fresh })),
   lands: (city, params) => call("GET", `/api/cities/${city}/lands` + query(params)),
-  shapes: (city) => call("GET", `/api/cities/${city}/shapes`),
+  shapes: (city, minAcres) => call("GET", `/api/cities/${city}/shapes` + query({ min_acres: minAcres })),
+  // every parcel inside a box of the map (west, south, east, north in degrees)
+  parcels: (city, box) => call("GET", `/api/cities/${city}/parcels` + query(box)),
   land: (city, apn, group, fresh) => call("GET", `/api/cities/${city}/lands/${apn}` + query({ group, fresh })),
 };
+
+// ---- when a map's records and photo were last updated, asked once per place while the app is open
+const updatedStore = new Map();
+export function updated(cityId, lat, lon) {
+  const key = `${cityId}/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`;
+  if (!updatedStore.has(key)) {
+    const asking = call("GET", `/api/cities/${cityId}/updated` + query({ lat: Number(lat).toFixed(5), lon: Number(lon).toFixed(5) }));
+    asking.catch(() => { if (updatedStore.get(key) === asking) updatedStore.delete(key); });
+    updatedStore.set(key, asking);
+  }
+  return updatedStore.get(key);
+}
+api.updated = updated;
 
 // ---- cities (asked once)
 let citiesPromise = null;
@@ -50,14 +65,16 @@ export async function city(id) {
 }
 
 // ---- My lands
-const savedState = { lands: [], loaded: false, listeners: new Set() };
+const savedState = { lands: [], loaded: false, keptIn: "", listeners: new Set() };
 function setSaved(data) {
   savedState.lands = data.lands;
+  if (data.kept_in !== undefined) savedState.keptIn = data.kept_in || "";
   savedState.loaded = true;
   savedState.listeners.forEach((fn) => fn());
 }
 export const saved = {
   list: () => savedState.lands,
+  keptIn: () => savedState.keptIn,   // the file on this computer the list is kept in ("" when the server does not say)
   has: (cityId, apn) => savedState.lands.some((x) => x.city === cityId && x.apn === apn),
   load: () => call("GET", "/api/my-lands").then((d) => { setSaved(d); return d.lands; }),
   add: (cityId, apn) => call("POST", "/api/my-lands", { city: cityId, apn }).then(setSaved),
@@ -65,16 +82,25 @@ export const saved = {
   onChange: (fn) => { savedState.listeners.add(fn); return () => savedState.listeners.delete(fn); },
 };
 
+// ---- My lands side by side: one row per saved land with the headline numbers of its plans. The first answer for a
+// land can take several seconds (it reads public records); later ones are quick.
+export function compareLands() { return call("GET", "/api/my-lands/compare"); }
+
 // ---- one land's facts, kept while the app is open
 const landStore = new Map();
 export function land(cityId, apn, { fresh = false } = {}) {
   const key = cityId + "/" + apn;
   if (fresh || !landStore.has(key)) {
-    const entry = { quick: api.land(cityId, apn, "quick", fresh), ground: null };
+    const entry = { quick: api.land(cityId, apn, "quick", fresh), ground: null, market: null };
     // the ground heights come from a slower service: asked for once the quick facts are in
     entry.loadGround = (again = false) => {
       if (!entry.ground || again) entry.ground = api.land(cityId, apn, "ground", fresh || again);
       return entry.ground;
+    };
+    // what is being built nearby, the people and schools around, and the traffic signals: also asked for after the page is drawn
+    entry.loadMarket = (again = false) => {
+      if (!entry.market || again) entry.market = api.land(cityId, apn, "market", fresh || again);
+      return entry.market;
     };
     entry.quick.catch(() => { if (landStore.get(key) === entry) landStore.delete(key); });
     landStore.set(key, entry);

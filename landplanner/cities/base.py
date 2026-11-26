@@ -57,6 +57,13 @@ SITE_PARTS = {
                                         #   "fall_across_site_ft", "rough_slope_pct", "reading"}
     "surface": "ground",                # {"west", "east", "south", "north", "nx", "ny", "spacing_ft", "feet": [...],
                                         #   "source", "inside": {"low_ft", "high_ft", "range_ft", "typical_slope_pct", ...}}
+    # What a land-use plan starts from; asked for when the Plan page is opened.
+    "people": "market",                 # {"rings": [{"miles", "people", "homes"}], "year", "source"}
+    "streets": "market",                # {"within_miles", "streets": [{"name", "class", "rank", "speed_mph", "paths"}]}
+    "signals": "market",                # {"within_miles", "signals": [{"street", "cross_street", "lat", "lon", "miles_away"}]}
+    "projects": "market",               # {"within_miles", "projects": [{"title", "kind", "status", "description", "builder",
+                                        #   "stated": {"acres", "homes", "building_sq_ft"}, "lat", "lon", "miles_away"}], "lists_updated"}
+    "schools": "market",                # {"within_miles", "schools": [{"name", "grades", "kind", "miles_away"}]}
 }
 
 
@@ -76,9 +83,22 @@ class CityAdapter:
     # Zoning families for map colours, the legend and the zoning filter: (id, label, colour), most specific first.
     zoning_kinds = (("other", "Other", "#9aa0a6"),)
 
-    def large_parcels(self):
-        """Every parcel of `large_acres` or more: a list of parcel rows, each with "centre" and "rings"."""
+    def large_parcels(self, min_acres=None):
+        """Every parcel of `min_acres` (default `large_acres`) or more: parcel rows, each with "centre" and "rings"."""
         raise NotImplementedError
+
+    def parcels_in_box(self, west, south, east, north):
+        """Every parcel a map view touches, any size: {"parcels": [{"apn", "apn_formatted", "acres", "zoning",
+        "looks_vacant", "rings"}], "more": bool}. Optional: without it the map shows only the listed parcels."""
+        return {"parcels": [], "more": False}
+
+    def records_updated(self):
+        """When the city last changed its parcel records: {"parcels": "2026-10-28"}. Optional."""
+        return None
+
+    def photo_date(self, lon, lat):
+        """When the aerial photo at a spot was taken: {"taken": "2022-04-15", "year", "detail_metres"}. Optional."""
+        return None
 
     def parcel(self, apn):
         """One parcel row with "centre", "outline" and "size_feet". Raises NotFound when there is none."""

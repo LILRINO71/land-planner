@@ -15,10 +15,15 @@ from pathlib import Path
 from . import lands as L
 from .cache import Cache
 from .cities import NotFound, SITE_PARTS, SourceError
-from .saved import SavedLands
+from . import geometry as G
+from . import plan as P
+from .saved import SavedLands, SavedPlans
 
 HOUR = 3600
 LARGE_TTL, PARCEL_TTL, PART_TTL, NAMES_TTL, RETRY_AFTER = 12 * HOUR, 7 * 24 * HOUR, 7 * 24 * HOUR, 30 * 24 * HOUR, 60
+UPDATED_TTL, PHOTO_TTL = 6 * HOUR, 30 * 24 * HOUR
+FLOORS = (1.0, 2.0, 5.0)     # the list can start at these sizes as well as the city's own "large" size
+MAX_VIEW_DEGREES = 0.09      # the widest map view the "every parcel in view" layer answers for (about 5 miles)
 
 
 # A service that answers in a shape nobody expected is treated like one that did not answer.
@@ -40,6 +45,7 @@ class LandPlanner:
         self.clock = clock
         self.cache = Cache(self.data_dir / "cache", clock)
         self.saved = SavedLands(self.data_dir / "my-lands.json")
+        self.plans = SavedPlans(self.data_dir / "plans.json")
         self._failed = {}
         self._guard = threading.Lock()
 
@@ -57,9 +63,19 @@ class LandPlanner:
         return Problem(502, "source-down", f"{city.name}'s public {what} did not answer just now. "
                                            "Check the internet connection and try again.")
 
-    def _large(self, city, fresh=False):
+    def floor_for(self, city, min_acres=None):
+        """The size the list has to start at to answer a "smallest size" filter: the city's own large size, or one
+        of FLOORS when the person asks for smaller land. Never below the smallest floor (the map shows the rest)."""
+        if min_acres is None or min_acres >= city.large_acres:
+            return float(city.large_acres)
+        fits = [f for f in FLOORS if f <= min_acres and f < city.large_acres]
+        return max(fits) if fits else min(FLOORS + (float(city.large_acres),))
+
+    def _large(self, city, fresh=False, floor=None):
+        floor = float(city.large_acres if floor is None else floor)
+        load = city.large_parcels if floor == city.large_acres else (lambda: city.large_parcels(floor))
         try:
-            return self.cache.get(f"{city.id}/large-parcels/{city.large_acres:g}", LARGE_TTL, city.large_parcels, fresh)
+            return self.cache.get(f"{city.id}/large-parcels/{floor:g}", LARGE_TTL, load, fresh)
         except DOWN as e:
             raise self._unreachable(city) from e
 
@@ -76,22 +92,37 @@ class LandPlanner:
         row["zoning_name"] = L.zone_name(row.get("zoning"), names)
         return row
 
+    @staticmethod
+    def _sized(row):
+        """A list row without its outline; when the outline measures a very different size from the recorded
+        acres, the measured size is added as "outline_acres" so the list can say so."""
+        out = {k: v for k, v in row.items() if k != "rings"}
+        measured = G.rings_acres(row.get("rings"))
+        if G.differs(row.get("acres"), measured):
+            out["outline_acres"] = round(measured, 1)
+        return out
+
     def summary(self, city_id, fresh=False):
         city = self.city(city_id)
         rows, meta = self._large(city, fresh)
-        return {"city": city.id, "large_acres": city.large_acres, **L.summary(rows), **meta}
+        # a record whose acres its own outline contradicts does not get to be "the largest"
+        sound = [r for r in rows if not G.differs(r.get("acres"), G.rings_acres(r.get("rings")))]
+        return {"city": city.id, "large_acres": city.large_acres, **L.summary(rows),
+                "largest_acres": L.summary(sound)["largest_acres"], **meta}
 
     # ---- lands
 
     def lands(self, city_id, min_acres=None, max_acres=None, zoning="", kind="", vacant=False, q="",
               sort="acres", descending=True, fresh=False):
         city = self.city(city_id)
-        rows, meta = self._large(city, fresh)
+        floor = self.floor_for(city, min_acres)
+        rows, meta = self._large(city, fresh, floor)
         names = self.zone_names(city)
         kinds = city.describe()["zoning_kinds"]
-        rows = [self._decorate(city, {k: v for k, v in r.items() if k != "rings"}, names) for r in rows]
+        rows = [self._decorate(city, self._sized(r), names) for r in rows]
         found = L.sort_parcels(L.filter_parcels(rows, min_acres, max_acres, zoning, kind, vacant, q), sort, descending)
-        out = {"city": city.id, "large_acres": city.large_acres, "total": len(rows), "count": len(found),
+        out = {"city": city.id, "large_acres": city.large_acres, "floor": floor,
+               "smallest_floor": min(FLOORS + (float(city.large_acres),)), "total": len(rows), "count": len(found),
                "parcels": found, "zoning_options": L.zoning_options(rows, names, kinds), "direct": None,
                "direct_missing": False, **meta}
         number = L.digits(q)
@@ -105,11 +136,48 @@ class LandPlanner:
                 out["direct_missing"] = True
         return out
 
-    def shapes(self, city_id):
-        """Outlines for the city map: {parcel number: rings}."""
+    def shapes(self, city_id, min_acres=None):
+        """Outlines for the city map: {parcel number: rings}, for the same list `lands` gives for that size."""
         city = self.city(city_id)
-        rows, meta = self._large(city)
-        return {"city": city.id, "shapes": {r["apn"]: r.get("rings") or [] for r in rows}, **meta}
+        floor = self.floor_for(city, min_acres)
+        rows, meta = self._large(city, floor=floor)
+        return {"city": city.id, "floor": floor, "shapes": {r["apn"]: r.get("rings") or [] for r in rows}, **meta}
+
+    def parcels_in_view(self, city_id, west, south, east, north):
+        """Every parcel a map view touches, whatever its size, for the map when it is zoomed in."""
+        city = self.city(city_id)
+        box = [west, south, east, north]
+        if any(v is None for v in box) or not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+            raise Problem(400, "bad-request", "That is not a map view.")
+        if east - west > MAX_VIEW_DEGREES or north - south > MAX_VIEW_DEGREES:
+            raise Problem(400, "zoom-in", "Zoom in to see every parcel.")
+        try:
+            found = city.parcels_in_box(west, south, east, north)
+        except DOWN as e:
+            raise self._unreachable(city) from e
+        names = self.zone_names(city)
+        return {"city": city.id, "parcels": [self._decorate(city, r, names) for r in found.get("parcels", [])],
+                "more": bool(found.get("more"))}
+
+    def updated(self, city_id, lat=None, lon=None):
+        """When the city's parcel records last changed, and when the aerial photo at a spot was taken. A part
+        whose source did not answer is None: the page says so instead of showing a date."""
+        city = self.city(city_id)
+        out = {"city": city.id, "records": None, "photo": None}
+        try:
+            out["records"] = self.cache.get(f"{city.id}/records-updated", UPDATED_TTL, city.records_updated)[0]
+        except DOWN:
+            pass
+        if lat is None or lon is None:
+            lat, lon = city.centre["lat"], city.centre["lon"]
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            spot = f"{round(lat, 2):.2f},{round(lon, 2):.2f}"     # one answer per spot of about half a mile
+            try:
+                out["photo"] = self.cache.get(f"{city.id}/photo-date/{spot}", PHOTO_TTL,
+                                              lambda: city.photo_date(round(lon, 2), round(lat, 2)))[0]
+            except DOWN:
+                pass
+        return out
 
     def _list_row(self, city, parcel, names):
         row = {k: v for k, v in parcel.items() if k not in ("outline", "source")}
@@ -157,7 +225,7 @@ class LandPlanner:
     def land(self, city_id, apn, group="quick", fresh=False):
         """One land's facts. group "quick" is everything but the ground heights; "ground" is terrain and surface."""
         city = self.city(city_id)
-        if group not in ("quick", "ground"):
+        if group not in ("quick", "ground", "market"):
             raise Problem(400, "bad-request", "Unknown group of facts.")
         parcel, meta = self._parcel(city, apn, fresh and group == "quick")
         names = self.zone_names(city)
@@ -175,6 +243,76 @@ class LandPlanner:
             out["zoning_notes"] = city.zoning_notes(parcel.get("zoning"))
         return out
 
+    # ---- the plan for one land
+
+    def plan(self, city_id, apn, settings=None, forget=False):
+        """The suggested land-use plan with its reasons (plan.py). `settings` are the owner's own changes: given,
+        they are kept for next time; left out, the kept ones are used. `forget` goes back to the suggestion.
+        The ground heights are used when they have already been read (they are slow); the answer says if not."""
+        city = self.city(city_id)
+        parcel, meta = self._parcel(city, apn)
+        number = parcel["apn"]
+        if forget:
+            self.plans.put(city.id, number, None)
+            settings = None
+        elif settings is not None:
+            settings = P.clean_settings(settings)
+            # settings that change nothing are not kept: the land simply shows the suggestion
+            self.plans.put(city.id, number, None if settings == P.clean_settings({}) else settings)
+        else:
+            settings = self.plans.get(city.id, number)
+        parts, sources, fetched = self._plan_facts(city, parcel)
+        out = P.make_plan(self._decorate(city, parcel, self.zone_names(city)), parts, settings, city.zoning_kind)
+        out.update(city=city.id, apn=number, sources=sources, fetched=fetched, parcel_fetched=meta["fetched"],
+                   ground_read=bool(parts["surface"]), kept=self.plans.get(city.id, number) is not None,
+                   kept_in=str(self.plans.path.resolve()))
+        return out
+
+    def _plan_facts(self, city, parcel):
+        """The site facts a plan is worked out from: (parts, sources, fetched)."""
+        names = self.zone_names(city)
+        wanted = [p for p, g in SITE_PARTS.items() if g in ("quick", "market") and p != "neighbour_shapes"]
+        with ThreadPoolExecutor(max_workers=len(wanted)) as pool:
+            results = list(pool.map(lambda p: self._part(city, parcel, p, False), wanted))
+        parts, sources, fetched = {}, {}, {}
+        for part, (value, state, at) in zip(wanted, results):
+            parts[part], sources[part], fetched[part] = self._labelled(city, part, value, names), state, at
+        for part in ("surface", "terrain"):
+            known = self.cache.peek(f"{city.id}/site/{parcel['apn']}/{part}")
+            parts[part] = known[0] if known else None
+        return parts, sources, fetched
+
+    def compare(self):
+        """My lands side by side: for each saved land, the headline numbers of its plan as the owner keeps it
+        (or the suggestion under today's zoning) and of the best-use suggestion. A land whose records did not
+        answer is listed with the reason instead of numbers. Nothing is kept or changed by asking."""
+        def one(record):
+            row = {"city": record["city"], "apn": record["apn"], "saved_at": record.get("saved_at")}
+            city = self.cities.get(record["city"])
+            if not city:
+                return {**row, "problem": "This city is no longer in Land Planner."}
+            row["city_name"] = city.name
+            try:
+                parcel, _ = self._parcel(city, record["apn"])
+                parts, sources, _ = self._plan_facts(city, parcel)
+            except Problem as e:
+                return {**row, "problem": e.message}
+            decorated = self._decorate(city, parcel, self.zone_names(city))
+            kept = self.plans.get(city.id, parcel["apn"])
+            row.update(apn_formatted=parcel.get("apn_formatted"), acres=parcel.get("acres"), zoning=parcel.get("zoning"),
+                       zoning_name=decorated.get("zoning_name"), address=parcel.get("address") or "",
+                       has_own_plan=kept is not None,
+                       did_not_answer=[k for k, v in sources.items() if v == "did not answer"],
+                       plans={"kept": P.headline(P.make_plan(decorated, parts, kept or {"mode": "zoning"}, city.zoning_kind)),
+                              "best": P.headline(P.make_plan(decorated, parts, {"mode": "best"}, city.zoning_kind))})
+            return row
+
+        records = self.saved.all()
+        if not records:
+            return {"lands": []}
+        with ThreadPoolExecutor(max_workers=min(4, len(records))) as pool:
+            return {"lands": list(pool.map(one, records))}
+
     # ---- my lands
 
     def my_lands(self):
@@ -186,7 +324,7 @@ class LandPlanner:
                 parcel = self._decorate(city, parcel, self.zone_names(city))
             out.append({"city": record["city"], "city_name": city.name if city else record["city"],
                         "apn": record["apn"], "saved_at": record.get("saved_at"), "parcel": parcel})
-        return {"lands": out}
+        return {"lands": out, "kept_in": str(self.saved.path.resolve())}
 
     def save(self, city_id, apn):
         city = self.city(city_id)

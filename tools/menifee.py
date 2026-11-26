@@ -22,6 +22,7 @@ are the assessor's drawing, not a boundary survey.
 import argparse
 import json
 import math
+import re
 import statistics
 import sys
 import time
@@ -38,6 +39,13 @@ ELEVATION = "https://epqs.nationalmap.gov/v1/json"
 SAMPLES = "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples"
 FEET_PER_METRE = 3.280839895
 TRAFFIC = "https://caltrans-gis.dot.ca.gov/arcgis/rest/services/CHhighway/Traffic_AADT/FeatureServer/0"
+STREETS = f"{CITY}/Circulation_Element_Updated/FeatureServer/3"
+SIGNALS = f"{CITY}/Traffic_Signals/FeatureServer/20"
+PROJECTS = f"{CITY}/Land_Development_Projects/FeatureServer/7"
+ECON_PROJECTS = f"{CITY}/EconDevProjects_2025/FeatureServer/10"
+SCHOOLS = f"{CITY}/Schools_Points_2025/FeatureServer/9"
+BLOCKS = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/2"
+NAIP = "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer"
 PARCEL_FIELDS = ("APN,APNFormat,Acres,Zoning,LandUse,ClassCode,SitusStreet,SitusCity,SubdivisionName,Land,Structures,"
                  "FIRE_HAZARD_ZONE,CouncilDistrict")
 AGENT = "land-planner/0.1 (public data lookup)"
@@ -84,8 +92,8 @@ def clean_apn(apn):
 
 
 def tidy(text):
-    """The city's text with stray and non-breaking spaces removed."""
-    return " ".join(str(text or "").split())
+    """The city's text with stray and non-breaking spaces removed (and its broken apostrophes mended)."""
+    return " ".join(str(text or "").replace("\ufffd", "'").split())
 
 
 def parcel_row(a):
@@ -401,12 +409,224 @@ def traffic(lon, lat, miles=4.0, limit=6):
             continue
         seen.add(key)
         d = math.hypot((g["x"] - lon) * 69.17 * math.cos(math.radians(lat)), (g["y"] - lat) * 69.17)
-        rows.append({"route": a.get("RTE"), "where": a.get("DESCRIPTION"), "vehicles_per_day_behind": a.get("BACK_AADT"),
+        rows.append({"route": str(a.get("RTE") or "").lstrip("0") or a.get("RTE"), "where": a.get("DESCRIPTION"), "vehicles_per_day_behind": a.get("BACK_AADT"),
                      "vehicles_per_day_ahead": a.get("AHEAD_AADT"), "peak_hour_ahead": a.get("AHEAD_PEAK_HOUR"),
                      "miles_away": round(d, 2), "lat": round(g["y"], 6), "lon": round(g["x"], 6)})
     rows.sort(key=lambda r: r["miles_away"])
     return {"within_miles": miles, "stations": rows[:limit],
             "note": "state highways only; city streets need Menifee's own traffic counts"}
+
+
+# ---------------------------------------------------------------- what a land-use plan starts from
+
+def in_circle(layer, lon, lat, miles, fields, geometry=True, extra=None, timeout=40):
+    """The features of a layer that a circle around the point touches."""
+    params = {"geometry": json.dumps(circle(lon, lat, float(miles))), "geometryType": "esriGeometryPolygon", "inSR": 4326,
+              "spatialRel": "esriSpatialRelIntersects", "outFields": fields, "returnGeometry": "true" if geometry else "false",
+              "outSR": 4326, "geometryPrecision": 6, "f": "json"}
+    params.update(extra or {})
+    return get_json(f"{layer}/query", params, timeout=timeout).get("features") or []
+
+
+def miles_between(lon1, lat1, lon2, lat2):
+    return math.hypot((lon2 - lon1) * 69.17 * math.cos(math.radians(lat1)), (lat2 - lat1) * 69.17)
+
+
+def day(ms):
+    """An ArcGIS date (milliseconds since 1970) as "2026-10-28", or None."""
+    try:
+        return time.strftime("%Y-%m-%d", time.gmtime(float(ms) / 1000))
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def records_updated():
+    """When the city last changed its parcel records (the layer's own last-edit date)."""
+    info = get_json(PARCELS, {"f": "json"})
+    edit = info.get("editingInfo") or {}
+    return {"parcels": day(edit.get("dataLastEditDate") or edit.get("lastEditDate")),
+            "source": "City of Menifee parcels (public GIS)"}
+
+
+def photo_date(lon, lat):
+    """When the aerial photo at this spot was taken (the newest National Agriculture Imagery Program flight USGS holds)."""
+    data = get_json(f"{NAIP}/query", {"where": "Category = 1", "geometry": f"{lon},{lat}", "geometryType": "esriGeometryPoint",
+                                      "inSR": 4326, "spatialRel": "esriSpatialRelIntersects",
+                                      "outFields": "Year,acquisition_date,resolution_value,resolution_units",
+                                      "returnGeometry": "false", "f": "json"})
+    flights = [f["attributes"] for f in data.get("features") or [] if f["attributes"].get("acquisition_date")]
+    if not flights:
+        return None
+    a = max(flights, key=lambda x: x["acquisition_date"])
+    return {"taken": day(a["acquisition_date"]), "year": a.get("Year"), "detail_metres": a.get("resolution_value"),
+            "source": "USDA National Agriculture Imagery Program, served by USGS"}
+
+
+def parcels_in_box(west, south, east, north, limit=6000):
+    """Every parcel that a map view touches, any size, with a thinned outline. `more` is True when the view holds
+    more parcels than `limit` (zoom in to see them all)."""
+    shapes, offset, more = [], 0, False
+    box = {"xmin": west, "ymin": south, "xmax": east, "ymax": north, "spatialReference": {"wkid": 4326}}
+    while True:
+        data = get_json(f"{PARCELS}/query", {
+            "geometry": json.dumps(box), "geometryType": "esriGeometryEnvelope", "inSR": 4326,
+            "spatialRel": "esriSpatialRelIntersects", "outFields": "APN,APNFormat,Acres,Zoning,Structures,ClassCode",
+            "returnGeometry": "true", "outSR": 4326, "geometryPrecision": 5, "maxAllowableOffset": 0.00002,
+            "orderByFields": "APN", "resultOffset": offset, "resultRecordCount": 2000, "f": "json"}, timeout=60)
+        feats = data.get("features") or []
+        for f in feats:
+            a, rings = f["attributes"], (f.get("geometry") or {}).get("rings")
+            if rings and a.get("APN"):
+                shapes.append({"apn": a.get("APN"), "apn_formatted": a.get("APNFormat"), "acres": a.get("Acres"),
+                               "zoning": tidy(a.get("Zoning")), "looks_vacant": not a.get("Structures"), "rings": rings})
+        offset += len(feats)
+        if not feats or not data.get("exceededTransferLimit"):
+            break
+        if offset >= limit:
+            more = True
+            break
+    return {"parcels": shapes, "more": more}
+
+
+STREET_RANK = {"expressway": 5, "urban arterial": 4, "arterial": 4, "mountain arterial": 4, "major": 3, "secondary": 2,
+               "collector": 1}
+
+
+def streets_near(lon, lat, miles=0.75):
+    """The city's planned street network near the point (its general plan circulation map): each stretch with its
+    street class and line. Unclassified local streets are left out."""
+    rows = []
+    for f in in_circle(STREETS, lon, lat, miles, "ST_NAME,Classification,mnfe_speeds"):
+        a, paths = f["attributes"], (f.get("geometry") or {}).get("paths") or []
+        cls = tidy(a.get("Classification"))
+        if not paths or not cls or cls.lower() not in STREET_RANK:
+            continue
+        rows.append({"name": tidy(a.get("ST_NAME")).title() or "Unnamed street", "class": cls,
+                     "rank": STREET_RANK[cls.lower()], "speed_mph": a.get("mnfe_speeds"), "paths": paths})
+    return {"within_miles": miles, "streets": rows, "source": "City of Menifee general plan circulation map"}
+
+
+def signals_near(lon, lat, miles=1.5):
+    """Traffic signals that exist today near the point, nearest first."""
+    rows = []
+    for f in in_circle(SIGNALS, lon, lat, miles, "Name,STATUS,SignalType,StreetName,CrossStreet"):
+        a, g = f["attributes"], f.get("geometry") or {}
+        if g.get("x") is None or tidy(a.get("SignalType")).lower() != "traffic signal":
+            continue
+        rows.append({"street": tidy(a.get("StreetName")).title(), "cross_street": tidy(a.get("CrossStreet")).title(),
+                     "status": tidy(a.get("STATUS")), "lat": round(g["y"], 6), "lon": round(g["x"], 6),
+                     "miles_away": round(miles_between(lon, lat, g["x"], g["y"]), 2)})
+    rows.sort(key=lambda r: r["miles_away"])
+    return {"within_miles": miles, "signals": rows, "source": "City of Menifee traffic signals"}
+
+
+def schools_near(lon, lat, miles=2.0):
+    rows = []
+    for f in in_circle(SCHOOLS, lon, lat, miles, "Name,GradeLevel,SchoolType"):
+        a, g = f["attributes"], f.get("geometry") or {}
+        if g.get("x") is None:
+            continue
+        rows.append({"name": tidy(a.get("Name")), "grades": tidy(a.get("GradeLevel")), "kind": tidy(a.get("SchoolType")),
+                     "miles_away": round(miles_between(lon, lat, g["x"], g["y"]), 2)})
+    rows.sort(key=lambda r: r["miles_away"])
+    return {"within_miles": miles, "schools": rows[:8], "source": "City of Menifee schools"}
+
+
+def _number(text):
+    try:
+        return float(str(text).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def read_project(text):
+    """The sizes a project description states, read from its own words: acres, homes (lots or units), building
+    square feet. Only what is written is returned; a description that does not say stays empty."""
+    text = tidy(text)
+    out = {}
+    m = re.search(r"([\d,]+(?:\.\d+)?)\s*-?\s*(?:net\s+|gross\s+)?acres?\b", text, re.I)
+    if m:
+        out["acres"] = _number(m.group(1))
+    homes = [_number(n) for n in re.findall(
+        r"([\d,]+)\s*(?:-\s*)?(?:new\s+)?(?:single[- ]family\s+)?(?:res(?:idential)?\.?\s+)?"
+        r"(?:condomin\w+\s+|apartment\s+)?(?:lots|units?|homes)\b", text, re.I)]
+    homes = [n for n in homes if n]
+    if len(homes) == 1:  # several counts in one description (phases, planning areas) are not added up by guesswork
+        out["homes"] = homes[0]
+    # building floor space; a lot size ("7,200 sq ft min", "5,000 sq ft lots") is not a building
+    feet = [_number(n) for n, after in re.findall(
+        r"([\d,]{4,})\s*(?:sq\.?\s*\.?\s*ft\.?|sqft|sf\b|square f\w*)\s*(min|lots?)?", text, re.I) if not after]
+    feet = [n for n in feet if n and n >= 2000]
+    if feet:
+        out["building_sq_ft"] = sum(feet)
+    return out
+
+
+def builder_of(a):
+    """Who the city's list names for a project: its applicant, or a company name in brackets in the title."""
+    name = tidy(a.get("Applicant")).strip("() ")
+    if not name or name.lower() == "none":
+        m = re.search(r"\(([^)]+)\)", tidy(a.get("ProjectTitle")))
+        name = m.group(1).strip() if m else ""
+        if re.search(r"\d|&|corner|formerly|aka", name, re.I):  # a place or an old name, not a company
+            name = ""
+    return name
+
+
+def projects_near(lon, lat, miles=3.0):
+    """Development projects on the city's own lists near the point: what is being built or asked for, by whom.
+    Two city lists are read (land development projects, and the 2025 economic development projects)."""
+    rows, seen = [], set()
+    lists = ((PROJECTS, "ProjectNum,ProjectTitle,ProjectType,ProjectStatus,ProjectDesc,Applicant,Acres", "development projects"),
+             (ECON_PROJECTS, "ProjectNum,ProjectTitle,ProjectType,ProjectStatus,ProjectDesc,size,location", "economic development projects, 2025"))
+    for layer, fields, label in lists:
+        for f in in_circle(layer, lon, lat, miles, fields, geometry=False, extra={"returnCentroid": "true"}):
+            a, c = f["attributes"], f.get("centroid") or {}
+            title = tidy(a.get("ProjectTitle"))
+            if not title or title.lower() in seen or c.get("x") is None:
+                continue
+            seen.add(title.lower())
+            text = tidy(a.get("ProjectDesc"))
+            stated = read_project(text)
+            if tidy(a.get("ProjectType")).lower().startswith("residential"):
+                stated.pop("building_sq_ft", None)   # house sizes are not what a housing tract is measured by
+            if a.get("Acres") and "acres" not in stated:
+                stated["acres"] = a.get("Acres")
+            status = tidy(a.get("ProjectStatus"))
+            rows.append({"title": title, "number": tidy(a.get("ProjectNum")), "kind": tidy(a.get("ProjectType")),
+                         "status": "" if status.lower() == "none" else status, "description": text,
+                         "builder": builder_of(a), "stated": stated, "where": tidy(a.get("location")),
+                         "list": label, "lat": round(c["y"], 6), "lon": round(c["x"], 6),
+                         "miles_away": round(miles_between(lon, lat, c["x"], c["y"]), 2)})
+    rows.sort(key=lambda r: r["miles_away"])
+    updated = {}
+    for layer, _, label in lists:
+        try:
+            edit = get_json(layer, {"f": "json"}).get("editingInfo") or {}
+            updated[label] = day(edit.get("dataLastEditDate") or edit.get("lastEditDate"))
+        except SourceError:
+            updated[label] = None
+    return {"within_miles": miles, "projects": rows, "lists_updated": updated, "source": "City of Menifee project lists"}
+
+
+def people_near(lon, lat, rings=(1, 3, 5)):
+    """People and homes counted in the 2020 Census within each distance of the point. A census block the circle
+    only touches counts whole."""
+    stats = json.dumps([{"statisticType": "sum", "onStatisticField": "POP100", "outStatisticFieldName": "people"},
+                        {"statisticType": "sum", "onStatisticField": "HU100", "outStatisticFieldName": "homes"}])
+
+    def one(miles):
+        data = get_json(f"{BLOCKS}/query", {"geometry": json.dumps(circle(lon, lat, float(miles))),
+                                            "geometryType": "esriGeometryPolygon", "inSR": 4326,
+                                            "spatialRel": "esriSpatialRelIntersects", "outStatistics": stats, "f": "json"},
+                        timeout=60)
+        a = ((data.get("features") or [{}])[0].get("attributes") or {})
+        if a.get("people") is None:
+            raise SourceError("the Census block service gave no count")
+        return {"miles": miles, "people": int(a["people"]), "homes": int(a.get("homes") or 0)}
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        return {"rings": list(pool.map(one, rings)), "year": 2020, "source": "U.S. Census Bureau, 2020 Census blocks"}
 
 
 def site(apn, miles=1.0):

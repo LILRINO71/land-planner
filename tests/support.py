@@ -79,9 +79,9 @@ class Tinytown(CityAdapter):
         if name in self.down:
             raise SourceError(f"(test) {name} is down")
 
-    def large_parcels(self):
+    def large_parcels(self, min_acres=None):
         self._maybe_fail("large")
-        return [dict(r) for r in self.rows]
+        return [dict(r) for r in self.rows + ([self.small] if min_acres is not None and min_acres <= 2.5 else [])]
 
     def parcel(self, apn):
         self._maybe_fail("parcel")

@@ -10,6 +10,45 @@ import threading
 from pathlib import Path
 
 
+class SavedPlans:
+    """The owner's own changes to each land's plan (acres, figures, extra costs), one small file like My lands."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self._guard = threading.Lock()
+
+    def _read(self):
+        try:
+            plans = json.loads(self.path.read_text(encoding="utf-8"))["plans"]
+            return plans if isinstance(plans, dict) else {}
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError, KeyError, TypeError):
+            try:
+                os.replace(self.path, self.path.with_suffix(".unreadable.json"))
+            except OSError:
+                pass
+            return {}
+
+    def get(self, city, apn):
+        with self._guard:
+            found = self._read().get(f"{city}/{apn}")
+            return found if isinstance(found, dict) else None
+
+    def put(self, city, apn, settings):
+        """Keep the settings; None forgets them (back to the suggested plan)."""
+        with self._guard:
+            plans = self._read()
+            if settings is None:
+                plans.pop(f"{city}/{apn}", None)
+            else:
+                plans[f"{city}/{apn}"] = settings
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            scratch = self.path.with_suffix(".tmp")
+            scratch.write_text(json.dumps({"version": 1, "plans": plans}, indent=1), encoding="utf-8")
+            os.replace(scratch, self.path)
+
+
 class SavedLands:
     def __init__(self, path):
         self.path = Path(path)

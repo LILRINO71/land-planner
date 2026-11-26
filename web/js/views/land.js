@@ -2,8 +2,9 @@
 // Every value on these pages comes from the server's answer for this parcel. Nothing is typed in here: a value
 // the public records do not give reads "not covered yet".
 import { land as getLand, city as getCity, saved } from "../api.js";
-import { createMap, ll, legend, kindColour } from "../maps.js";
+import { createMap, ll, legend, kindColour, fillStrength } from "../maps.js";
 import { mountTerrain } from "../terrain3d.js";
+import { plan } from "./plan.js";
 import { NONE, esc, has, show, num, money, cap, placeName, when, table, icon, loading, problem, missing, toast, apnText } from "../util.js";
 
 export const PAGES = [
@@ -119,18 +120,24 @@ function withGround(ctx, box, waiting, draw) {
 // A map of the parcel. neighbours: colour the surrounding parcels by zoning. stations: show highway count points.
 function siteMap(box, ctx, { neighbours = false, stations = false, base = "aerial", legendBox = null } = {}) {
   const L = window.L, { P, c, parts } = ctx;
-  const view = createMap(box, { base });
+  const view = createMap(box, { base, city: c.id, at: P.centre });
   ctx.alive.onLeave(view.destroy);
-  const shown = new Set();
+  const shown = new Set(), around = [];
+  // on the photo the zoning colours are lighter with a coloured outline, so the ground still shows through
+  const neighbourStyle = (colour) => view.base() === "aerial"
+    ? { color: colour, opacity: 0.95, weight: 1.4, fillColor: colour, fillOpacity: fillStrength("aerial") }
+    : { color: "#fff", opacity: 1, weight: 0.6, fillColor: colour, fillOpacity: 0.45 };
   if (neighbours) {
     (parts.neighbour_shapes || []).forEach((n) => {
       if (n.apn === P.apn) return;
-      const kind = n.zoning_kind || "other";
+      const kind = n.zoning_kind || "other", colour = kindColour(c.zoning_kinds, kind);
       shown.add(kind);
-      L.polygon(ll(n.rings), { color: "#fff", weight: 0.6, fillColor: kindColour(c.zoning_kinds, kind), fillOpacity: 0.45 })
+      const shape = L.polygon(ll(n.rings), neighbourStyle(colour))
         .bindTooltip(`${esc(n.zoning)}${n.zoning_name && n.zoning_name !== n.zoning ? " · " + esc(n.zoning_name) : ""}${has(n.acres) ? " · " + num(n.acres, 2) + " acres" : ""}`, { sticky: true })
         .addTo(view.map);
+      around.push([shape, colour]);
     });
+    view.onBase(() => around.forEach(([shape, colour]) => shape.setStyle(neighbourStyle(colour))));
   }
   const rings = ll(P.outline.coordinates);
   L.polygon(rings, { color: "#1d2a24", weight: 7, fill: false, interactive: false }).addTo(view.map);
@@ -176,6 +183,20 @@ function limitsCard() {
 
 // ---------------------------------------------------------------- Overview
 
+// Two plain links to Google's site, at the parcel's centre point (nothing is sent from here; the person follows them).
+function googleLinks(P) {
+  const lat = Number(P.centre && P.centre.lat), lon = Number(P.centre && P.centre.lon);
+  if (!has(P.centre && P.centre.lat) || !has(P.centre && P.centre.lon) || !Number.isFinite(lat) || !Number.isFinite(lon)) return "";
+  const at = lat.toFixed(6) + "," + lon.toFixed(6);
+  const maps = `https://www.google.com/maps/search/?api=1&query=${at}`;
+  const street = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${at}`;
+  return `<div class="near-links">
+      <a class="btn small" href="${esc(maps)}" target="_blank" rel="noopener">${icon("pin")} Open in Google Maps</a>
+      <a class="btn small" href="${esc(street)}" target="_blank" rel="noopener">${icon("surroundings")} Street View here</a>
+    </div>
+    <p class="fine">These open Google's site in a new tab. Street View shows the nearest street, which can be some way from the middle of a large parcel.</p>`;
+}
+
 function overview(box, ctx) {
   const { P, c, parts, quick } = ctx, Z = parts.zoning, traffic = parts.state_highway_traffic, near = traffic && traffic.stations[0];
   box.innerHTML = `
@@ -192,7 +213,8 @@ function overview(box, ctx) {
       <div>
         <h2>Where it is</h2>
         <div class="map-frame"><div class="map" id="siteMap"></div></div>
-        <p class="fine">Gold outline: this parcel, as the assessor draws it. Dark dot: the nearest Caltrans count point, when it is close enough to show. Click the map, then scroll, to zoom. The background picture needs an internet connection; the outline does not.</p>
+        ${googleLinks(P)}
+        <p class="fine">Gold outline: this parcel, as the assessor draws it. Dark dot: the nearest Caltrans count point, when it is close enough to show. The background picture needs an internet connection; the outline does not.</p>
       </div>
       <div class="card"><h2>Size and assessor facts</h2>
         <dl class="facts">${[
@@ -254,14 +276,10 @@ function zoning(box, ctx) {
     html += `<h2>General plan: ${esc(G.label || G.land_use)}</h2><p>The city's long-range plan marks this land as <b>${esc(G.description)}</b>${G.specific_plan ? ", inside the " + esc(G.specific_plan) + " specific plan" : ""}. The general plan is the city's picture of what this area should become.</p>
       <p class="fine">${sourceNote(ctx, "general_plan")}.</p>`;
   } else html += "<h2>General plan</h2>" + unanswered(ctx, "general_plan", "The general plan at this spot");
-  html += "</div></section>";
-  (quick.zoning_notes || []).forEach((n) => {
-    html += `<section class="card"><h2>${esc(n.title)}</h2><blockquote>“${esc(n.quote)}”</blockquote>
-      <p class="fine">${n.source_url ? `<a href="${esc(n.source_url)}" target="_blank" rel="noopener">${esc(n.source_name)}</a>` : esc(n.source_name)}.</p>
-      <p><b>In plain words:</b> ${esc(n.plain)}</p></section>`;
-  });
+  html += "</div>";
+  // the record and the use-by-use cards share the grid above, so a wide screen shows all four side by side
   const split = String(P.zoning || "").includes("&");
-  html += `<section class="two">
+  html += `
     <div class="card"><h2>On the parcel record</h2>
       <dl class="facts"><dt>Zoning code</dt><dd>${esc(P.zoning || "None listed")}</dd><dt>In words</dt><dd>${esc(P.zoning_name || NONE)}</dd>
       <dt>General plan code</dt><dd>${show(P.general_plan)}</dd></dl>
@@ -272,6 +290,12 @@ function zoning(box, ctx) {
       ${c.links.development_code ? `<p>The rules themselves are in the <a href="${esc(c.links.development_code)}" target="_blank" rel="noopener">city development code</a>.</p>` : ""}
       <p class="fine">Changing what is allowed goes through the city: a general plan amendment, a zone change or a specific plan, each with public hearings.</p>
     </div></section>`;
+  (quick.zoning_notes || []).forEach((n) => {
+    html += `<section class="card"><h2>${esc(n.title)}</h2><div class="note-cols">
+      <div><blockquote>“${esc(n.quote)}”</blockquote>
+      <p class="fine">${n.source_url ? `<a href="${esc(n.source_url)}" target="_blank" rel="noopener">${esc(n.source_name)}</a>` : esc(n.source_name)}.</p></div>
+      <div class="note-plain"><h3>In plain words</h3><p>${esc(n.plain)}</p></div></div></section>`;
+  });
   box.innerHTML = html;
   wireReload(box, ctx);
 }
@@ -281,14 +305,18 @@ function zoning(box, ctx) {
 function surroundings(box, ctx) {
   const { c, parts } = ctx, A = parts.surroundings;
   box.innerHTML = `
-    <section>
-      <h2>What surrounds it</h2>
-      <div class="map-frame"><div class="map tall" id="aroundMap"></div></div>
-      <div class="legend" id="aroundLegend"></div>
-      <p class="fine">Gold outline: this parcel. Coloured shapes: the parcels within ${num(c.site_miles, 1)} mile of its centre, by zoning (point at one to read it). This is zoning, not what is built there today.</p>
-    </section>
-    <section><h2>Zoning within ${num(c.site_miles, 1)} mile</h2><div id="aroundTable"></div></section>`;
-  siteMap(box.querySelector("#aroundMap"), ctx, { neighbours: true, base: "aerial", legendBox: box.querySelector("#aroundLegend") });
+    <div class="map-side">
+      <section>
+        <h2>What surrounds it</h2>
+        <div class="map-frame"><div class="map tall" id="aroundMap"></div></div>
+        <div class="legend" id="aroundLegend"></div>
+        <p class="fine">Gold outline: this parcel. Coloured shapes: the parcels within ${num(c.site_miles, 1)} mile of its centre, by zoning (point at one to read it). This is zoning, not what is built there today.</p>
+      </section>
+      <section><h2>Zoning within ${num(c.site_miles, 1)} mile</h2><div id="aroundTable"></div></section>
+    </div>
+    <section class="near" id="near" aria-labelledby="nearTitle"></section>`;
+  const view = siteMap(box.querySelector("#aroundMap"), ctx, { neighbours: true, base: "aerial", legendBox: box.querySelector("#aroundLegend") });
+  nearby(box.querySelector("#near"), box.querySelector("#aroundLegend"), view, ctx);
   const t = box.querySelector("#aroundTable");
   if (!A) { t.innerHTML = unanswered(ctx, "surroundings", "Zoning around the parcel"); wireReload(t, ctx); return; }
   const listed = A.by_zoning.reduce((sum, r) => sum + r.acres, 0), rest = A.total_acres - listed;
@@ -299,6 +327,175 @@ function surroundings(box, ctx) {
   t.innerHTML = `<p>Parcels within <b>${num(A.within_miles, 1)} mile</b> of the centre add up to <b>${num(A.total_acres)} acres</b>. By zoning:</p>` +
     table(["Code", "Meaning", "Acres", "Parcels", "Share"], rows) +
     `<p class="fine">Includes this parcel. A parcel the circle only touches is counted whole. Roads and other land outside parcels are not counted. ${sourceNote(ctx, "surroundings")}.</p>`;
+}
+
+// ---- what is being built nearby (projects, people, schools and traffic signals around the parcel)
+
+const NEAR_MILES = 2;       // projects are listed and drawn within this many miles
+const NEAR_FIRST = 15;      // the table starts with this many, nearest first
+// one shape and one letter per kind of project, so the map never relies on colour alone
+const PROJECT_KINDS = {
+  housing: { cls: "res", letter: "H", word: "Residential" },
+  commercial: { cls: "com", letter: "C", word: "Commercial" },
+  industrial: { cls: "ind", letter: "I", word: "Industrial" },
+  mixed: { cls: "mix", letter: "M", word: "Mixed use" },
+};
+function kindOf(kind) {
+  const k = String(kind || "").toLowerCase().replace(/[-_]/g, " ").trim();
+  if (k === "residential" || k === "housing") return "housing";
+  if (k === "commercial") return "commercial";
+  if (k === "industrial") return "industrial";
+  if (k === "mixed use" || k === "mixed") return "mixed";
+  return "other";
+}
+function pin(kind, small) {
+  const info = PROJECT_KINDS[kindOf(kind)] || { cls: "oth", letter: String(kind || "?").charAt(0).toUpperCase() || "?" };
+  return `<span class="near-pin ${info.cls}${small ? " sm" : ""}" aria-hidden="true"><b>${esc(info.letter)}</b></span>`;
+}
+// "2023-09-14" as "Sep 14, 2023", read as a calendar day so it never slips a day by time zone
+function calDay(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+}
+const miles = (v) => (has(v) && !isNaN(Number(v)) ? num(v, 2) : NONE);
+
+function nearby(section, legendBox, view, ctx) {
+  const { c } = ctx;
+  let showAll = false, data = null;
+  const head = `<h2 id="nearTitle">What is being built nearby</h2>`;
+
+  function ask(again) {
+    section.innerHTML = head + loading("Looking up what is being built near this parcel, the people and schools around it, and the traffic signals. This can take a few seconds.");
+    ctx.entry.loadMarket(again).then((m) => {
+      if (!ctx.alive()) return;
+      data = m;
+      draw();
+      onMap(m);
+    }).catch((e) => {
+      if (!ctx.alive()) return;
+      section.innerHTML = head + problem(e.message);
+      section.querySelector("[data-retry]").addEventListener("click", () => ask(true));
+    });
+  }
+
+  // a part the source did not give: say which of the two reasons it is, never fill it in
+  function absent(m, part, what) {
+    if (m.sources && m.sources[part] === "did not answer") {
+      return `<div class="state problem">${icon("alert")}<p>${esc(what)}: ${esc(c.sources[part] || "the source")} did not answer just now.</p><button type="button" class="btn" data-again>Ask again</button></div>`;
+    }
+    return missing(`${what}: not covered yet.`);
+  }
+  const within = (list, radius = NEAR_MILES) => (list || []).filter((p) => has(p.miles_away) && Number(p.miles_away) <= radius)
+    .sort((a, b) => Number(a.miles_away) - Number(b.miles_away));
+
+  function projectsHtml(m) {
+    const P = m.parts.projects;
+    if (!P) return head + absent(m, "projects", "Projects the city lists near this parcel");
+    const radius = Math.min(NEAR_MILES, Number(P.within_miles) || NEAR_MILES), list = within(P.projects, radius);
+    const count = { housing: 0, commercial: 0, industrial: 0, mixed: 0, other: 0 };
+    list.forEach((p) => { count[kindOf(p.kind)]++; });
+    const bits = [`<b>${count.housing}</b> housing`, `<b>${count.commercial}</b> commercial`, `<b>${count.industrial}</b> industrial`];
+    if (count.mixed) bits.push(`<b>${count.mixed}</b> mixed use`);
+    if (count.other) bits.push(`<b>${count.other}</b> of another kind`);
+    const counts = list.length
+      ? `<p class="near-counts">Within ${num(radius, 1)} miles of this parcel the city lists <b>${num(list.length)}</b> ${list.length === 1 ? "project" : "projects"}: ${bits.join(", ")}.</p>`
+      : `<p class="near-counts">The city's lists show no projects within ${num(radius, 1)} miles of this parcel.</p>`;
+    const shown = showAll ? list : list.slice(0, NEAR_FIRST);
+    const stated = (p) => {
+      const s = p.stated || {}, given = [];
+      if (has(s.homes)) given.push(num(s.homes) + " homes");
+      if (has(s.acres)) given.push(num(s.acres, 2) + " acres");
+      if (has(s.building_sq_ft)) given.push(num(s.building_sq_ft) + " sq ft of buildings");
+      return given.length ? `<small>The list gives: ${esc(given.join(", "))}</small>` : "";
+    };
+    const rows = shown.map((p) => [
+      `<b>${esc(p.title || NONE)}</b>${p.number ? `<small>${esc(p.number)}</small>` : ""}${p.where ? `<small>${esc(p.where)}</small>` : ""}`,
+      `<span class="near-kind">${pin(p.kind, true)}${esc(p.kind || NONE)}</span>`,
+      p.builder ? esc(p.builder) : "–",
+      p.status ? esc(p.status) : NONE,
+      `<div class="near-text">${p.description ? esc(p.description) : NONE}</div>${stated(p)}`,
+      miles(p.miles_away)]);
+    const more = list.length > NEAR_FIRST
+      ? `<p><button type="button" class="btn small" data-all>${showAll ? "Show only the nearest " + NEAR_FIRST : "Show all " + num(list.length)}</button></p>` : "";
+    const dated = Object.entries(P.lists_updated || {}).filter(([, d]) => calDay(d)).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    const when2 = dated.length ? dated.map(([name, d]) => `“${esc(name)}” was last changed ${esc(calDay(d))}`).join("; ") : "when each list was last changed is " + NONE;
+    const older = dated.length > 1 ? ` The older list, “${esc(dated[0][0])}”, may include projects that are finished by now.` : dated.length === 1 ? " A list may include projects that are finished by now." : "";
+    return head + counts +
+      (list.length ? `<div class="near-projects">${table(["Project", "Kind", "Builder", "Status", "What the city's list says", "Miles away"], rows)}</div>${more}` : "") +
+      `<p class="fine">These come from the ${esc(P.source || c.sources.projects || "city's project lists")}: ${when2}.${older} Distances are straight lines from the parcel's centre. A project's place on the map comes from the city's list.</p>`;
+  }
+  function peopleHtml(m) {
+    const P = m.parts.people;
+    let html = '<div class="card"><h2>People nearby</h2>';
+    if (!P || !(P.rings || []).length) html += absent(m, "people", "People and homes nearby");
+    else {
+      const rings = P.rings.slice().sort((a, b) => a.miles - b.miles);
+      html += table(["Within", "People", "Homes"], rings.map((r) => [`${num(r.miles)} ${Number(r.miles) === 1 ? "mile" : "miles"}`, num(r.people), num(r.homes)])) +
+        `<p class="fine">Counted from the ${has(P.year) ? esc(P.year) + " " : ""}Census, in circles around the parcel's centre. ${esc(P.source || c.sources.people || "U.S. Census Bureau")}.</p>`;
+    }
+    return html + "</div>";
+  }
+  function schoolsHtml(m) {
+    const S = m.parts.schools;
+    let html = '<div class="card"><h2>Schools nearby</h2>';
+    if (!S) html += absent(m, "schools", "Schools nearby");
+    else if (!(S.schools || []).length) html += `<p>No schools on the city's list within ${num(S.within_miles, 1)} miles of this parcel.</p>`;
+    else {
+      const list = S.schools.slice().sort((a, b) => Number(a.miles_away) - Number(b.miles_away)).slice(0, 4);
+      html += table(["School", "Grades", "Kind", "Miles away"], list.map((x) => [esc(x.name || NONE), x.grades ? esc(x.grades) : NONE, x.kind ? esc(x.kind) : NONE, miles(x.miles_away)])) +
+        `<p class="fine">The nearest ${list.length === 1 ? "school" : num(list.length) + " schools"}, in a straight line from the parcel's centre. ${esc(S.source || c.sources.schools || "City schools list")}. Which school a home is assigned to is set by the school district and is not covered here.</p>`;
+    }
+    return html + "</div>";
+  }
+  function draw() {
+    section.innerHTML = `<div class="near-grid"><div class="near-main">${projectsHtml(data)}</div><div class="near-aside">${peopleHtml(data)}${schoolsHtml(data)}</div></div>`;
+  }
+  section.addEventListener("click", (e) => {
+    if (e.target.closest("[data-again]")) ask(true);
+    else if (e.target.closest("[data-all]") && data) {
+      showAll = !showAll;
+      draw();
+      const button = section.querySelector("[data-all]");
+      if (button) button.focus({ preventScroll: true });
+    }
+  });
+
+  // markers on the map, added once the answer is in; the map's fit stays as the page set it
+  let drawn = false;
+  function onMap(m) {
+    if (drawn) return;
+    drawn = true;
+    const L = window.L, P = m.parts.projects, S = m.parts.signals, kinds = new Set();
+    let signals = 0;
+    if (P) {
+      within(P.projects).filter((p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon))).forEach((p) => {
+        kinds.add(kindOf(p.kind));
+        const marker = L.marker([Number(p.lat), Number(p.lon)], {
+          icon: L.divIcon({ className: "near-icon", html: pin(p.kind, false), iconSize: [26, 26], iconAnchor: [13, 13] }),
+          keyboard: true, riseOnHover: true,
+        }).bindTooltip(`<b>${esc(p.title || "Project")}</b><br>${esc(p.kind || "Kind not listed")} · ${esc(p.status || "status not listed")}<br>${esc(miles(p.miles_away))} miles away`, { direction: "top", offset: [0, -10] })
+          .addTo(view.map);
+        const node = marker.getElement();
+        if (node) {
+          node.setAttribute("role", "img");
+          node.setAttribute("aria-label", `${p.title || "Project"}: ${p.kind || "kind not listed"}, ${p.status || "status not listed"}, ${miles(p.miles_away)} miles away`);
+        }
+      });
+    }
+    if (S) {
+      (S.signals || []).filter((s) => (!s.status || String(s.status).toLowerCase() === "existing") && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).forEach((s) => {
+        signals++;
+        L.circleMarker([Number(s.lat), Number(s.lon)], { radius: 5, color: "#1d2a24", weight: 2, fillColor: "#fff", fillOpacity: 1 })
+          .bindTooltip(`Traffic signal: ${esc(s.street || "street not listed")}${s.cross_street ? " at " + esc(s.cross_street) : ""} · ${esc(miles(s.miles_away))} miles away`).addTo(view.map);
+      });
+    }
+    const keys = [...kinds].map((id) => PROJECT_KINDS[id]).filter(Boolean).map((k) => `<span>${pin(k.word, true)}${esc(k.word)} project</span>`);
+    if (kinds.has("other")) keys.push("<span>Other projects are drawn with the first letter of their kind</span>");
+    if (signals) keys.push('<span><i class="near-signal"></i>Traffic signal</span>');
+    if (keys.length) legendBox.insertAdjacentHTML("beforeend", keys.join(""));
+  }
+
+  ask(false);
 }
 
 // ---------------------------------------------------------------- Terrain 3D
@@ -331,6 +528,7 @@ function terrain(box, ctx) {
         : missing("3D ground view: not covered yet for this parcel.");
     }
     html += "</section>";
+    html += '<div class="two">';
     if (inside) {
       html += `<section class="card"><h2>What the heights say</h2>
         <ul class="plain">
@@ -347,7 +545,7 @@ function terrain(box, ctx) {
     } else {
       html += g.sources.terrain === "did not answer" ? missing("The elevation service did not answer for the five points just now.") : missing();
     }
-    html += "</section>";
+    html += "</section></div>";
     ground.innerHTML = html;
     const again = ground.querySelector("[data-ground]");
     if (again) again.addEventListener("click", () => reload(true));
@@ -376,9 +574,10 @@ function traffic(box, ctx) {
       <div class="stat"><span class="label">Busiest hour</span><b>${num(near.peak_hour_ahead)}</b><span>vehicles in the peak hour, on the stretch just past the count point</span></div>
       <div class="stat"><span class="label">City streets</span><b class="small">${cap(NONE)}</b><span>only state highways are counted here; the city publishes its own street counts</span></div>
     </section>
+    <div class="map-side">
     <section>
       <h2>Count points near the parcel</h2>
-      <div class="map-frame"><div class="map" id="trafficMap"></div></div>
+      <div class="map-frame"><div class="map tall" id="trafficMap"></div></div>
       <p class="fine">Gold outline: this parcel. Dark dots: Caltrans count points within ${num(t.within_miles)} miles (point at one to read it).</p>
     </section>
     <section>
@@ -386,39 +585,7 @@ function traffic(box, ctx) {
       ${table(["Count point", "Miles away", "Vehicles a day, before the point", "Vehicles a day, past the point", "Peak hour, past the point"],
         t.stations.map((s) => ["Route " + esc(s.route) + " at " + esc(placeName(s.where)), num(s.miles_away, 2), num(s.vehicles_per_day_behind), num(s.vehicles_per_day_ahead), num(s.peak_hour_ahead)]))}
       <p class="fine">Caltrans annual average daily traffic: the average over a year, both directions together. Caltrans counts the stretch of highway on each side of a count point separately (“back” and “ahead” in its tables). Distances are straight lines from the parcel's centre, not driving distances. ${sourceNote(ctx, "state_highway_traffic")}.</p>
-    </section>`;
-  siteMap(box.querySelector("#trafficMap"), ctx, { stations: "all", base: "streets" });
-}
-
-// ---------------------------------------------------------------- Plan (placeholder)
-
-function plan(box, ctx) {
-  const { P, parts } = ctx, near = parts.state_highway_traffic && parts.state_highway_traffic.stations[0];
-  box.innerHTML = `
-    <section class="card placeholder">
-      <p class="tag">Not built yet</p>
-      <h2>The land-use plan comes next</h2>
-      <p>This page is a placeholder. <b>No plan has been drawn for this land, and nothing here is a proposal.</b></p>
-      <p>The next step for Land Planner is a first split of the land into uses, from rules a planner would recognise: shops want traffic and a corner, homes want quiet edges, and every plan needs roads, parks and drainage. Each piece will be shown with its reason and its acres, and every piece will be adjustable by hand.</p>
     </section>
-    <section class="two">
-      <div class="card"><h2>What the plan will start from</h2>
-        <p>The facts already on this land's other pages:</p>
-        <dl class="facts">
-          <dt>Size</dt><dd><a href="${ctx.link("overview")}">${show(P.acres, " acres")}</a></dd>
-          <dt>Zoning today</dt><dd><a href="${ctx.link("zoning")}">${esc(P.zoning || "None listed")}</a></dd>
-          <dt>Around it</dt><dd><a href="${ctx.link("surroundings")}">${parts.surroundings ? num(parts.surroundings.total_acres) + " acres of parcels within " + num(parts.surroundings.within_miles, 1) + " mile, by zoning" : cap(NONE)}</a></dd>
-          <dt>Ground</dt><dd><a href="${ctx.link("terrain")}" id="planGround">see Terrain 3D</a></dd>
-          <dt>Nearest highway traffic</dt><dd><a href="${ctx.link("traffic")}">${near ? busiest(near) + " vehicles a day, " + near.miles_away + " mi away" : cap(NONE)}</a></dd>
-        </dl>
-      </div>
-      <div class="card"><h2>What it will still need</h2>
-        <ul class="plain">
-          <li>The owner's own numbers for costs and prices.</li>
-          <li>Traffic on the city streets beside the land, utilities, flood zones and other limits on what can be built: not covered yet.</li>
-          <li>The city. Zoning and the general plan say what is allowed today; any change goes through the city.</li>
-        </ul>
-        <p class="fine">Whatever the plan page suggests will be a starting point for the owner, the engineer and the city's planners, not a decision.</p>
-      </div>
-    </section>`;
+    </div>`;
+  siteMap(box.querySelector("#trafficMap"), ctx, { stations: "all", base: "aerial" });
 }

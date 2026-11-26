@@ -50,14 +50,17 @@ class Menifee(CityAdapter):
         "terrain": "U.S. Geological Survey (3D Elevation Program)",
         "surface": "U.S. Geological Survey (3D Elevation Program)",
         "state_highway_traffic": "Caltrans traffic counts",
+        "people": "U.S. Census Bureau, 2020 Census", "streets": "City of Menifee general plan circulation map",
+        "signals": "City of Menifee traffic signals", "projects": "City of Menifee project lists",
+        "schools": "City of Menifee schools", "photo": "USDA aerial photo programme (NAIP), served by USGS",
     }
     not_covered = (
-        "Population, income and spending around the site",
-        "Traffic on city streets (only state highways are covered)",
+        "Income and spending around the site (people and homes are counted from the 2020 Census)",
+        "Traffic counts on city streets (only state highways are counted)",
         "Utilities, flood zones and protected habitat",
         "What the owner paid, and current market prices",
         "Which uses the zone allows outright, with a permit, or not at all",
-        "Likely buyers, costs and returns",
+        "Real quotes for costs and prices (the Plan page starts from editable figures)",
     )
     links = {"development_code": "https://online.encodeplus.com/regs/menifee-ca/doc-viewer.aspx?secid=1320"}
     zoning_kinds = (
@@ -78,8 +81,17 @@ class Menifee(CityAdapter):
                  ("CO", "commercial"), ("BP", "business"), ("HI", "business"), ("PF", "public"), ("PUC", "public"),
                  ("PDO", "specific-plan"), ("SPECIFIC", "specific-plan"))
 
-    def large_parcels(self):
-        return _ask(tool.large_parcels, self.large_acres)
+    def large_parcels(self, min_acres=None):
+        return _ask(tool.large_parcels, self.large_acres if min_acres is None else float(min_acres))
+
+    def parcels_in_box(self, west, south, east, north):
+        return _ask(tool.parcels_in_box, west, south, east, north)
+
+    def records_updated(self):
+        return _ask(tool.records_updated)
+
+    def photo_date(self, lon, lat):
+        return _ask(tool.photo_date, lon, lat)
 
     def parcel(self, apn):
         return _ask(tool.parcel, apn)
@@ -101,7 +113,23 @@ class Menifee(CityAdapter):
             return _ask(tool.terrain, rings, parcel["centre"])
         if part == "surface":
             return _ask(tool.surface, rings)
+        if part == "people":
+            return _ask(tool.people_near, lon, lat)
+        if part == "streets":
+            return _ask(tool.streets_near, lon, lat, self._reach(parcel) + 0.35)
+        if part == "signals":
+            return _ask(tool.signals_near, lon, lat, self._reach(parcel) + 1.0)
+        if part == "projects":
+            return _ask(tool.projects_near, lon, lat)
+        if part == "schools":
+            return _ask(tool.schools_near, lon, lat)
         return None
+
+    @staticmethod
+    def _reach(parcel):
+        """Miles from the parcel's centre to its far corner, so "near" is measured from the edge of big parcels."""
+        size = parcel.get("size_feet") or {}
+        return round(0.5 * (size.get("east_west", 0) ** 2 + size.get("north_south", 0) ** 2) ** 0.5 / 5280, 2)
 
     def zone_names(self):
         names = _ask(tool.zone_names)

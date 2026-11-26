@@ -1,6 +1,7 @@
 // Cities: one card per city with a live count of its large parcels.
 import { api, cities } from "../api.js";
 import { esc, num, when, icon, loading, problem } from "../util.js";
+import { createMap, ll, kindColour, legend } from "../maps.js";
 
 export async function render(el, params, alive) {
   el.innerHTML = `
@@ -9,17 +10,19 @@ export async function render(el, params, alive) {
       <h1>Cities</h1>
       <p class="lead">Pick a city to see its large parcels of land, on a map and in a list.</p>
     </header>
+    <div class="cities-layout">
     <div class="city-grid" id="cityGrid">${loading("Getting the list of cities…")}</div>
     <section class="note-row">
       <div class="card soft">
         <h3>What you are looking at</h3>
-        <p>Everything in Land Planner is read from public records: each city's own parcel and zoning maps, the U.S. Geological Survey for ground heights, and Caltrans for highway traffic. Nothing is estimated. Where a fact is not available it says “not covered yet”.</p>
+        <p>The facts in Land Planner are read from public records: each city's own parcel, zoning, street and project maps, the U.S. Geological Survey for ground heights and aerial photos, Caltrans for highway traffic and the Census for people. Where a fact is not available it says “not covered yet”. Each land's Plan page then suggests how the land could be divided; it marks which of its numbers are measured and which are starting figures to replace with your own.</p>
       </div>
       <div class="card soft">
         <h3>What it is not</h3>
         <p>Parcel outlines are the assessor's drawings, <b>not a boundary survey</b>. Zoning and the general plan say what is allowed today; <b>any change goes through the city</b>. This is a starting point for the owner, the engineer and the city's planners, not a decision.</p>
       </div>
-    </section>`;
+    </section>
+    </div>`;
   const grid = el.querySelector("#cityGrid");
   let list;
   try {
@@ -37,14 +40,52 @@ export async function render(el, params, alive) {
         <div><h2>${esc(c.name)}</h2><p class="muted">${esc(c.region)}</p></div>
         <span class="chip">${icon("pin")} ${num(c.large_acres)} acres and up</span>
       </div>
-      <div class="city-count" data-count>${loading("Counting large parcels…")}</div>
-      <a class="btn primary" href="#/lands/${esc(c.id)}">See the lands ${icon("arrow")}</a>
+      <div class="city-body">
+        <div class="city-facts">
+          <div class="city-count" data-count>${loading("Counting large parcels…")}</div>
+          <a class="btn primary" href="#/lands/${esc(c.id)}">See the lands ${icon("arrow")}</a>
+        </div>
+        <div class="city-map-box">
+          <div class="map-frame"><div class="map city-map" data-map aria-label="Map of ${esc(c.name)}'s large parcels"></div></div>
+          <div class="legend" data-legend></div>
+        </div>
+      </div>
     </article>`).join("") + `
     <article class="card city more">
       <h2>More cities</h2>
       <p class="muted">Menifee is the first city. Others can be added as their public parcel and zoning records are connected, and will appear here as cards.</p>
     </article>`;
-  list.forEach((c) => count(grid.querySelector(`[data-city="${c.id}"] [data-count]`), c, alive, false));
+  list.forEach((c) => {
+    count(grid.querySelector(`[data-city="${c.id}"] [data-count]`), c, alive, false);
+    preview(grid.querySelector(`[data-city="${c.id}"]`), c, alive);
+  });
+}
+
+// The city's large parcels on a small map, coloured by zoning. Click a shape to open that land.
+async function preview(card, c, alive) {
+  const L = window.L, view = createMap(card.querySelector("[data-map]"), { base: "aerial", city: c.id, at: c.centre });
+  alive.onLeave(view.destroy);
+  view.fit(L.latLng(c.centre.lat, c.centre.lon).toBounds(16000));
+  try {
+    const [lands, shapes] = await Promise.all([api.lands(c.id, {}), api.shapes(c.id)]);
+    if (!alive()) return;
+    const kinds = new Set(), bounds = L.latLngBounds([]);
+    lands.parcels.forEach((p) => {
+      const rings = shapes.shapes[p.apn];
+      if (!rings || !rings.length) return;
+      kinds.add(p.zoning_kind);
+      const colour = kindColour(c.zoning_kinds, p.zoning_kind);
+      const shape = L.polygon(ll(rings), { color: colour, weight: 1.5, fillColor: colour, fillOpacity: 0.4 })
+        .bindTooltip(`${esc(p.apn_formatted || p.apn)} · ${num(p.acres, 2)} acres · ${esc(p.zoning || "no zoning listed")}`, { sticky: true })
+        .on("click", () => { location.hash = `#/land/${c.id}/${p.apn}`; })
+        .addTo(view.map);
+      bounds.extend(shape.getBounds());
+    });
+    if (bounds.isValid()) view.fit(bounds.pad(0.05));
+    card.querySelector("[data-legend]").innerHTML = legend(c.zoning_kinds, kinds);
+  } catch (e) {
+    if (alive()) card.querySelector("[data-legend]").innerHTML = '<span class="missing">The parcel outlines could not be loaded just now.</span>';
+  }
 }
 
 async function count(box, c, alive, fresh) {

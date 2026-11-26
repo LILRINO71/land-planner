@@ -8,9 +8,16 @@ from another website, are refused.
     GET    /api/cities/<city>/summary                   live count of large parcels (the city card)
     GET    /api/cities/<city>/lands                     the large parcels: ?min_acres= &max_acres= &zoning= &kind=
                                                         &vacant=1 &q= &sort=acres|apn|zoning|vacant|land_value &dir=asc|desc
-    GET    /api/cities/<city>/shapes                    outlines of the large parcels, for the map
+    GET    /api/cities/<city>/shapes                    outlines of the listed parcels, for the map: ?min_acres=
+    GET    /api/cities/<city>/parcels                   every parcel in a map view: ?west= &south= &east= &north=
+    GET    /api/cities/<city>/updated                   when the records and the aerial photo date from: ?lat= &lon=
     GET    /api/cities/<city>/lands/<apn>               one land: ?group=quick (default) or ground
+    GET    /api/cities/<city>/lands/<apn>/plan          the suggested land-use plan, with the owner's kept changes
+    POST   /api/cities/<city>/lands/<apn>/plan          the plan with these changes (they are kept): {"mode", "acres",
+                                                        "assumptions", "extra_costs", "land_cost"}
+    DELETE /api/cities/<city>/lands/<apn>/plan          forget the changes: back to the suggested plan
     GET    /api/my-lands
+    GET    /api/my-lands/compare                        My lands side by side: each one's plan in a few numbers
     POST   /api/my-lands            {"city": "menifee", "apn": "372100001"}
     DELETE /api/my-lands/<city>/<apn>
 
@@ -34,7 +41,8 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 SECURITY = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data: https://basemap.nationalmap.gov; "
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob: https://basemap.nationalmap.gov "
+                               "https://imagery.nationalmap.gov; "
                                "style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
 }
 
@@ -50,6 +58,15 @@ def _number(query, name):
     if value != value or value < 0 or value > 1e7:
         raise Problem(400, "bad-request", f"“{text}” is not a number of acres.")
     return value
+
+
+def _degrees(query, name):
+    """A latitude or longitude from the address, or None when it is missing or not a number."""
+    try:
+        value = float((query.get(name) or [""])[0])
+    except ValueError:
+        return None
+    return value if -180 <= value <= 180 else None
 
 
 def _flag(query, name):
@@ -76,7 +93,11 @@ def route(planner, method, path, query=None, body=None):
         if len(parts) == 3 and parts[0] == "cities" and parts[2] == "summary":
             return 200, planner.summary(parts[1], fresh)
         if len(parts) == 3 and parts[0] == "cities" and parts[2] == "shapes":
-            return 200, planner.shapes(parts[1])
+            return 200, planner.shapes(parts[1], _number(query, "min_acres"))
+        if len(parts) == 3 and parts[0] == "cities" and parts[2] == "parcels":
+            return 200, planner.parcels_in_view(parts[1], *(_degrees(query, k) for k in ("west", "south", "east", "north")))
+        if len(parts) == 3 and parts[0] == "cities" and parts[2] == "updated":
+            return 200, planner.updated(parts[1], _degrees(query, "lat"), _degrees(query, "lon"))
         if len(parts) == 3 and parts[0] == "cities" and parts[2] == "lands":
             return 200, planner.lands(
                 parts[1], min_acres=_number(query, "min_acres"), max_acres=_number(query, "max_acres"),
@@ -85,8 +106,18 @@ def route(planner, method, path, query=None, body=None):
                 descending=_text(query, "dir").lower() != "asc", fresh=fresh)
         if len(parts) == 4 and parts[0] == "cities" and parts[2] == "lands":
             return 200, planner.land(parts[1], parts[3], _text(query, "group") or "quick", fresh)
+        if len(parts) == 5 and parts[0] == "cities" and parts[2] == "lands" and parts[4] == "plan":
+            return 200, planner.plan(parts[1], parts[3])
         if parts == ["my-lands"]:
             return 200, planner.my_lands()
+        if parts == ["my-lands", "compare"]:
+            return 200, planner.compare()
+    elif method in ("POST", "DELETE") and len(parts) == 5 and parts[0] == "cities" and parts[2] == "lands" and parts[4] == "plan":
+        if method == "DELETE":
+            return 200, planner.plan(parts[1], parts[3], forget=True)
+        if not isinstance(body, dict):
+            raise Problem(400, "bad-request", "Send the plan's settings as JSON.")
+        return 200, planner.plan(parts[1], parts[3], settings=body)
     elif method == "POST" and parts == ["my-lands"]:
         if not isinstance(body, dict) or not body.get("city") or not body.get("apn"):
             raise Problem(400, "bad-request", "Saving a land needs its city and parcel number.")
