@@ -41,6 +41,9 @@ export const api = {
   forecast: (city, apns) => call("GET", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") })),
   forecastSet: (city, apns, assumptions) => call("POST", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") }), { assumptions }),
   forecastReset: (city, apns) => call("DELETE", `/api/cities/${city}/forecast` + query({ apns: apns.join(",") })),
+  // the wider picture for the same site: the city's economy by year, weather, hazards, what is close by, the
+  // typical resident and the steps to take (slower the first time, so it is asked for after the forecast)
+  outlook: (city, apns, fresh) => call("GET", `/api/cities/${city}/outlook` + query({ apns: apns.join(","), fresh: fresh ? 1 : undefined })),
 };
 
 // ---- when a map's records and photo were last updated, asked once per place while the app is open

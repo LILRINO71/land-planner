@@ -134,6 +134,42 @@ class Menifee(CityAdapter):
             return _ask(tool.tracts_near, lon, lat)
         return None
 
+    place = {"name": "Menifee", "fips": "46842", "county": "Riverside",
+             "planning": "City of Menifee Community Development Department (Planning)",
+             "water": "Eastern Municipal Water District (water and sewer) and Southern California Edison (power)"}
+
+    def economy_part(self, part, year):
+        from ..sources import economy as E
+        p = self.place
+        if part == "population":
+            return E.population_by_year(p["name"], year, p["county"])
+        if part == "permits":
+            return E.permits_by_year(p["fips"], year - 8, year - 1)
+        if part == "sales":
+            return E.shop_sales_by_year(p["name"])
+        if part == "work":
+            return E.work_by_year(p["name"], p["county"])
+        if part == "borrowing":
+            return E.mortgage_rates()
+        if part == "prices":
+            return E.prices_by_year(year - 9)
+        return None
+
+    def outlook_part(self, part, parcel, tracts=None):
+        from ..sources import place as S
+        lon, lat = parcel["centre"]["lon"], parcel["centre"]["lat"]
+        if part == "climate":
+            return S.climate(lon, lat)
+        if part == "hazards":
+            pts = [pt for ring in (parcel.get("outline") or {}).get("coordinates") or [] for pt in ring]
+            box = (min(x for x, _ in pts), min(y for _, y in pts), max(x for x, _ in pts), max(y for _, y in pts)) if pts else None
+            return S.hazards(lon, lat, box)
+        if part == "nearby":
+            return S.nearby(lon, lat)
+        if part == "residents":
+            return S.residents(tracts or []) if tracts else None
+        return None
+
     @staticmethod
     def _reach(parcel):
         """Miles from the parcel's centre to its far corner, so "near" is measured from the edge of big parcels."""

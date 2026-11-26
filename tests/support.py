@@ -41,9 +41,37 @@ class Replay:
         return json.loads(json.dumps(found["answer"]))  # a fresh copy each time
 
 
+def _no_files(url, *args, **kwargs):
+    """Stands in for landplanner.sources.fetch.get_bytes: a file source is silent offline (never the network)."""
+    raise SourceError(f"{url}: (test) files are not read offline")
+
+
+class _Offline:
+    """Both of the app's network functions replaced: JSON by the replay, files by a source that is silent."""
+
+    def __init__(self, down):
+        from landplanner.sources import fetch
+        self.replay = Replay(down)
+        self.patches = [mock.patch.object(tool, "get_json", self.replay), mock.patch.object(fetch, "get_bytes", _no_files)]
+
+    def start(self):
+        for p in self.patches:
+            p.start()
+        return self.replay
+
+    def stop(self):
+        for p in reversed(self.patches):
+            p.stop()
+
+    __enter__ = start
+
+    def __exit__(self, *exc):
+        self.stop()
+
+
 def offline(down=()):
     """with offline() as replay: ...   (also usable as a decorator-free patcher: p = offline(); p.start())"""
-    return mock.patch.object(tool, "get_json", Replay(down))
+    return _Offline(down)
 
 
 SQUARE = [[[-117.17, 33.65], [-117.16, 33.65], [-117.16, 33.66], [-117.17, 33.66], [-117.17, 33.65]]]

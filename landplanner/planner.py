@@ -19,18 +19,20 @@ from .cache import Cache
 from .cities import NotFound, SITE_PARTS, SourceError
 from . import geometry as G
 from . import forecast as F
+from . import outlook as O
 from . import plan as P
 from .saved import SavedLands, SavedPlans
 
 HOUR = 3600
 LARGE_TTL, PARCEL_TTL, PART_TTL, NAMES_TTL, RETRY_AFTER = 12 * HOUR, 7 * 24 * HOUR, 7 * 24 * HOUR, 30 * 24 * HOUR, 60
 UPDATED_TTL, PHOTO_TTL = 6 * HOUR, 30 * 24 * HOUR
+ECONOMY_TTL = 14 * 24 * HOUR     # the city's yearly and monthly figures change slowly
 FLOORS = (1.0, 2.0, 5.0)     # the list can start at these sizes as well as the city's own "large" size
 MAX_VIEW_DEGREES = 0.09      # the widest map view the "every parcel in view" layer answers for (about 5 miles)
 
 
 # A service that answers in a shape nobody expected is treated like one that did not answer.
-DOWN = (SourceError, KeyError, TypeError, ValueError, IndexError)
+DOWN = (SourceError, KeyError, TypeError, ValueError, IndexError, AttributeError)
 
 
 class Problem(Exception):
@@ -203,13 +205,17 @@ class LandPlanner:
 
     def _part(self, city, parcel, part, fresh):
         """(value, state, fetched) for one site part; state is "ok", "nothing found there" or "did not answer"."""
-        key = f"{city.id}/site/{parcel['apn']}/{part}"
+        return self._asked(f"{city.id}/site/{parcel['apn']}/{part}", lambda: city.site_part(part, parcel), PART_TTL, fresh)
+
+    def _asked(self, key, load, ttl=PART_TTL, fresh=False):
+        """(value, state, fetched) for one answer kept under `key`, asked for with `load` when no young copy is
+        kept. A source that just failed is not asked again for a minute."""
         with self._guard:
             recent = self.clock() - self._failed.get(key, -1e12) < RETRY_AFTER
         if recent and not fresh:
             return None, "did not answer", None
         try:
-            value, meta = self.cache.get(key, PART_TTL, lambda: city.site_part(part, parcel), fresh)
+            value, meta = self.cache.get(key, ttl, load, fresh)
         except DOWN:
             with self._guard:
                 self._failed[key] = self.clock()
@@ -293,6 +299,36 @@ class LandPlanner:
     def forecast(self, city_id, apns, settings=None, forget=False):
         """The year-by-year forecast (forecast.py) for one parcel, or for several treated as one site. The owner's
         own figures are kept like a plan's. Each parcel's plan is the one the owner keeps for it."""
+        return self._forecast(city_id, apns, settings, forget)[0]
+
+    def outlook(self, city_id, apns, fresh=False):
+        """The wider picture for the same site (outlook.py): the city's economy by year, weather, hazards, what
+        is close by, the typical resident, and the steps to take. Asked for after the forecast is on screen,
+        because some of these sources are slow the first time."""
+        out, plans, parts, site, anchor = self._forecast(city_id, apns, None, False)
+        city = self.city(city_id)
+        year = time.gmtime(self.clock()).tm_year
+        asked = {name: (f"{city.id}/economy/{name}", lambda name=name: city.economy_part(name, year), ECONOMY_TTL)
+                 for name in O.ECONOMY_PARTS}
+        tracts = [{"id": t.get("id"), "households": t.get("households"),
+                   "share": (t.get("share_within") or {}).get(F.MARKET_MILES) or (t.get("share_within") or {}).get(str(F.MARKET_MILES)) or 0}
+                  for t in (parts.get("tracts") or {}).get("tracts") or []]
+        tracts = [t for t in tracts if t["id"] and t["share"]]
+        for name in O.PLACE_PARTS:
+            asked[name] = (f"{city.id}/site/{anchor['apn']}/outlook-{name}",
+                           lambda name=name: city.outlook_part(name, anchor, tracts), PART_TTL)
+        with ThreadPoolExecutor(max_workers=len(asked)) as pool:
+            results = dict(zip(asked, pool.map(lambda a: self._asked(a[0], a[1], a[2], fresh), asked.values())))
+        more = {name: r[0] for name, r in results.items()}
+        more["population"] = more.get("population") or parts.get("population")
+        answer = O.make_outlook(site, out, plans, more, city.place)
+        answer.update(city=city.id, city_name=city.name, apns=out["apns"], year=out["year"],
+                      answered={name: r[1] for name, r in results.items()},
+                      fetched={name: r[2] for name, r in results.items()})
+        return answer
+
+    def _forecast(self, city_id, apns, settings, forget):
+        """(the forecast, the plans it used, the facts it read, the site, the parcel standing in for the site)."""
         city = self.city(city_id)
         numbers = []
         for apn in apns or []:
@@ -319,6 +355,10 @@ class LandPlanner:
         with ThreadPoolExecutor(max_workers=len(self.FORECAST_PARTS)) as pool:
             results = list(pool.map(lambda p: self._part(city, anchor, p, False), self.FORECAST_PARTS))
         parts = {p: r[0] for p, r in zip(self.FORECAST_PARTS, results)}
+        year = time.gmtime(self.clock()).tm_year
+        # the whole city's homes by year since the census (kept per city, not per site)
+        parts["population"] = self._asked(f"{city.id}/economy/population",
+                                          lambda: city.economy_part("population", year), ECONOMY_TTL)[0]
         if site["one_plan"] and len(parcels) > 1:
             # neighbours that make one block of land are planned as one: the area's need for shops is met once,
             # not once per parcel
@@ -330,11 +370,15 @@ class LandPlanner:
                 facts, _, _ = self._plan_facts(city, parcel)
                 plans.append(P.make_plan(self._decorate(city, parcel, names), facts,
                                          self.plans.get(city.id, parcel["apn"]), city.zoning_kind))
-        out = F.make_forecast(site, parts, plans, settings, year=time.gmtime(self.clock()).tm_year)
+        out = F.make_forecast(site, parts, plans, settings, year=year)
         out["programme"]["basis"] = (
             "The plan each parcel has on its own Plan page." if len(parcels) == 1 else
             "One plan worked out for the whole block of land, under today's zoning." if site["one_plan"] else
             "Each parcel's own plan, added up (the parcels do not form one block, or are zoned differently).")
+        # where each use sits on the land, for the site plan and the phasing map
+        out["programme"]["drawings"] = [
+            {"pieces": (p.get("drawing") or {}).get("pieces") or [], "streets": (p.get("drawing") or {}).get("streets") or [],
+             "why": (p.get("drawing") or {}).get("why") or [], "street_lines": p.get("street_lines") or []} for p in plans]
         if not site["together"]:
             out["limits"].insert(0, "These parcels are not next to each other. The forecast is worked out around the point "
                                     "between them, so it fits each one less well than a forecast of its own.")
@@ -342,7 +386,7 @@ class LandPlanner:
                    answered={p: r[1] for p, r in zip(self.FORECAST_PARTS, results)},
                    fetched={p: r[2] for p, r in zip(self.FORECAST_PARTS, results)},
                    kept=self.plans.get(city.id, kept_as) is not None, kept_in=str(self.plans.path.resolve()))
-        return out
+        return out, plans, parts, site, anchor
 
     def _site(self, city, parcels, names):
         """Several parcels as one site: what the page shows about it, and a stand-in parcel at its middle that
@@ -363,7 +407,7 @@ class LandPlanner:
         if len(parcels) == 1:
             return site, parcels[0]
         rings = [ring for p in parcels for ring in p["outline"]["coordinates"]]
-        pts = [pt for ring in rings for pt in ring]
+        pts = [pt for ring in rings for pt in ring] or [(lon, lat)]
         around = G.hull(pts)
         block = [[list(p) for p in around + around[:1]]]
         zonings = {p.get("zoning") or "" for p in parcels}

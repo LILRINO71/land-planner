@@ -19,6 +19,8 @@ from another website, are refused.
     GET    /api/cities/<city>/forecast?apns=a,b,c       the year-by-year forecast for one parcel or several as one site
     POST   /api/cities/<city>/forecast?apns=a,b,c       the forecast with the owner's own figures (kept): {"assumptions"}
     DELETE /api/cities/<city>/forecast?apns=a,b,c       back to the starting figures
+    GET    /api/cities/<city>/outlook?apns=a,b,c        the wider picture for the same site: economy, weather, hazards,
+                                                        what is close by, the typical resident, the steps to take
     GET    /api/my-lands
     GET    /api/my-lands/compare                        My lands side by side: each one's plan in a few numbers
     POST   /api/my-lands            {"city": "menifee", "apn": "372100001"}
@@ -97,6 +99,8 @@ def route(planner, method, path, query=None, body=None):
             raise Problem(400, "bad-request", "Send the forecast's figures as JSON.")
         return 200, planner.forecast(parts[1], _apns(query), settings=body if method == "POST" else None,
                                      forget=method == "DELETE")
+    if method == "GET" and len(parts) == 3 and parts[0] == "cities" and parts[2] == "outlook":
+        return 200, planner.outlook(parts[1], _apns(query), fresh)
     if method == "GET":
         if parts == ["health"]:
             return 200, {"app": APP, "version": VERSION}

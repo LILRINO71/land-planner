@@ -116,6 +116,18 @@ class CityAdapter:
         Return None for a part this city does not cover (the page then says "not covered yet")."""
         raise NotImplementedError
 
+    # About the city itself, for the wider picture (outlook.py). `place` names who to see; the two methods read
+    # the state's and the nation's open data (landplanner/sources). A city that has neither returns None.
+    place = {}                          # {"name", "planning", "water"}
+
+    def economy_part(self, part, year):
+        """One of outlook.ECONOMY_PARTS for the whole city (population, permits, sales, work, borrowing, prices)."""
+        return None
+
+    def outlook_part(self, part, parcel, tracts=None):
+        """One of outlook.PLACE_PARTS around a parcel (climate, hazards, nearby, residents)."""
+        return None
+
     def zone_names(self):
         """The city's zoning codes in words: {"EDC-CC": "EDC-Community Core", ...}. Optional."""
         return {}

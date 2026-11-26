@@ -21,6 +21,8 @@ import statistics
 RINGS = (1, 3, 5)
 MARKET_MILES = 3            # the ring the needs are worked out for (the city's project lists are read this far)
 HORIZON = 10
+INCOME_MOST = 2_000_000     # a yearly household income above this is not a real median (the survey tops out near 250,000)
+TRACT_MOST = 1_000_000      # most homes or households one census tract can hold
 SCENARIOS = ("low", "expected", "high")
 
 ASSUMPTIONS = {
@@ -58,6 +60,32 @@ def num(value):
     return v if math.isfinite(v) else None
 
 
+def count(value, most=1e9):
+    """A count read from a source: a finite number from zero up to `most`, else None (a text, a gap, or a code such as
+    the Census Bureau's -666666666 for "could not be worked out"). Whole numbers come back whole."""
+    v = num(value)
+    if v is None or v < 0 or v > most:
+        return None
+    return int(v) if v == int(v) else v
+
+
+def income_of(value):
+    """A household income from a source: a positive amount that a real median could be, else None."""
+    v = count(value, INCOME_MOST)
+    return v if v else None
+
+
+def share_of(tract, miles):
+    """How much of a tract (0 to 1) lies within this distance. The distances are keys that may be numbers or text
+    (the data passes through JSON); a tract with no figure for a distance has none of it counted there."""
+    within = tract.get("share_within")
+    for key in (miles, str(miles)):
+        v = num(within.get(key)) if isinstance(within, dict) else None
+        if v is not None:
+            return min(1.0, max(0.0, v))
+    return 0.0
+
+
 def clean_settings(settings):
     """Only what the page may set: the assumptions, each kept inside its limits."""
     s = settings if isinstance(settings, dict) else {}
@@ -75,6 +103,7 @@ def clean_settings(settings):
 
 def yearly(a, b, years):
     """The steady yearly growth rate that turns a into b over that many years."""
+    a, b = num(a), num(b)
     if not a or not b or a <= 0 or b <= 0 or years <= 0:
         return None
     return (b / a) ** (1.0 / years) - 1.0
@@ -100,11 +129,27 @@ def pct(rate, places=1):
     return f"{100 * rate:.{places}f}%"
 
 
+def counts_of(ring):
+    """(people, homes) a census ring counted: each a number, or None when the ring or the figure is missing or unusable."""
+    ring = ring or {}
+    return count(ring.get("people")), count(ring.get("homes"))
+
+
 def ring_of(part, miles):
     for r in (part or {}).get("rings") or []:
         if r.get("miles") == miles:
             return r
     return None
+
+
+def city_homes(parts):
+    """The whole city's homes by year as the state counts them: {year: homes}, or {} when that did not answer."""
+    out = {}
+    for row in (parts.get("population") or {}).get("rows") or []:
+        year, homes = row.get("year"), num(row.get("homes"))
+        if isinstance(year, int) and not isinstance(year, bool) and homes and homes > 0:
+            out[year] = homes
+    return out
 
 
 def home_readings(parts, miles):
@@ -113,18 +158,29 @@ def home_readings(parts, miles):
     now, before = ring_of(parts.get("people"), miles), ring_of(parts.get("people_before"), miles)
     if now and before:
         y0, y1 = (parts.get("people_before") or {}).get("year", 2010), (parts.get("people") or {}).get("year", 2020)
-        r = yearly(before.get("homes"), now.get("homes"), y1 - y0)
+        was, is_now = count(before.get("homes")), count(now.get("homes"))
+        r = yearly(was, is_now, y1 - y0)
         if r is not None:
             out.append({"id": "measured", "kind": "measured", "label": f"Counted growth, {y0} to {y1}",
-                        "rate_pct": round(100 * r, 2), "from": {"year": y0, "homes": before["homes"]},
-                        "to": {"year": y1, "homes": now["homes"]}, "source": "U.S. Census Bureau, Census blocks"})
+                        "rate_pct": round(100 * r, 2), "from": {"year": y0, "homes": was},
+                        "to": {"year": y1, "homes": is_now}, "source": "U.S. Census Bureau, Census blocks"})
+    city = city_homes(parts)
+    # 1 January counts: the first one after the census year to the latest (the census-year figure is from April)
+    span = sorted(y for y in city if y > 2020)
+    if len(span) >= 2:
+        r = yearly(city[span[0]], city[span[-1]], span[-1] - span[0])
+        if r is not None:
+            out.append({"id": "city", "kind": "measured", "label": f"The whole city's homes, {span[0]} to {span[-1]}",
+                        "rate_pct": round(100 * r, 2), "from": {"year": span[0], "homes": round(city[span[0]])},
+                        "to": {"year": span[-1], "homes": round(city[span[-1]])}, "whole_city": True,
+                        "source": (parts.get("population") or {}).get("source") or "California Department of Finance"})
     plan = parts.get("regional_plan") or {}
     for key, words in (("adopted", "The region's adopted plan"), ("draft", "The region's draft update")):
         ring = ring_of(plan.get(key), miles)
         if not ring:
             continue
         years = plan[key]["years"]
-        a, b = ring["households"].get(str(years[0])), ring["households"].get(str(years[1]))
+        a, b = count(ring["households"].get(str(years[0]))), count(ring["households"].get(str(years[1])))
         r = yearly(a, b, years[1] - years[0])
         if r is not None:
             out.append({"id": key, "kind": "official forecast", "label": f"{words}, {years[0]} to {years[1]}",
@@ -142,7 +198,7 @@ def job_readings(parts, miles):
         if not ring:
             continue
         years = plan[key]["years"]
-        a, b = ring["jobs"].get(str(years[0])), ring["jobs"].get(str(years[1]))
+        a, b = count(ring["jobs"].get(str(years[0]))), count(ring["jobs"].get(str(years[1])))
         if a is None or b is None:
             continue
         out.append({"id": key, "kind": "official forecast", "label": f"{words}, {years[0]} to {years[1]}",
@@ -151,8 +207,21 @@ def job_readings(parts, miles):
     return out
 
 
+# a status that says the project will not be built: it is not coming, so it is left out of the needs
+DROPPED = ("withdrawn", "denied", "expired", "cancelled", "canceled", "not approved", "disapproved")
+# the kinds of project that meet one of the three needs (the first words of the city's own kind)
+KINDS = ("residential", "mixed", "commercial", "industrial", "office", "business")
+
+
+def is_dropped(status):
+    text = (status or "").lower() if isinstance(status, str) else ""
+    return any(words in text for words in DROPPED)
+
+
 def stage_of(status):
-    text = (status or "").lower()
+    text = (status or "").lower() if isinstance(status, str) else ""
+    if is_dropped(text):
+        return len(STAGES) - 1                  # "not approved" is not "approved"
     for i, (words, *_rest) in enumerate(STAGES[:-1]):
         if words in text:
             return i
@@ -166,18 +235,25 @@ def pipeline(parts, A, years):
     per_year = {k: {y: 0.0 for y in years} for k in ("homes", "shops", "work")}
     stages = [{"label": label, "from_year": base + a, "to_year": base + b, "uncertain": unsure, "projects": 0,
                "homes": 0, "shops_sq_ft": 0, "work_sq_ft": 0} for _, label, a, b, unsure in STAGES]
-    unstated, counted = 0, 0
+    unstated, other, dropped, counted = 0, 0, 0, 0
     listed = (parts.get("projects") or {}).get("projects") or []
     for p in listed:
-        if (p.get("miles_away") or 0) > MARKET_MILES:
+        if (num(p.get("miles_away")) or 0) > MARKET_MILES:
             continue
-        kind, stated = (p.get("kind") or "").lower(), p.get("stated") or {}
-        homes = stated.get("homes") or 0 if kind.startswith(("residential", "mixed")) or stated.get("homes") else 0
-        feet = stated.get("building_sq_ft") or 0
+        if is_dropped(p.get("status")):
+            dropped += 1
+            continue
+        kind, stated = str(p.get("kind") or "").lower(), p.get("stated") or {}
+        homes = count(stated.get("homes")) or 0
+        feet = count(stated.get("building_sq_ft")) or 0
         shops = feet if kind.startswith(("commercial", "mixed")) else 0
         work = feet if kind.startswith(("industrial", "office", "business")) else 0
         if not homes and not shops and not work:
-            unstated += 1
+            # a project of some other kind that does state a size is not "without sizes": it meets none of the three needs
+            if feet and not kind.startswith(KINDS):
+                other += 1
+            else:
+                unstated += 1
             continue
         counted += 1
         i = stage_of(p.get("status"))
@@ -190,7 +266,8 @@ def pipeline(parts, A, years):
                 if y in per_year[key]:
                     per_year[key][y] += amount * share / (b - a + 1)
     return {"per_year": per_year, "stages": [s for s in stages if s["projects"]], "projects_counted": counted,
-            "projects_without_sizes": unstated, "projects_listed": len(listed),
+            "projects_without_sizes": unstated, "projects_other_kinds": other, "projects_dropped": dropped,
+            "projects_listed": len(listed),
             "lists_updated": (parts.get("projects") or {}).get("lists_updated") or {},
             "available": parts.get("projects") is not None}
 
@@ -202,22 +279,21 @@ def income_near(parts, miles=MARKET_MILES):
     data = parts.get("tracts")
     if not data or not data.get("tracts"):
         return {"available": False}
-    county = (data.get("county") or {}).get("income")
+    county = income_of((data.get("county") or {}).get("income"))
     rows, weight, total, renters, households = [], 0.0, 0.0, 0.0, 0.0
     for t in data["tracts"]:
-        share = (t.get("share_within") or {}).get(miles) or (t.get("share_within") or {}).get(str(miles)) or 0.0
-        far = (t.get("share_within") or {}).get(max(RINGS)) or (t.get("share_within") or {}).get(str(max(RINGS))) or 0.0
-        hh, income = t.get("households") or 0, t.get("income")
+        share, far = share_of(t, miles), share_of(t, max(RINGS))
+        hh, income = count(t.get("households"), TRACT_MOST) or 0, income_of(t.get("income"))
         if share > 0 and hh:
             households += hh * share
-            renters += (t.get("renters") or 0) * share
+            renters += (count(t.get("renters"), TRACT_MOST) or 0) * share
             if income:
                 weight += hh * share
                 total += hh * share * income
-        if far <= 0 or not income:
+        if max(share, far) <= 0 or not income:          # a tract inside the market distance is inside the widest ring too
             continue
         ratio = income / county if county else None
-        rows.append({"name": t.get("name"), "income": income, "households": hh, "miles_away": t.get("miles_away"),
+        rows.append({"name": t.get("name"), "income": income, "households": hh, "miles_away": num(t.get("miles_away")),
                      "direction": t.get("direction"), "lat": t.get("lat"), "lon": t.get("lon"),
                      "share_in_market": round(share, 2),
                      "against_county": None if ratio is None else "higher" if ratio >= 1.15 else "lower" if ratio <= 0.85 else "about the same"})
@@ -235,9 +311,8 @@ def income_near(parts, miles=MARKET_MILES):
     out = {"available": True, "typical": typical, "county": county, "county_name": (data.get("county") or {}).get("name"),
            "survey": (data.get("survey") or {}).get("income"), "lowest": min(r["income"] for r in rows),
            "highest": max(r["income"] for r in rows), "renters_pct": round(100 * renters / households, 1) if households else None,
-           "tracts": sorted(rows, key=lambda r: r["miles_away"]), "by_direction": halves, "source": data.get("source"),
-           "built_since_2020": round(sum((t.get("built_2020_on") or 0) * ((t.get("share_within") or {}).get(miles)
-                                                                          or (t.get("share_within") or {}).get(str(miles)) or 0)
+           "tracts": sorted(rows, key=lambda r: (r["miles_away"] is None, r["miles_away"] or 0)), "by_direction": halves, "source": data.get("source"),
+           "built_since_2020": round(sum((count(t.get("built_2020_on"), TRACT_MOST) or 0) * share_of(t, miles)
                                          for t in data["tracts"])),
            "homes_survey": (data.get("survey") or {}).get("homes")}
     words = f"A typical household within {miles} miles earns about {money(typical)} a year"
@@ -357,25 +432,43 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
     # ---- growth, ring by ring
     rings = []
     for miles in RINGS:
-        now, before = ring_of(parts.get("people"), miles), ring_of(parts.get("people_before"), miles)
         readings = home_readings(parts, miles)
         rates = three([r["rate_pct"] / 100 for r in readings])
-        row = {"miles": miles, "readings": readings, "counted": {}, "available": bool(now and rates)}
-        if before:
-            row["counted"][str((parts.get("people_before") or {}).get("year", 2010))] = {"people": before["people"], "homes": before["homes"]}
-        if now:
-            row["counted"][str(counted_year)] = {"people": now["people"], "homes": now["homes"]}
-        if now and rates:
-            per_home = now["people"] / now["homes"] if now.get("homes") else 0.0
+        was_people, was_homes = counts_of(ring_of(parts.get("people_before"), miles))
+        now_people, now_homes = counts_of(ring_of(parts.get("people"), miles))
+        # a ring with no homes counted has nothing to grow from: whatever the region's plan says, it has no forecast
+        row = {"miles": miles, "readings": readings, "counted": {}, "available": bool(now_homes and now_people is not None and rates)}
+        if was_homes is not None and was_people is not None:
+            row["counted"][str((parts.get("people_before") or {}).get("year", 2010))] = {"people": was_people, "homes": was_homes}
+        if now_homes is not None and now_people is not None:
+            row["counted"][str(counted_year)] = {"people": now_people, "homes": now_homes}
+        if row["available"]:
+            per_home = now_people / now_homes
             row["people_per_home"] = round(per_home, 2)
             row["rates_pct"] = {s: round(100 * rates[s], 2) for s in SCENARIOS}
             row["one_reading"] = len(readings) == 1
             row["rows"] = []
+            city = city_homes(parts)
+            known = max(city) if counted_year in city and max(city) > counted_year else None
+
+            def homes_in(y, s, now_homes=now_homes, rates=rates, city=city, known=known):
+                # up to the state's latest count the ring is taken to have grown as the whole city did (measured);
+                # after it, along the low, expected or high line
+                if known is None:
+                    return now_homes * (1 + rates[s]) ** (y - counted_year)
+                if y <= known:
+                    at = city.get(y) or city[max(k for k in city if k <= max(y, counted_year))]
+                    return now_homes * at / city[counted_year]
+                return now_homes * city[known] / city[counted_year] * (1 + rates[s]) ** (y - known)
+
+            row["today_from"] = ({"year": known, "words": f"The {counted_year} count, grown as the whole city's homes grew to {known} "
+                                                           "(the state's yearly estimates)."} if known else
+                                 {"year": counted_year, "words": f"The {counted_year} count carried forward along each line."})
+            row["_homes"] = {y: each(lambda s, y=y: homes_in(y, s)) for y in years}
             for y in years:
-                homes = each(lambda s: now["homes"] * (1 + rates[s]) ** (y - counted_year))
+                homes = row["_homes"][y]
                 row["rows"].append({"year": y, "homes": {s: round(homes[s]) for s in SCENARIOS},
                                     "people": {s: round(homes[s] * per_home, -1) for s in SCENARIOS}})
-            row["_homes"] = {y: each(lambda s: now["homes"] * (1 + rates[s]) ** (y - counted_year)) for y in years}
         rings.append(row)
     market = next(r for r in rings if r["miles"] == MARKET_MILES)
     wide = next(r for r in rings if r["miles"] == max(RINGS))
@@ -391,7 +484,8 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
     if ok:
         cum, cum_pipe = {s: 0.0 for s in SCENARIOS}, 0.0
         for y in years[1:]:
-            new = each(lambda s: market["_homes"][y][s] - market["_homes"][y - 1][s])
+            # a need is never below zero: in a shrinking area nothing new is needed (the homes line itself may fall)
+            new = each(lambda s: max(0.0, market["_homes"][y][s] - market["_homes"][y - 1][s]))
             row = {"year": y, "need": {s: round(new[s]) for s in SCENARIOS}, "pipeline": round(pipe["per_year"]["homes"][y])}
             if y in future:
                 for s in SCENARIOS:
@@ -516,6 +610,7 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
 
     # ---- in words
     advice = []
+    counted_here = market["counted"].get(str(counted_year))
     if ok:
         said = "; ".join(f"{r['label'].lower()}: {r['rate_pct']:g}% a year" for r in market["readings"])
         advice.append(f"Homes within {MARKET_MILES} miles: {said}. The forecast follows the middle reading, "
@@ -533,7 +628,8 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
         quick = [u for u in taken if u["filled_in"]]
         if quick:
             def span(u):
-                fast = f"{u['filled_in_if_high']} if growth runs high" if u["filled_in_if_high"] else ""
+                fast = (f"{u['filled_in_if_high']} if growth runs high"
+                        if u["filled_in_if_high"] and u["filled_in_if_high"] != u["filled_in"] else "")
                 slow = f"{u['filled_in_if_low']} if it runs low" if u["filled_in_if_low"] else f"after {years[-1]} if it runs low"
                 return "; ".join(x for x in (fast, slow) if x)
             advice.append("First to sell: " + ", ".join(f"{u['label'].lower()} ({u['acres']:g} acres, filled by about {u['filled_in']}; {span(u)})"
@@ -543,6 +639,9 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
             advice.append(f"{u['label']}: only {u['pct_by_year_10']}% of the {u['acres']:g} acres is taken up by {years[-1]} at this pace "
                           f"(filled {when}). Either it draws on more than the growth nearby, or part of that land suits another use. "
                           "Worth raising with the city before fixing the mix.")
+    elif counted_here and not counted_here["homes"]:
+        limits.append(f"No homes were counted within {MARKET_MILES} miles of the site in {counted_year}, so there is nothing to project "
+                      "growth from and no year-by-year forecast.")
     else:
         limits.append("No reading of growth answered for this site (the Census and the regional plan), so there is no year-by-year forecast yet.")
     if income.get("available"):
@@ -555,6 +654,14 @@ def make_forecast(site, parts, plans=None, settings=None, year=2026):
         limits.append("The city's list of " + " and ".join(old) + " has not been updated lately: some projects on it may be finished, and newer ones are missing.")
     if pipe["projects_without_sizes"]:
         limits.append(f"{pipe['projects_without_sizes']} projects on the city's lists within {MARKET_MILES} miles do not state a number of homes or a building size, so they are not counted.")
+    if pipe["projects_other_kinds"]:
+        n = pipe["projects_other_kinds"]
+        limits.append(f"{n} {'project' if n == 1 else 'projects'} on the city's lists within {MARKET_MILES} miles "
+                      f"{'is' if n == 1 else 'are'} not homes, shops or work space, so {'it is' if n == 1 else 'they are'} not counted.")
+    if pipe["projects_dropped"]:
+        n = pipe["projects_dropped"]
+        limits.append(f"{n} {'project' if n == 1 else 'projects'} on the city's lists within {MARKET_MILES} miles "
+                      f"{'was' if n == 1 else 'were'} withdrawn, denied, expired or cancelled, so {'it is' if n == 1 else 'they are'} not counted as coming.")
     limits += [
         "Shops that exist today are not counted (no public list of them), so the forecast shows what growth adds, not whether the area is short of shops now.",
         "Traffic counts by year are not published as open data: highway traffic is today's count, grown with the homes around it.",

@@ -742,7 +742,19 @@ def tracts_near(lon, lat, miles=5.0, distances=(1, 3, 5)):
     owners and renters, homes and how many were built since 2010. Each tract carries how much of its area lies
     within each distance, so its counts can be shared out. Survey figures are estimates from a sample.
     The service answers a plain box quickly and a circle slowly, so the tracts are found by a box around the
-    circle and the other tables are then asked for by tract number."""
+    circle and the other tables are then asked for by tract number.
+    A figure the survey could not work out comes as a negative code (-666666666) or a gap: it is left empty, never
+    kept as a number (a negative income would drag every average down)."""
+    def usable(value, most, least=0):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(v) or v < least or v > most:
+            return None
+        return int(v) if v == int(v) else v
+
+    income_most, count_most = 2_000_000, 1_000_000        # past these a figure is not a tract's median income or head count
     dy, dx = miles / 69.17, miles / (69.17 * math.cos(math.radians(lat)))
     found = patient(lambda: get_json(f"{ACS_INCOME}/{ACS_TRACTS}/query", {
         "geometry": f"{lon - dx:.5f},{lat - dy:.5f},{lon + dx:.5f},{lat + dy:.5f}", "geometryType": "esriGeometryEnvelope",
@@ -758,7 +770,8 @@ def tracts_near(lon, lat, miles=5.0, distances=(1, 3, 5)):
         if not shares[max(distances)]:
             continue                                   # in the box's corner, outside the circle
         cx, cy = sum(q[0] for q in pts) / len(pts), sum(q[1] for q in pts) / len(pts)
-        rows[a["GEOID"]] = {"id": a["GEOID"], "name": tidy(a.get("NAME")).split(",")[0].split(";")[0], "income": a.get("B19049_001E"),
+        rows[a["GEOID"]] = {"id": a["GEOID"], "name": tidy(a.get("NAME")).split(",")[0].split(";")[0],
+                            "income": usable(a.get("B19049_001E"), income_most, 1),
                             "lat": round(cy, 5), "lon": round(cx, 5), "miles_away": round(miles_between(lon, lat, cx, cy), 2),
                             "direction": compass(lon, lat, cx, cy), "share_within": shares}
     if not rows:
@@ -774,11 +787,11 @@ def tracts_near(lon, lat, miles=5.0, distances=(1, 3, 5)):
         for f in answer.get("features") or []:
             a = f["attributes"]
             if a.get("GEOID") in rows:
-                rows[a["GEOID"]].update({name: a.get(field) for name, field in names})
+                rows[a["GEOID"]].update({name: usable(a.get(field), count_most) for name, field in names})
     county = patient(lambda: at_point(f"{ACS_INCOME}/{ACS_COUNTIES}", lon, lat, "NAME,B19049_001E")) or {}
     out = sorted(rows.values(), key=lambda r: r["miles_away"])
     return {"within_miles": miles, "tracts": out,
-            "county": {"name": tidy(county.get("NAME")), "income": county.get("B19049_001E")},
+            "county": {"name": tidy(county.get("NAME")), "income": usable(county.get("B19049_001E"), income_most, 1)},
             "survey": {"income": _survey_years(ACS_INCOME), "homes": _survey_years(ACS_BUILT), "households": _survey_years(ACS_TENURE)},
             "source": "U.S. Census Bureau, American Community Survey 5-year estimates (served by Esri)"}
 

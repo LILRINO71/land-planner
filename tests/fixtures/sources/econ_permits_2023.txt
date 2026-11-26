@@ -1,0 +1,6 @@
+Survey,State,6-Digit,County,Census Place,FIPS Place,FIPS MCD,Pop,CSA,CBSA,Footnote,Central,Zip,Region,Division,Number of,Place,,1-unit,,,2-units,,,3-4 units,,,5+ units,,,1-unit rep,,,2-units rep,,,3-4 units rep,,,5+ units rep
+Date,Code,ID,Code,Code,Code,Code,  ,Code,Code,Code,City,Code,Code,Code,Months Rep,Name,Bldgs,Units,Value,Bldgs,Units,Value,Bldgs,Units,Value,Bldgs,Units,Value,Bldgs,Units,Value,Bldgs,Units,Value,Bldgs,Units,Value,Bldgs,Units,Value
+ 
+2023,06,265300,065,1743,46842 ,00000 ,97675 ,348,40140, , ,92586      ,4,9,11,Menifee,875,875,287297327,0,0,0,0,0,0,5,125,19001857,788,788,251330881,0,0,0,0,0,0,5,125,19001857
+2023,06,290000,065,1877,50076 ,00000 ,116522 ,348,40140, , ,92562      ,4,9,12,Murrieta,185,185,40429383,0,0,0,8,32,5409536,18,431,80532798,185,185,40429383,0,0,0,8,32,5409536,18,431,80532798
+2023,06,462000,065,2878,78120 ,00000 ,113878 ,348,40140, ,1,92590      ,4,9,12,Temecula,592,592,97589397,0,0,0,0,0,0,19,701,59734360,592,592,97589397,0,0,0,0,0,0,19,701,59734360
