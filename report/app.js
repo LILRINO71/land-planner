@@ -64,7 +64,7 @@
   // ---- map
   var ll = function (rings) { return rings.map(function (r) { return r.map(function (p) { return [p[1], p[0]]; }); }); };
   var map = L.map("map", { scrollWheelZoom: false, preferCanvas: true });
-  L.tileLayer("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}",
+  L.tileLayer("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
     { maxNativeZoom: 16, maxZoom: 18, attribution: "Imagery: USGS The National Map" }).addTo(map);
   var shown = {};
   (S.neighbour_shapes || []).forEach(function (n) {
@@ -85,6 +85,9 @@
   var wide = site.getBounds().pad(0.9);
   if (near && has(near.lat)) wide.extend([near.lat, near.lon]);
   map.fitBounds(wide);
+  // A page opened in a background tab starts with a map of no size, and Leaflet then shows the whole world:
+  // fit again whenever the map's box changes size.
+  if (window.ResizeObserver) new ResizeObserver(function () { map.invalidateSize(); map.fitBounds(wide); }).observe($("map"));
   L.control.scale({ metric: false }).addTo(map);
   $("legend").innerHTML = Object.keys(shown).map(function (k) { return '<span><i style="background:' + shown[k] + '"></i>' + k + "</span>"; }).join("") ||
     '<span class="missing">Neighbouring parcels: not covered yet.</span>';
