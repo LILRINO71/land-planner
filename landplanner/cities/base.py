@@ -1,0 +1,111 @@
+"""What a city has to provide. To add a city, write one file in this folder with a class that fills this in,
+and list it in cities/__init__.py. The rest of the app (server, pages, cache, My lands) needs no change.
+
+A city adapter answers three questions from that city's public records:
+
+    large_parcels()            every parcel of `large_acres` or more
+    parcel(apn)                one parcel, with its outline
+    site_part(part, parcel)    one group of facts about a parcel's site (the names are in SITE_PARTS)
+
+Rules for every adapter:
+  - Real public records only. A value the source does not give is None; never a guess, never a zero.
+  - When a source does not answer, raise SourceError. When the source answers and there is no such parcel,
+    raise NotFound. The app turns both into plain messages.
+  - No caching here: the app caches every answer itself (landplanner/cache.py).
+"""
+
+
+class SourceError(Exception):
+    """A public source did not answer usefully. The message is for the log, not for the screen."""
+
+
+class NotFound(SourceError):
+    """The source answered: there is no such parcel in this city."""
+
+
+# One parcel row, as large_parcels() and parcel() return it. Any value may be None when the city has none.
+PARCEL_FIELDS = {
+    "apn": "parcel number, digits only (the key used everywhere)",
+    "apn_formatted": "the parcel number as people write it, e.g. 372-100-001",
+    "acres": "size in acres",
+    "zoning": "the city's zoning code, e.g. EDC-CC",
+    "general_plan": "the city's general plan land use code",
+    "assessor_class": "the county assessor's description of the property",
+    "looks_vacant": "True when the assessor lists no buildings (a hint, not a site visit)",
+    "address": "street address, or empty",
+    "subdivision": "recorded map name, or empty",
+    "assessed_land_usd": "assessed land value for property tax",
+    "assessed_structures_usd": "assessed value of buildings for property tax",
+    "fire_hazard_zone": "state fire hazard zone, or 'none listed'",
+    "council_district": "city council district number",
+    "centre": "{'lat': .., 'lon': ..}",
+    # large_parcels() adds "rings": a thinned outline, [[[lon, lat], ...], ...]
+    # parcel() adds "outline": {"type": "Polygon", "coordinates": rings} and
+    #               "size_feet": {"east_west": .., "north_south": ..}
+}
+
+# The groups of site facts. `quick` ones are asked for as soon as a land is opened; the `ground` ones come from
+# slower elevation services and are loaded after the page is already on screen.
+SITE_PARTS = {
+    "zoning": "quick",                  # {"zone", "abbrev", "what_it_allows", "general_plan_says"}
+    "general_plan": "quick",            # {"land_use", "label", "specific_plan", "description"}
+    "surroundings": "quick",            # {"within_miles", "total_acres", "by_zoning": [{"zoning", "acres", "parcels", "share_pct"}]}
+    "neighbour_shapes": "quick",        # [{"apn", "zoning", "acres", "rings"}] for the map
+    "state_highway_traffic": "quick",   # {"within_miles", "stations": [{"route", "where", "vehicles_per_day_behind",
+                                        #   "vehicles_per_day_ahead", "peak_hour_ahead", "miles_away", "lat", "lon"}], "note"}
+    "terrain": "ground",                # {"feet_above_sea_level": {"centre", "north", "south", "east", "west"},
+                                        #   "fall_across_site_ft", "rough_slope_pct", "reading"}
+    "surface": "ground",                # {"west", "east", "south", "north", "nx", "ny", "spacing_ft", "feet": [...],
+                                        #   "source", "inside": {"low_ft", "high_ft", "range_ft", "typical_slope_pct", ...}}
+}
+
+
+class CityAdapter:
+    """Fill in the class values and the three methods. See cities/menifee.py for a complete example."""
+
+    id = ""                 # short name used in addresses, lower case, no spaces: "menifee"
+    name = ""               # as shown on screen: "Menifee"
+    region = ""             # "California"
+    centre = {"lat": 0.0, "lon": 0.0}   # where the city map opens
+    large_acres = 10.0      # what counts as a large parcel in this city
+    site_miles = 1.0        # how far around a parcel "surroundings" looks
+    # Who the facts come from, for the "Where the information comes from" tables: part -> plain source name.
+    sources = {}
+    # What is not covered for this city, in plain words.
+    not_covered = ()
+    # Zoning families for map colours, the legend and the zoning filter: (id, label, colour), most specific first.
+    zoning_kinds = (("other", "Other", "#9aa0a6"),)
+
+    def large_parcels(self):
+        """Every parcel of `large_acres` or more: a list of parcel rows, each with "centre" and "rings"."""
+        raise NotImplementedError
+
+    def parcel(self, apn):
+        """One parcel row with "centre", "outline" and "size_feet". Raises NotFound when there is none."""
+        raise NotImplementedError
+
+    def site_part(self, part, parcel):
+        """One of SITE_PARTS for the parcel that parcel() returned, in the shape noted beside its name above.
+        Return None for a part this city does not cover (the page then says "not covered yet")."""
+        raise NotImplementedError
+
+    def zone_names(self):
+        """The city's zoning codes in words: {"EDC-CC": "EDC-Community Core", ...}. Optional."""
+        return {}
+
+    def zoning_kind(self, code):
+        """Which of `zoning_kinds` a zoning code belongs to (its id). Optional."""
+        return "other"
+
+    def zoning_notes(self, code):
+        """Extra plain-words notes about one zone, each with where the wording comes from:
+        [{"title", "quote", "source_name", "source_url", "plain"}]. Optional."""
+        return []
+
+    def describe(self):
+        """The city card and page headers are drawn from this."""
+        return {"id": self.id, "name": self.name, "region": self.region, "centre": self.centre,
+                "large_acres": self.large_acres, "site_miles": self.site_miles, "sources": dict(self.sources),
+                "not_covered": list(self.not_covered),
+                "zoning_kinds": [{"id": k, "label": label, "colour": colour} for k, label, colour in self.zoning_kinds],
+                "links": dict(getattr(self, "links", {}))}

@@ -5,11 +5,14 @@
     python tools/menifee.py site 372100001 [--miles 1]  the parcel plus what surrounds it
     python tools/menifee.py selfcheck                   every source answered just now? (exit 1 if one did not)
 
+The Land Planner app (landplanner/cities/menifee.py) reads the same functions, so the app and this tool agree.
+
 Where the numbers come from (each answer names its source and says when one did not answer):
   - City of Menifee's public GIS (ArcGIS Online, org RjTKod25O4b8SbZx): parcels (APN, acres, zoning, general plan
     land use, assessor class, assessed land and structure value, fire hazard zone), the zoning layer and the
     general plan layer with their descriptions.
-  - U.S. Geological Survey elevation point service (epqs.nationalmap.gov): feet above sea level.
+  - U.S. Geological Survey 3D Elevation Program (3DEP): ground height in feet above sea level, as single points
+    and as a grid over a parcel. The older point service (epqs.nationalmap.gov) is the fallback.
   - Caltrans annual average daily traffic counts on state highways (I-215, SR-74, SR-79).
 
 What this is not: a survey, a title report or the city's decision. Zoning and the general plan say what is allowed
@@ -19,17 +22,21 @@ are the assessor's drawing, not a boundary survey.
 import argparse
 import json
 import math
+import statistics
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 CITY = "https://services.arcgis.com/RjTKod25O4b8SbZx/arcgis/rest/services"
 PARCELS = f"{CITY}/Menifee_Parcels/FeatureServer/0"
 ZONING = f"{CITY}/Zoning_WEB/FeatureServer/9"
 GENERAL_PLAN = f"{CITY}/General_Plan/FeatureServer/6"
 ELEVATION = "https://epqs.nationalmap.gov/v1/json"
+SAMPLES = "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples"
+FEET_PER_METRE = 3.280839895
 TRAFFIC = "https://caltrans-gis.dot.ca.gov/arcgis/rest/services/CHhighway/Traffic_AADT/FeatureServer/0"
 PARCEL_FIELDS = ("APN,APNFormat,Acres,Zoning,LandUse,ClassCode,SitusStreet,SitusCity,SubdivisionName,Land,Structures,"
                  "FIRE_HAZARD_ZONE,CouncilDistrict")
@@ -41,12 +48,19 @@ class SourceError(Exception):
     """One source did not answer usefully; the message says which and why."""
 
 
-def get_json(url, params=None, timeout=30, tries=2):
-    full = url + ("?" + urllib.parse.urlencode(params) if params else "")
+class NotFound(SourceError):
+    """The source answered, and there is no such parcel."""
+
+
+def get_json(url, params=None, timeout=30, tries=2, post=False):
+    """Every request this tool makes goes through here (the offline tests replace this one function)."""
+    query = urllib.parse.urlencode(params) if params else ""
+    full = url if post or not query else url + "?" + query
     last = ""
     for attempt in range(tries):
         try:
-            req = urllib.request.Request(full, headers={"User-Agent": AGENT, "Accept": "application/json"})
+            req = urllib.request.Request(full, data=query.encode() if post else None,
+                                         headers={"User-Agent": AGENT, "Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - fixed public https hosts above
                 data = json.loads(r.read().decode("utf-8", "replace"))
             if isinstance(data, dict) and data.get("error"):
@@ -65,15 +79,21 @@ def quote(value):
 def clean_apn(apn):
     digits = "".join(c for c in str(apn) if c.isdigit())
     if not 8 <= len(digits) <= 12:
-        raise SourceError(f"{apn!r} is not a parcel number (9 digits, with or without dashes)")
+        raise NotFound(f"{apn!r} is not a parcel number (9 digits, with or without dashes)")
     return digits
 
 
+def tidy(text):
+    """The city's text with stray and non-breaking spaces removed."""
+    return " ".join(str(text or "").split())
+
+
 def parcel_row(a):
-    land, built = a.get("Land") or 0, a.get("Structures") or 0
+    """One parcel's facts. A value the city leaves empty stays empty (None): nothing is filled in."""
+    land, built = a.get("Land"), a.get("Structures")
     cls = str(a.get("ClassCode") or "")
     return {"apn": a.get("APN"), "apn_formatted": a.get("APNFormat"), "acres": a.get("Acres"),
-            "zoning": a.get("Zoning"), "general_plan": a.get("LandUse"), "assessor_class": cls,
+            "zoning": tidy(a.get("Zoning")), "general_plan": a.get("LandUse"), "assessor_class": cls,
             "looks_vacant": bool(not built and (not cls or any(w in cls.lower() for w in VACANT_WORDS) or "acres" in cls.lower())),
             "address": " ".join(x for x in (a.get("SitusStreet"), a.get("SitusCity")) if x).strip(),
             "subdivision": a.get("SubdivisionName") or "", "assessed_land_usd": land, "assessed_structures_usd": built,
@@ -98,6 +118,27 @@ def parcels(min_acres=0.0, max_acres=None, zoning="", vacant=False, limit=25):
     return {"source": "City of Menifee parcels (public GIS)", "count": len(rows), "parcels": rows}
 
 
+def large_parcels(min_acres=10.0):
+    """Every parcel of `min_acres` or more, largest first, each with its centre point and a thinned outline
+    (good enough to draw on a city map, not for measuring)."""
+    rows, offset = [], 0
+    while True:
+        data = get_json(f"{PARCELS}/query", {
+            "where": f"Acres >= {float(min_acres)}", "outFields": PARCEL_FIELDS, "returnGeometry": "true",
+            "returnCentroid": "true", "outSR": 4326, "geometryPrecision": 5, "maxAllowableOffset": 0.00005,
+            "orderByFields": "Acres DESC, APN", "resultOffset": offset, "resultRecordCount": 1000, "f": "json"}, timeout=60)
+        feats = data.get("features") or []
+        for f in feats:
+            rings = (f.get("geometry") or {}).get("rings") or []
+            c = f.get("centroid") or (ring_centre(rings) if rings else None)
+            row = parcel_row(f["attributes"])
+            row.update(centre=c and {"lat": round(c["y"], 6), "lon": round(c["x"], 6)}, rings=rings)
+            rows.append(row)
+        offset += len(feats)
+        if not feats or not data.get("exceededTransferLimit") or offset >= 5000:
+            return rows
+
+
 def parcel(apn):
     """One parcel with its centre point and outline in latitude/longitude."""
     apn = clean_apn(apn)
@@ -106,7 +147,7 @@ def parcel(apn):
                                          "geometryPrecision": 6, "f": "json"})
     feats = data.get("features") or []
     if not feats:
-        raise SourceError(f"no Menifee parcel has the number {apn}")
+        raise NotFound(f"no Menifee parcel has the number {apn}")
     f = feats[0]
     rings = (f.get("geometry") or {}).get("rings") or []
     c = f.get("centroid") or ring_centre(rings)
@@ -173,7 +214,7 @@ def neighbours(lon, lat, miles=1.0):
         "geometry": json.dumps(circle(lon, lat, float(miles))), "geometryType": "esriGeometryPolygon", "inSR": 4326,
         "spatialRel": "esriSpatialRelIntersects", "outStatistics": json.dumps(stats),
         "groupByFieldsForStatistics": "Zoning", "f": "json"})
-    rows = sorted(({"zoning": f["attributes"].get("Zoning") or "(none)", "acres": round(f["attributes"].get("acres") or 0, 1),
+    rows = sorted(({"zoning": tidy(f["attributes"].get("Zoning")) or "(none)", "acres": round(f["attributes"].get("acres") or 0, 1),
                     "parcels": f["attributes"].get("parcels") or 0} for f in data.get("features", [])),
                   key=lambda r: -r["acres"])
     total = sum(r["acres"] for r in rows) or 1.0
@@ -190,21 +231,160 @@ def elevation_ft(lon, lat):
     return round(float(v), 1)
 
 
+def sample_feet(points, batch=250, tries=3):
+    """Ground height in feet for each [lon, lat] point (None where USGS has no value). 3DEP answers in metres.
+    The service sometimes times out, so each batch is asked up to `tries` times; four batches run at a time."""
+    def one(chunk):
+        data = get_json(SAMPLES, {"geometry": json.dumps({"points": chunk, "spatialReference": {"wkid": 4326}}),
+                                  "geometryType": "esriGeometryMultipoint", "returnFirstValueOnly": "true", "f": "json"},
+                        timeout=45, tries=tries, post=True)
+        if "samples" not in data:
+            raise SourceError(f"USGS 3DEP: {str(data)[:200]}")
+        found = {}
+        for s in data["samples"]:
+            try:
+                metres = float(s["value"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if -500 < metres < 9000:
+                found[s["locationId"]] = round(metres * FEET_PER_METRE, 1)
+        return [found.get(i) for i in range(len(chunk))]
+
+    chunks = [points[start:start + batch] for start in range(0, len(points), batch)]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        return [height for part in pool.map(one, chunks) for height in part]
+
+
 def terrain(rings, centre):
     """Elevation at the centre and the outline's extreme points, and the fall across the site: flat land is cheap
-    to grade, a steep site is not."""
+    to grade, a steep site is not. Five points only: `surface` below is the finer picture."""
     pts = [p for r in rings for p in r]
     if not pts:
         return None
     picks = {"centre": (centre["lon"], centre["lat"]), "north": max(pts, key=lambda p: p[1]),
              "south": min(pts, key=lambda p: p[1]), "east": max(pts, key=lambda p: p[0]), "west": min(pts, key=lambda p: p[0])}
-    feet = {name: elevation_ft(p[0], p[1]) for name, p in picks.items()}
+    try:
+        heights = sample_feet([[p[0], p[1]] for p in picks.values()], tries=2)
+        if any(h is None for h in heights):
+            raise SourceError("USGS 3DEP left a gap")
+        feet = dict(zip(picks, heights))
+    except SourceError:
+        feet = {name: elevation_ft(p[0], p[1]) for name, p in picks.items()}
     size = bounding_feet(rings) or {}
     span = max(size.get("east_west", 0), size.get("north_south", 0)) or 1
     fall = round(max(feet.values()) - min(feet.values()), 1)
     slope = round(100 * fall / span, 1)
     return {"feet_above_sea_level": feet, "fall_across_site_ft": fall, "rough_slope_pct": slope,
             "reading": "nearly flat" if slope < 2 else "gentle" if slope < 5 else "moderate" if slope < 10 else "steep"}
+
+
+def grid_points(rings, cells=44, margin=0.12):
+    """A regular grid over the outline's bounding box (plus a margin), row by row from south to north."""
+    pts = [p for r in rings for p in r]
+    west, east = min(p[0] for p in pts), max(p[0] for p in pts)
+    south, north = min(p[1] for p in pts), max(p[1] for p in pts)
+    dx, dy = (east - west) * margin, (north - south) * margin
+    west, east, south, north = west - dx, east + dx, south - dy, north + dy
+    wide = (east - west) * 364000 * math.cos(math.radians((south + north) / 2))
+    tall = (north - south) * 364000
+    step = max(wide, tall) / cells
+    nx, ny = max(2, round(wide / step) + 1), max(2, round(tall / step) + 1)
+    points = [[round(west + (east - west) * i / (nx - 1), 7), round(south + (north - south) * j / (ny - 1), 7)]
+              for j in range(ny) for i in range(nx)]
+    return {"west": west, "east": east, "south": south, "north": north, "nx": nx, "ny": ny,
+            "spacing_ft": round(step)}, points
+
+
+def inside(rings, lon, lat):
+    """Is the point inside the outline? (even-odd rule, so a hole in the outline counts as outside)"""
+    hit = False
+    for r in rings:
+        for a, b in zip(r, r[1:] + r[:1]):
+            if (a[1] > lat) != (b[1] > lat) and lon < (b[0] - a[0]) * (lat - a[1]) / (b[1] - a[1]) + a[0]:
+                hit = not hit
+    return hit
+
+
+def surface_summary(grid, rings):
+    """What the height grid says about the ground inside the outline: the lowest and highest sample and where
+    they are, and how steep the ground is between neighbouring samples. Measured from the samples, nothing assumed."""
+    nx, ny, feet = grid["nx"], grid["ny"], grid["feet"]
+
+    def lon_of(i):
+        return grid["west"] + (grid["east"] - grid["west"]) * i / (nx - 1)
+
+    def lat_of(j):
+        return grid["south"] + (grid["north"] - grid["south"]) * j / (ny - 1)
+
+    step_x = (grid["east"] - grid["west"]) / (nx - 1) * 364000 * math.cos(math.radians((grid["south"] + grid["north"]) / 2))
+    step_y = (grid["north"] - grid["south"]) / (ny - 1) * 364000
+    spots = [(feet[j * nx + i], lon_of(i), lat_of(j)) for j in range(ny) for i in range(nx)
+             if feet[j * nx + i] is not None and inside(rings, lon_of(i), lat_of(j))]
+    if len(spots) < 4:
+        return None
+    slopes = []
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            z = [feet[j * nx + i], feet[j * nx + i + 1], feet[(j + 1) * nx + i], feet[(j + 1) * nx + i + 1]]
+            if None in z or not inside(rings, (lon_of(i) + lon_of(i + 1)) / 2, (lat_of(j) + lat_of(j + 1)) / 2):
+                continue
+            east_west = (z[1] + z[3] - z[0] - z[2]) / (2 * step_x)
+            north_south = (z[2] + z[3] - z[0] - z[1]) / (2 * step_y)
+            slopes.append(100 * math.hypot(east_west, north_south))
+    low, high = min(spots), max(spots)
+    out = {"samples_inside": len(spots), "low_ft": low[0], "high_ft": high[0], "range_ft": round(high[0] - low[0], 1),
+           "low_at": {"lat": round(low[2], 6), "lon": round(low[1], 6)},
+           "high_at": {"lat": round(high[2], 6), "lon": round(high[1], 6)}}
+    if len(slopes) >= 10:
+        typical = statistics.median(slopes)
+        out.update(typical_slope_pct=round(typical, 1), steepest_tenth_pct=round(statistics.quantiles(slopes, n=10)[-1], 1),
+                   reading="nearly flat" if typical < 2 else "gentle" if typical < 5 else "moderate" if typical < 10 else "steep")
+    return out
+
+
+def surface(rings):
+    """A grid of ground heights over the parcel (USGS 3DEP) and what it says about the ground inside the outline."""
+    grid, points = grid_points(rings)
+    grid["feet"] = sample_feet(points)
+    if sum(v is not None for v in grid["feet"]) < 0.95 * len(points):
+        raise SourceError("USGS 3DEP left too many gaps over this parcel")
+    grid["source"] = "USGS 3D Elevation Program (3DEP)"
+    grid["inside"] = surface_summary(grid, rings)
+    return grid
+
+
+def neighbour_shapes(lon, lat, miles=1.0):
+    """Outlines of the parcels the search circle touches, thinned for drawing."""
+    shapes, offset = [], 0
+    while True:
+        data = get_json(f"{PARCELS}/query", {
+            "geometry": json.dumps(circle(lon, lat, miles)), "geometryType": "esriGeometryPolygon",
+            "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "outFields": "APN,Zoning,Acres",
+            "returnGeometry": "true", "outSR": 4326, "geometryPrecision": 5, "maxAllowableOffset": 0.00003,
+            "orderByFields": "APN", "resultOffset": offset, "resultRecordCount": 1000, "f": "json"}, timeout=60)
+        feats = data.get("features") or []
+        for f in feats:
+            a, rings = f["attributes"], (f.get("geometry") or {}).get("rings")
+            if rings:
+                shapes.append({"apn": a.get("APN"), "zoning": tidy(a.get("Zoning")) or "(none)", "acres": a.get("Acres"),
+                               "rings": rings})
+        offset += len(feats)
+        if not feats or not data.get("exceededTransferLimit") or offset >= 8000:
+            return shapes
+
+
+def zone_names():
+    """The city's own short code -> name table, from its zoning layer."""
+    data = get_json(f"{ZONING}/query", {
+        "where": "1=1", "outFields": "ZoneAbbrev,ZoneDesc", "returnDistinctValues": "true",
+        "returnGeometry": "false", "f": "json"})
+    names = {}
+    for f in data.get("features", []):
+        code, name = f["attributes"].get("ZoneAbbrev"), f["attributes"].get("ZoneDesc")
+        # "SP" has one name per project, so the code alone does not say which
+        if code and name and code != "SP":
+            names[code] = tidy(name)
+    return names
 
 
 def traffic(lon, lat, miles=4.0, limit=6):

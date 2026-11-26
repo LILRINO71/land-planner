@@ -28,31 +28,23 @@ python tools/menifee.py site 372100001 --miles 1            the parcel and every
 python tools/menifee.py selfcheck                           did every data source answer just now?
 ```
 
-### The site report page
+### The app
 
-Double-click `report/index.html`. To show a different parcel, run this once and reload the page:
+Double-click `Start Land Planner.bat` (or run `python -m landplanner`). It starts a small server on this computer
+only and opens the app in the browser. It needs Python 3 and nothing else.
+
+- **Cities**: Menifee today. A city is one adapter in `landplanner/cities/` (see `base.py`), so another city is
+  added by writing one file for its public parcel and zoning records.
+- **Lands**: every parcel of 10 acres or more in the city, as a sortable list and on a map; filter by size, zoning
+  and "no buildings on record", search by parcel number, save one to My lands.
+- **My lands**: the parcels you saved (kept in `data/`, which stays on this computer and is not in the repo).
+- **Each land** has its own pages: Overview, Zoning, Surroundings, Terrain 3D, Traffic, and Plan (a placeholder
+  until the land-use split is built).
 
 ```
-python tools/build_report.py <APN>                  add --confirmed when it really is the owner's parcel
-python -m unittest discover -s tests                offline checks
+python -m unittest discover -s tests                offline checks (recorded answers, no network)
+python tools/menifee.py selfcheck                   did every public source answer just now?
 ```
-
-It writes `report/data.js` (the `site` answer plus neighbouring outlines, zoning code names and a USGS 3DEP height
-grid). Known gap: the aerial background does not load yet (the USGS layer named in `report/app.js` refuses tiles).
-
-`site` returns, for one parcel number (APN):
-
-| Part | What it says | From |
-|---|---|---|
-| parcel | acres, zoning code, general plan code, assessor class, assessed value, fire hazard zone, outline | City of Menifee public GIS |
-| zoning, general_plan | what the codes mean in words | City of Menifee public GIS |
-| surroundings | acres and parcel counts of each zoning type within the chosen distance | City of Menifee public GIS |
-| terrain | height above sea level at five points, fall across the site, rough slope | U.S. Geological Survey |
-| state_highway_traffic | vehicles per day at the nearest count stations on I-215, SR-74, SR-79 | Caltrans |
-
-Checked on 2026-11-25 with parcel 372100001: 142.1 acres, zoned EDC-CC (Economic Development Corridor, Community
-Core), nearly flat (20 ft of fall, about 0.8 % slope), 0.8 miles from the I-215 count station at Scott Road
-(about 121,000 to 126,000 vehicles a day).
 
 ## What it cannot tell you yet
 
@@ -72,7 +64,7 @@ owner, his engineer and the city's planners.
 
 ## Build order
 
-1. Site report: one page for a parcel with the facts above, on a map. *(data: done)*
+1. The app: cities, lands, My lands and each land's own pages. *(done)*
 2. Land-use mix: a first proposal from rules a planner would recognise (retail wants traffic and a corner, homes
    want quiet edges, every plan needs roads, parks and drainage), each choice shown with its reason and adjustable
    by hand.

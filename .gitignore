@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
-data/cache/
+.pytest_cache/
+# the owner's own data (My lands) and saved answers from the public services
+data/
 .env
