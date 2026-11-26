@@ -49,6 +49,25 @@ def differs(recorded, measured, share=0.25):
     return abs(recorded - measured) > share * max(recorded, measured)
 
 
+def hull(points):
+    """The smallest outline with no dents that holds all the points, as a list going round once."""
+    pts = sorted(set((p[0], p[1]) for p in points))
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        out = []
+        for p in seq:
+            while len(out) >= 2 and ((out[-1][0] - out[-2][0]) * (p[1] - out[-2][1])
+                                     - (out[-1][1] - out[-2][1]) * (p[0] - out[-2][0])) <= 0:
+                out.pop()
+            out.append(p)
+        return out
+
+    lower, upper = half(pts), half(reversed(pts))
+    return lower[:-1] + upper[:-1]
+
+
 def dot(a, b):
     return a[0] * b[0] + a[1] * b[1]
 

@@ -7,6 +7,8 @@ Every answer from a public service goes through the cache (cache.py):
 A site part that did not answer is not asked again for a minute, then the next visit to the page retries it.
 "Check again" buttons in the app pass fresh=True, which asks the service even when a young copy exists.
 """
+import hashlib
+import math
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +18,7 @@ from . import lands as L
 from .cache import Cache
 from .cities import NotFound, SITE_PARTS, SourceError
 from . import geometry as G
+from . import forecast as F
 from . import plan as P
 from .saved import SavedLands, SavedPlans
 
@@ -225,7 +228,7 @@ class LandPlanner:
     def land(self, city_id, apn, group="quick", fresh=False):
         """One land's facts. group "quick" is everything but the ground heights; "ground" is terrain and surface."""
         city = self.city(city_id)
-        if group not in ("quick", "ground", "market"):
+        if group not in ("quick", "ground", "market", "trend"):
             raise Problem(400, "bad-request", "Unknown group of facts.")
         parcel, meta = self._parcel(city, apn, fresh and group == "quick")
         names = self.zone_names(city)
@@ -281,6 +284,102 @@ class LandPlanner:
             known = self.cache.peek(f"{city.id}/site/{parcel['apn']}/{part}")
             parts[part] = known[0] if known else None
         return parts, sources, fetched
+
+    # ---- the forecast for one land, or for several as one site
+
+    FORECAST_PARTS = ("people", "people_before", "regional_plan", "tracts", "projects", "state_highway_traffic")
+    MOST_PARCELS = 12
+
+    def forecast(self, city_id, apns, settings=None, forget=False):
+        """The year-by-year forecast (forecast.py) for one parcel, or for several treated as one site. The owner's
+        own figures are kept like a plan's. Each parcel's plan is the one the owner keeps for it."""
+        city = self.city(city_id)
+        numbers = []
+        for apn in apns or []:
+            number = L.digits(apn)
+            if number and number not in numbers:
+                numbers.append(number)
+        if not numbers:
+            raise Problem(400, "bad-request", "A forecast needs at least one parcel number.")
+        if len(numbers) > self.MOST_PARCELS:
+            raise Problem(400, "bad-request", f"A forecast takes up to {self.MOST_PARCELS} parcels at a time.")
+        parcels = [self._parcel(city, n)[0] for n in numbers]
+        numbers = [p["apn"] for p in parcels]
+        names = self.zone_names(city)
+        site, anchor = self._site(city, parcels, names)
+        kept_as = "forecast/" + "+".join(sorted(numbers))
+        if forget:
+            self.plans.put(city.id, kept_as, None)
+            settings = None
+        elif settings is not None:
+            settings = F.clean_settings(settings)
+            self.plans.put(city.id, kept_as, settings if settings["assumptions"] else None)
+        else:
+            settings = self.plans.get(city.id, kept_as)
+        with ThreadPoolExecutor(max_workers=len(self.FORECAST_PARTS)) as pool:
+            results = list(pool.map(lambda p: self._part(city, anchor, p, False), self.FORECAST_PARTS))
+        parts = {p: r[0] for p, r in zip(self.FORECAST_PARTS, results)}
+        if site["one_plan"] and len(parcels) > 1:
+            # neighbours that make one block of land are planned as one: the area's need for shops is met once,
+            # not once per parcel
+            facts, _, _ = self._plan_facts(city, anchor)
+            plans = [P.make_plan(self._decorate(city, anchor, names), facts, None, city.zoning_kind)]
+        else:
+            plans = []
+            for parcel in parcels:
+                facts, _, _ = self._plan_facts(city, parcel)
+                plans.append(P.make_plan(self._decorate(city, parcel, names), facts,
+                                         self.plans.get(city.id, parcel["apn"]), city.zoning_kind))
+        out = F.make_forecast(site, parts, plans, settings, year=time.gmtime(self.clock()).tm_year)
+        out["programme"]["basis"] = (
+            "The plan each parcel has on its own Plan page." if len(parcels) == 1 else
+            "One plan worked out for the whole block of land, under today's zoning." if site["one_plan"] else
+            "Each parcel's own plan, added up (the parcels do not form one block, or are zoned differently).")
+        if not site["together"]:
+            out["limits"].insert(0, "These parcels are not next to each other. The forecast is worked out around the point "
+                                    "between them, so it fits each one less well than a forecast of its own.")
+        out.update(city=city.id, city_name=city.name, apns=numbers,
+                   answered={p: r[1] for p, r in zip(self.FORECAST_PARTS, results)},
+                   fetched={p: r[2] for p, r in zip(self.FORECAST_PARTS, results)},
+                   kept=self.plans.get(city.id, kept_as) is not None, kept_in=str(self.plans.path.resolve()))
+        return out
+
+    def _site(self, city, parcels, names):
+        """Several parcels as one site: what the page shows about it, and a stand-in parcel at its middle that
+        the facts around it are read (and saved) under."""
+        rows = [self._decorate(city, p, names) for p in parcels]
+        total = sum(p.get("acres") or 0 for p in parcels) or float(len(parcels))
+        lat = sum((p.get("acres") or 1) * p["centre"]["lat"] for p in parcels) / total
+        lon = sum((p.get("acres") or 1) * p["centre"]["lon"] for p in parcels) / total
+        k = 69.17 * math.cos(math.radians(lat))
+        spread = max(math.hypot((p["centre"]["lon"] - lon) * k, (p["centre"]["lat"] - lat) * 69.17) for p in parcels)
+        site = {"apns": [p["apn"] for p in parcels], "acres": round(sum(p.get("acres") or 0 for p in parcels), 2),
+                "centre": {"lat": round(lat, 6), "lon": round(lon, 6)}, "spread_miles": round(spread, 2),
+                "together": spread <= 0.75,
+                "parcels": [{"apn": r["apn"], "apn_formatted": r.get("apn_formatted"), "acres": r.get("acres"),
+                             "zoning": r.get("zoning"), "zoning_name": r.get("zoning_name"), "zoning_kind": r.get("zoning_kind"),
+                             "address": r.get("address") or "", "centre": r["centre"], "outline": r["outline"]} for r in rows]}
+        site["one_plan"] = len(parcels) == 1
+        if len(parcels) == 1:
+            return site, parcels[0]
+        rings = [ring for p in parcels for ring in p["outline"]["coordinates"]]
+        pts = [pt for ring in rings for pt in ring]
+        around = G.hull(pts)
+        block = [[list(p) for p in around + around[:1]]]
+        zonings = {p.get("zoning") or "" for p in parcels}
+        # one block of land: neighbours whose joint outline holds little but themselves, all in one zone
+        site["one_plan"] = bool(site["together"] and len(zonings) == 1
+                                and not G.differs(site["acres"], G.rings_acres(block), 0.12))
+        size = {"east_west": round((max(x for x, _ in pts) - min(x for x, _ in pts)) * k * 5280),
+                "north_south": round((max(y for _, y in pts) - min(y for _, y in pts)) * 69.17 * 5280)}
+        name = "site-" + hashlib.sha1("+".join(sorted(site["apns"])).encode()).hexdigest()[:12]
+        lands = [p.get("assessed_land_usd") for p in parcels]
+        return site, {"apn": name, "apn_formatted": f"{len(parcels)} parcels", "acres": site["acres"],
+                      "zoning": parcels[0].get("zoning") if len(zonings) == 1 else "",
+                      "fire_hazard_zone": next((p.get("fire_hazard_zone") for p in parcels if p.get("fire_hazard_zone")), None),
+                      "assessed_land_usd": sum(lands) if all(v is not None for v in lands) else None,
+                      "looks_vacant": all(p.get("looks_vacant") for p in parcels), "centre": site["centre"],
+                      "outline": {"coordinates": block if site["one_plan"] else rings}, "size_feet": size}
 
     def compare(self):
         """My lands side by side: for each saved land, the headline numbers of its plan as the owner keeps it

@@ -53,9 +53,12 @@ class Menifee(CityAdapter):
         "people": "U.S. Census Bureau, 2020 Census", "streets": "City of Menifee general plan circulation map",
         "signals": "City of Menifee traffic signals", "projects": "City of Menifee project lists",
         "schools": "City of Menifee schools", "photo": "USDA aerial photo programme (NAIP), served by USGS",
+        "people_before": "U.S. Census Bureau, 2010 Census",
+        "regional_plan": "Southern California Association of Governments (SCAG) growth forecasts",
+        "tracts": "U.S. Census Bureau, American Community Survey (served by Esri)",
     }
     not_covered = (
-        "Income and spending around the site (people and homes are counted from the 2020 Census)",
+        "The shops and offices that exist today, and what people spend in them (income is read from the census survey)",
         "Traffic counts on city streets (only state highways are counted)",
         "Utilities, flood zones and protected habitat",
         "What the owner paid, and current market prices",
@@ -123,6 +126,12 @@ class Menifee(CityAdapter):
             return _ask(tool.projects_near, lon, lat)
         if part == "schools":
             return _ask(tool.schools_near, lon, lat)
+        if part == "people_before":
+            return _ask(tool.people_before, lon, lat)
+        if part == "regional_plan":
+            return _ask(tool.regional_plan, lon, lat)
+        if part == "tracts":
+            return _ask(tool.tracts_near, lon, lat)
         return None
 
     @staticmethod

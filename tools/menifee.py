@@ -14,6 +14,10 @@ Where the numbers come from (each answer names its source and says when one did 
   - U.S. Geological Survey 3D Elevation Program (3DEP): ground height in feet above sea level, as single points
     and as a grid over a parcel. The older point service (epqs.nationalmap.gov) is the fallback.
   - Caltrans annual average daily traffic counts on state highways (I-215, SR-74, SR-79).
+  - U.S. Census Bureau: people and homes by census block in 2010 and 2020 (TIGERweb), and the American Community
+    Survey's income, renters and owners by census tract (as Esri's Living Atlas serves it; no key needed).
+  - Southern California Association of Governments (SCAG): households and jobs forecast for 2035 and 2050 by small
+    planning zone, in its adopted plan and its draft update.
 
 What this is not: a survey, a title report or the city's decision. Zoning and the general plan say what is allowed
 today; a change of use goes through the city (general plan amendment, zone change, specific plan). Parcel outlines
@@ -46,6 +50,16 @@ ECON_PROJECTS = f"{CITY}/EconDevProjects_2025/FeatureServer/10"
 SCHOOLS = f"{CITY}/Schools_Points_2025/FeatureServer/9"
 BLOCKS = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/2"
 NAIP = "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer"
+BLOCKS_2010 = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Census2010/MapServer/18"
+ACS = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services"   # the Census Bureau's yearly survey, as Esri serves it
+ACS_INCOME = f"{ACS}/ACS_Median_Income_by_Race_and_Age_Selp_Emp_Boundaries/FeatureServer"
+ACS_BUILT = f"{ACS}/ACS_Housing_Units_by_Year_Built_Boundaries/FeatureServer"
+ACS_TENURE = f"{ACS}/ACS_Housing_Tenure_by_Race_Boundaries/FeatureServer"
+ACS_TRACTS, ACS_COUNTIES = 2, 1
+SCAG = "https://rdp.scag.ca.gov/mapping/rest/services"   # the region's planning agency (Southern California)
+SCAG_ADOPTED = f"{SCAG}/OpenData/SED_TAZTier2Estimates_poly_scag/MapServer/0"
+SCAG_DRAFT = f"{SCAG}/LDX/SED_TAZTier2_Prelim_poly_scag/MapServer/0"
+SCAG_CITIES = f"{SCAG}/OpenData/SED_CityEstimates_poly_scag/MapServer/0"
 PARCEL_FIELDS = ("APN,APNFormat,Acres,Zoning,LandUse,ClassCode,SitusStreet,SitusCity,SubdivisionName,Land,Structures,"
                  "FIRE_HAZARD_ZONE,CouncilDistrict")
 AGENT = "land-planner/0.1 (public data lookup)"
@@ -629,6 +643,184 @@ def people_near(lon, lat, rings=(1, 3, 5)):
         return {"rings": list(pool.map(one, rings)), "year": 2020, "source": "U.S. Census Bureau, 2020 Census blocks"}
 
 
+# ---------------------------------------------------------------- what a forecast starts from
+
+def people_before(lon, lat, rings=(1, 3, 5)):
+    """People and homes counted in the 2010 Census within each distance of the point, the same way people_near
+    counts 2020: set side by side they are ten measured years of growth."""
+    stats = json.dumps([{"statisticType": "sum", "onStatisticField": "POP100", "outStatisticFieldName": "people"},
+                        {"statisticType": "sum", "onStatisticField": "HU100", "outStatisticFieldName": "homes"}])
+
+    def one(miles):
+        data = get_json(f"{BLOCKS_2010}/query", {"geometry": json.dumps(circle(lon, lat, float(miles))),
+                                                 "geometryType": "esriGeometryPolygon", "inSR": 4326,
+                                                 "spatialRel": "esriSpatialRelIntersects", "outStatistics": stats, "f": "json"},
+                        timeout=90)
+        a = ((data.get("features") or [{}])[0].get("attributes") or {})
+        if a.get("people") is None:
+            raise SourceError("the 2010 Census block service gave no count")
+        return {"miles": miles, "people": int(a["people"]), "homes": int(a.get("homes") or 0)}
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        return {"rings": list(pool.map(one, rings)), "year": 2010, "source": "U.S. Census Bureau, 2010 Census blocks"}
+
+
+def _plane(lon0, lat0):
+    k = 69.17 * math.cos(math.radians(lat0))
+    return lambda p: ((p[0] - lon0) * k, (p[1] - lat0) * 69.17)   # miles east and north of the point
+
+
+def _signed(poly):
+    return 0.5 * sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(poly, poly[1:] + poly[:1]))
+
+
+def _clip_to_circle(poly, radius, sides=48):
+    """The part of a polygon (miles from the centre) inside a circle around the centre, the circle drawn with
+    straight sides. The polygon keeps its direction, so a hole still counts as a hole."""
+    for i in range(sides):
+        a = 2 * math.pi * (i + 0.5) / sides
+        nx, ny, c = math.cos(a), math.sin(a), radius * math.cos(math.pi / sides)
+        out = []
+        for p, q in zip(poly, poly[1:] + poly[:1]):
+            dp, dq = p[0] * nx + p[1] * ny - c, q[0] * nx + q[1] * ny - c
+            if dp <= 0:
+                out.append(p)
+            if (dp < 0 < dq) or (dq < 0 < dp):
+                t = dp / (dp - dq)
+                out.append((p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t))
+        poly = out
+        if len(poly) < 3:
+            return []
+    return poly
+
+
+def shares_inside(rings, lon, lat, distances=(1, 3, 5)):
+    """How much of an outline (longitude/latitude rings) lies within each distance of the point: {miles: 0..1}.
+    Counts from a big area (a census tract, a planning zone) are shared out by this, as if spread evenly."""
+    flat = _plane(lon, lat)
+    polys = [[flat(p) for p in ring[:-1]] for ring in rings or [] if len(ring) >= 4]
+    whole = abs(sum(_signed(p) for p in polys))
+    if not whole:
+        return {m: 0.0 for m in distances}
+    return {m: round(min(1.0, abs(sum(_signed(c) for c in (_clip_to_circle(p, float(m)) for p in polys) if c)) / whole), 4)
+            for m in distances}
+
+
+def _survey_years(service):
+    """The years a census survey layer covers, as its own description states them (for example "2018-2022")."""
+    try:
+        text = get_json(service, {"f": "json"}).get("copyrightText") or ""
+    except SourceError:
+        return None
+    m = re.search(r"(20\d\d)\s*-\s*(20\d\d)", text)
+    return f"{m.group(1)}-{m.group(2)}" if m else None
+
+
+COMPASS = ("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
+
+
+def compass(lon, lat, lon2, lat2):
+    east, north = (lon2 - lon) * math.cos(math.radians(lat)), lat2 - lat
+    if abs(east) < 1e-9 and abs(north) < 1e-9:
+        return "here"
+    return COMPASS[int(((math.degrees(math.atan2(east, north)) + 360 + 22.5) % 360) // 45)]
+
+
+def patient(fn, tries=3):
+    """Ask again when a service refuses: the census survey service now and then rejects a good question."""
+    for attempt in range(tries):
+        try:
+            return fn()
+        except SourceError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.8 * (attempt + 1))
+
+
+def tracts_near(lon, lat, miles=5.0, distances=(1, 3, 5)):
+    """Census tracts around the point from the Census Bureau's yearly survey: median household income, households,
+    owners and renters, homes and how many were built since 2010. Each tract carries how much of its area lies
+    within each distance, so its counts can be shared out. Survey figures are estimates from a sample.
+    The service answers a plain box quickly and a circle slowly, so the tracts are found by a box around the
+    circle and the other tables are then asked for by tract number."""
+    dy, dx = miles / 69.17, miles / (69.17 * math.cos(math.radians(lat)))
+    found = patient(lambda: get_json(f"{ACS_INCOME}/{ACS_TRACTS}/query", {
+        "geometry": f"{lon - dx:.5f},{lat - dy:.5f},{lon + dx:.5f},{lat + dy:.5f}", "geometryType": "esriGeometryEnvelope",
+        "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "outFields": "GEOID,NAME,B19049_001E",
+        "returnGeometry": "true", "outSR": 4326, "maxAllowableOffset": 0.0004, "f": "json"}, timeout=40))
+    rows = {}
+    for f in found.get("features") or []:
+        a, rings = f["attributes"], (f.get("geometry") or {}).get("rings") or []
+        pts = [q for r in rings for q in r]
+        if not pts or not a.get("GEOID"):
+            continue
+        shares = shares_inside(rings, lon, lat, distances)
+        if not shares[max(distances)]:
+            continue                                   # in the box's corner, outside the circle
+        cx, cy = sum(q[0] for q in pts) / len(pts), sum(q[1] for q in pts) / len(pts)
+        rows[a["GEOID"]] = {"id": a["GEOID"], "name": tidy(a.get("NAME")).split(",")[0].split(";")[0], "income": a.get("B19049_001E"),
+                            "lat": round(cy, 5), "lon": round(cx, 5), "miles_away": round(miles_between(lon, lat, cx, cy), 2),
+                            "direction": compass(lon, lat, cx, cy), "share_within": shares}
+    if not rows:
+        raise SourceError("the census survey gave no tracts here")
+    which = "GEOID IN (" + ",".join(quote(g) for g in sorted(rows)) + ")"
+    more = ((ACS_TENURE, "GEOID,B25003_001E,B25003_002E,B25003_003E",
+             (("households", "B25003_001E"), ("owners", "B25003_002E"), ("renters", "B25003_003E"))),
+            (ACS_BUILT, "GEOID,B25034_001E,B25034_002E,B25034_003E",
+             (("homes", "B25034_001E"), ("built_2020_on", "B25034_002E"), ("built_2010s", "B25034_003E"))))
+    for service, fields, names in more:
+        answer = patient(lambda: get_json(f"{service}/{ACS_TRACTS}/query", {
+            "where": which, "outFields": fields, "returnGeometry": "false", "f": "json"}, timeout=40, post=True))
+        for f in answer.get("features") or []:
+            a = f["attributes"]
+            if a.get("GEOID") in rows:
+                rows[a["GEOID"]].update({name: a.get(field) for name, field in names})
+    county = patient(lambda: at_point(f"{ACS_INCOME}/{ACS_COUNTIES}", lon, lat, "NAME,B19049_001E")) or {}
+    out = sorted(rows.values(), key=lambda r: r["miles_away"])
+    return {"within_miles": miles, "tracts": out,
+            "county": {"name": tidy(county.get("NAME")), "income": county.get("B19049_001E")},
+            "survey": {"income": _survey_years(ACS_INCOME), "homes": _survey_years(ACS_BUILT), "households": _survey_years(ACS_TENURE)},
+            "source": "U.S. Census Bureau, American Community Survey 5-year estimates (served by Esri)"}
+
+
+def regional_plan(lon, lat, distances=(1, 3, 5)):
+    """Households and jobs the region's planning agency (SCAG) expects around the point: its adopted plan
+    (2019, 2035, 2050) and its draft update (2024, 2035, 2050), shared out from its small planning zones by
+    how much of each lies within each distance. Also its figures for the whole city the point is in."""
+    far = max(distances)
+    sets = (("adopted", SCAG_ADOPTED, "hh_19,hh_35,hh_50,emp_19,emp_35,emp_50", (2019, 2035, 2050),
+             "SCAG Connect SoCal 2024, adopted growth forecast"),
+            ("draft", SCAG_DRAFT, "HH24,HH35,HH50,EMP24,EMP35,EMP50", (2024, 2035, 2050),
+             "SCAG Connect SoCal 2050, preliminary growth forecast (still under local review)"))
+    out = {"within_miles": far, "source": "Southern California Association of Governments (SCAG)"}
+    for name, layer, fields, years, label in sets:
+        names = fields.split(",")
+        try:
+            zones = in_circle(layer, lon, lat, far, fields, extra={"maxAllowableOffset": 0.0003}, timeout=60)
+        except SourceError:
+            out[name] = None
+            continue
+        rings = []
+        for m in distances:
+            total = dict.fromkeys(names, 0.0)
+            for f in zones:
+                share = shares_inside((f.get("geometry") or {}).get("rings") or [], lon, lat, (m,))[m]
+                for n in names:
+                    total[n] += share * float(f["attributes"].get(n) or 0)
+            rings.append({"miles": m, "households": {str(y): round(total[names[i]]) for i, y in enumerate(years)},
+                          "jobs": {str(y): round(total[names[i + 3]]) for i, y in enumerate(years)}})
+        out[name] = {"label": label, "years": list(years), "zones": len(zones), "rings": rings} if zones else None
+    if not out.get("adopted") and not out.get("draft"):
+        raise SourceError("the regional plan gave no zones here")
+    try:
+        c = at_point(SCAG_CITIES, lon, lat, "city,hh_19,hh_50,emp_19,emp_50") or {}
+    except SourceError:
+        c = {}
+    out["city"] = {"name": tidy(c.get("city")), "households": {"2019": c.get("hh_19"), "2050": c.get("hh_50")},
+                   "jobs": {"2019": c.get("emp_19"), "2050": c.get("emp_50")}} if c.get("city") else None
+    return out
+
+
 def site(apn, miles=1.0):
     """Everything known about one parcel and its surroundings. A source that fails is listed, the rest still come."""
     p = parcel(apn)
@@ -659,7 +851,10 @@ def selfcheck():
               "general_plan": lambda: bool(general_plan_at(-117.166542, 33.652383)),
               "surroundings": lambda: neighbours(-117.166542, 33.652383)["total_acres"] > 100,
               "elevation": lambda: 1000 < elevation_ft(-117.166542, 33.652383) < 2500,
-              "state_highway_traffic": lambda: len(traffic(-117.166542, 33.652383)["stations"]) > 0}
+              "state_highway_traffic": lambda: len(traffic(-117.166542, 33.652383)["stations"]) > 0,
+              "census_2010": lambda: people_before(-117.166542, 33.652383)["rings"][1]["homes"] > 0,
+              "regional_plan": lambda: bool(regional_plan(-117.166542, 33.652383).get("adopted")),
+              "census_survey_tracts": lambda: len(tracts_near(-117.166542, 33.652383)["tracts"]) > 3}
     out = {}
     for name, fn in checks.items():
         try:

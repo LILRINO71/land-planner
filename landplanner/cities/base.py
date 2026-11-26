@@ -64,6 +64,13 @@ SITE_PARTS = {
     "projects": "market",               # {"within_miles", "projects": [{"title", "kind", "status", "description", "builder",
                                         #   "stated": {"acres", "homes", "building_sq_ft"}, "lat", "lon", "miles_away"}], "lists_updated"}
     "schools": "market",                # {"within_miles", "schools": [{"name", "grades", "kind", "miles_away"}]}
+    # What a forecast starts from; asked for when the Forecast page is opened.
+    "people_before": "trend",           # like "people", from the census ten years earlier
+    "regional_plan": "trend",           # {"adopted": {"label", "years", "rings": [{"miles", "households": {year: n},
+                                        #   "jobs": {year: n}}]}, "draft": {...}, "city": {...}}
+    "tracts": "trend",                  # {"tracts": [{"name", "income", "households", "owners", "renters", "homes",
+                                        #   "built_2020_on", "miles_away", "direction", "share_within": {miles: 0..1}}],
+                                        #   "county": {"name", "income"}, "survey": {...}}
 }
 
 

@@ -16,6 +16,9 @@ from another website, are refused.
     POST   /api/cities/<city>/lands/<apn>/plan          the plan with these changes (they are kept): {"mode", "acres",
                                                         "assumptions", "extra_costs", "land_cost"}
     DELETE /api/cities/<city>/lands/<apn>/plan          forget the changes: back to the suggested plan
+    GET    /api/cities/<city>/forecast?apns=a,b,c       the year-by-year forecast for one parcel or several as one site
+    POST   /api/cities/<city>/forecast?apns=a,b,c       the forecast with the owner's own figures (kept): {"assumptions"}
+    DELETE /api/cities/<city>/forecast?apns=a,b,c       back to the starting figures
     GET    /api/my-lands
     GET    /api/my-lands/compare                        My lands side by side: each one's plan in a few numbers
     POST   /api/my-lands            {"city": "menifee", "apn": "372100001"}
@@ -77,6 +80,10 @@ def _text(query, name, limit=60):
     return (query.get(name) or [""])[0].strip()[:limit]
 
 
+def _apns(query):
+    return [a for a in re.split(r"[\s,+]+", (query.get("apns") or [""])[0].strip()[:400]) if a]
+
+
 def route(planner, method, path, query=None, body=None):
     """(status, answer) for one request to /api/. Raises Problem for anything the person should be told."""
     query = query or {}
@@ -85,6 +92,11 @@ def route(planner, method, path, query=None, body=None):
         raise Problem(404, "not-found", "Nothing here.")
     parts = parts[1:]
     fresh = _flag(query, "fresh")
+    if len(parts) == 3 and parts[0] == "cities" and parts[2] == "forecast" and method in ("GET", "POST", "DELETE"):
+        if method == "POST" and not isinstance(body, dict):
+            raise Problem(400, "bad-request", "Send the forecast's figures as JSON.")
+        return 200, planner.forecast(parts[1], _apns(query), settings=body if method == "POST" else None,
+                                     forget=method == "DELETE")
     if method == "GET":
         if parts == ["health"]:
             return 200, {"app": APP, "version": VERSION}

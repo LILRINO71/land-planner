@@ -2,6 +2,7 @@
 
     python tests/record_fixtures.py        (needs the internet; re-records everything into tests/fixtures/menifee.json)
     python tests/record_fixtures.py plan   (needs the internet; records only the "land-use plan" questions)
+    python tests/record_fixtures.py forecast   (needs the internet; records only the "forecast" questions)
 
 It runs the Menifee adapter for real once, and keeps every answer the services gave, keyed by the exact question.
 Answers already in the fixture file are kept; a question asked again gets its new answer, and the rest are added.
@@ -90,8 +91,33 @@ def record_plan_sources():
     return missing
 
 
+def record_forecast_sources():
+    """Every question the functions under "what a forecast starts from" ask, with their default arguments, and
+    exactly what the adapter asks for the example parcel. Returns the names that did not answer."""
+    lon, lat = PLAN_POINT
+    steps = {
+        "people_before": lambda: tool.people_before(lon, lat)["rings"],
+        "regional_plan": lambda: sorted(k for k, v in tool.regional_plan(lon, lat).items() if v),
+        "tracts_near": lambda: len(tool.tracts_near(lon, lat)["tracts"]),
+    }
+    city = Menifee()
+    parcel = city.parcel(EXAMPLE)
+    for part in SITE_PARTS:
+        if SITE_PARTS[part] == "trend":
+            steps[f"adapter {part}"] = lambda part=part: bool(city.site_part(part, parcel))
+    missing = []
+    for name, fn in steps.items():
+        try:
+            print(f"{name}:", fn())
+        except tool.SourceError as e:
+            print(f"{name}: DID NOT ANSWER ({e})")
+            missing.append(name)
+    return missing
+
+
 def main(argv=None):
-    only_plan = "plan" in (argv if argv is not None else sys.argv[1:])
+    args = argv if argv is not None else sys.argv[1:]
+    only_plan, only_forecast = "plan" in args, "forecast" in args
     real = tool.get_json
     # keep what is already recorded: the recorder adds to the file
     book = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}
@@ -103,9 +129,11 @@ def main(argv=None):
 
     tool.get_json = recording
     try:
-        if not only_plan:
+        if not only_plan and not only_forecast:
             record_adapter()
-        missing = record_plan_sources()
+        missing = [] if only_forecast else record_plan_sources()
+        if not only_plan:
+            missing += record_forecast_sources()
     finally:
         tool.get_json = real
     OUT.parent.mkdir(parents=True, exist_ok=True)
