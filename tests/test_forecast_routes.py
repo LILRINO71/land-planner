@@ -622,17 +622,23 @@ class WhenATrendSourceIsSilent(unittest.TestCase):
         with mock.patch.object(tool, "get_json", odd):
             return app.forecast("menifee", [EXAMPLE])
 
-    def test_a_service_that_answers_in_a_shape_nobody_expected_is_treated_as_silent(self):
+    def test_a_service_that_answers_in_a_shape_nobody_expected_is_said_to_be_unreadable(self):
         zone = {"geometry": {"rings": [[[-117.1, 33.6], [-117.0, 33.6], [-117.0, 33.7], [-117.1, 33.7], [-117.1, 33.6]]]}}   # no attributes
-        out = self.odd_regional_plan({"features": [zone]})
-        self.assertEqual(out["answered"]["regional_plan"], "did not answer")
-        self.assertTrue(out["available"])
+        with self.assertLogs("landplanner", "WARNING"):
+            out = self.odd_regional_plan({"features": [zone]})
+        self.assertEqual(out["answered"]["regional_plan"], "could not be read")
+        self.assertTrue(out["available"], "the rest of the forecast still comes")
 
-    def test_a_zone_with_empty_attributes_is_treated_as_silent_too(self):
-        # {"attributes": None} gives AttributeError ('NoneType' has no attribute 'get') inside regional_plan, which the
-        # planner's DOWN list (SourceError, KeyError, TypeError, ValueError, IndexError) does not hold: the forecast fails
-        out = self.odd_regional_plan({"features": [{"attributes": None, "geometry": {"rings": []}}]})
-        self.assertEqual(out["answered"]["regional_plan"], "did not answer")
+    def test_a_zone_with_empty_attributes_is_unreadable_too_and_the_log_says_where(self):
+        # {"attributes": None} gives AttributeError ('NoneType' has no attribute 'get') inside regional_plan: the forecast
+        # must still come, the page must say the answer could not be read, and the log must point at the line
+        with self.assertLogs("landplanner", "WARNING") as logs:
+            out = self.odd_regional_plan({"features": [{"attributes": None, "geometry": {"rings": []}}]})
+        self.assertEqual(out["answered"]["regional_plan"], "could not be read")
+        self.assertTrue(out["available"])
+        record = [r for r in logs.records if "regional_plan" in r.getMessage()][0]
+        self.assertIn("AttributeError", record.getMessage())
+        self.assertIsNotNone(record.exc_info)
 
 
 # ---------------------------------------------------------------- several parcels as one site, on a made-up town

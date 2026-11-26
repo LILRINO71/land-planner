@@ -307,13 +307,47 @@ class WhenAPartDoesNotAnswer(OnTown):
         json.dumps(out, allow_nan=False)
 
     def test_every_kind_of_error_a_service_may_give_is_a_part_that_did_not_answer(self):
-        for error in (SourceError("x"), KeyError("x"), TypeError("x"), ValueError("x"), IndexError("x"), AttributeError("x")):
+        for error in (KeyError("x"), TypeError("x"), ValueError("x"), IndexError("x"), AttributeError("x")):
             with self.subTest(error=type(error).__name__):
                 self.setUp()
                 self.city.silence("climate", "sales", error=error)
-                out = self.get()
-                self.assertEqual((out["answered"]["climate"], out["answered"]["sales"]), ("did not answer", "did not answer"))
+                with self.assertLogs("landplanner", "WARNING"):
+                    out = self.get()
+                # the page stays up, and says the answer could not be read: it is not passed off as a silent service
+                self.assertEqual((out["answered"]["climate"], out["answered"]["sales"]), ("could not be read", "could not be read"))
                 self.assertEqual(out["climate"], {"available": False})
+
+    def test_a_service_that_is_silent_is_said_to_be_silent_and_nothing_is_logged(self):
+        self.city.silence("climate", "sales")
+        with self.assertNoLogs("landplanner", "WARNING"):
+            out = self.get()
+        self.assertEqual((out["answered"]["climate"], out["answered"]["sales"]), ("did not answer", "did not answer"))
+
+    # a mistake in the code that reads a source used to look exactly like a service that was down, with no trace anywhere
+    def test_an_answer_that_could_not_be_read_is_logged_with_its_part_and_where_it_happened(self):
+        self.city.silence("climate", error=AttributeError("'NoneType' object has no attribute 'get'"))
+        with self.assertLogs("landplanner", "WARNING") as logs:
+            self.get()
+        record = [r for r in logs.records if "climate" in r.getMessage()][0]
+        self.assertIn("AttributeError", record.getMessage())
+        self.assertIsNotNone(record.exc_info, "the log carries the traceback")
+
+    def test_an_answer_that_could_not_be_read_keeps_saying_so_within_the_minute(self):
+        self.city.silence("climate", error=TypeError("x"))
+        with self.assertLogs("landplanner", "WARNING"):
+            self.get()
+        asked = self.city.asked("climate")
+        out = self.get()
+        self.assertEqual(self.city.asked("climate"), asked, "not asked again within the minute")
+        self.assertEqual(out["answered"]["climate"], "could not be read")
+
+    def test_an_older_copy_given_after_an_unreadable_answer_is_logged_too(self):
+        self.get()
+        self.clock.now += PART_TTL + DAY
+        self.city.silence("climate", error=KeyError("x"))
+        with self.assertLogs("landplanner", "WARNING"):
+            out = self.get()
+        self.assertEqual(out["answered"]["climate"], "older copy")
 
     # a reply cut short (http.client.IncompleteRead) is neither an OSError nor one of the planner's DOWN errors: sources/fetch.py must
     # turn it into a SourceError, so it is one part that did not answer and not a failure of the whole outlook
@@ -396,7 +430,7 @@ class WhenAPartDoesNotAnswer(OnTown):
         out = self.get()
         self.assertEqual(self.city.asked("climate"), 2, "the aged copy is asked for again")
         self.assertTrue(out["climate"]["available"], "and the old copy is better than nothing")
-        self.assertEqual(out["answered"]["climate"], "ok")
+        self.assertEqual(out["answered"]["climate"], "older copy", "and it is not passed off as a fresh answer")
         self.assertEqual(out["fetched"]["climate"], float(NOW), "the answer says when the copy was made, not now")
 
     # the cache hands back the aged copy when the source raises; the failure used to go unnoticed, so with an aged copy the silent
@@ -413,7 +447,10 @@ class WhenAPartDoesNotAnswer(OnTown):
         self.clock.now += RETRY_AFTER + 1
         out = self.get()
         self.assertEqual(self.city.asked("climate"), asked + 1, "asked again after the minute")
-        self.assertEqual(out["answered"]["climate"], "ok", "and the old copy still serves meanwhile")
+        self.assertEqual(out["answered"]["climate"], "older copy", "and the old copy still serves meanwhile")
+        self.city.silent.clear()
+        self.clock.now += RETRY_AFTER + 1
+        self.assertEqual(self.get()["answered"]["climate"], "ok", "once the source answers again, it is a fresh answer")
 
 
 # ---------------------------------------------------------------- kept copies

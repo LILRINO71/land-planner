@@ -5,7 +5,7 @@ import { land as getLand, city as getCity, saved } from "../api.js";
 import { createMap, ll, legend, kindColour, fillStrength } from "../maps.js";
 import { mountTerrain } from "../terrain3d.js";
 import { plan } from "./plan.js";
-import { NONE, esc, has, show, num, plural, money, cap, placeName, when, table, icon, loading, problem, missing, toast, apnText } from "../util.js";
+import { NONE, esc, has, show, num, plural, money, cap, placeName, when, table, icon, loading, problem, missing, toast, apnText, noAnswer, whyNoAnswer } from "../util.js";
 
 export const PAGES = [
   ["overview", "Overview"], ["zoning", "Zoning"], ["surroundings", "Surroundings"],
@@ -19,7 +19,8 @@ const PART_NAMES = {
   neighbour_shapes: "Neighbouring outlines", state_highway_traffic: "Highway traffic", terrain: "Five spot heights",
   surface: "Ground heights for the 3D view",
 };
-const STATE_WORDS = { ok: "Yes", "nothing found there": "Answered, with nothing for this spot", "did not answer": "Did not answer just now" };
+const STATE_WORDS = { ok: "Yes", "nothing found there": "Answered, with nothing for this spot", "did not answer": "Did not answer just now",
+  "could not be read": "Answered in a form this app could not read", "older copy": "Did not answer just now: this is the copy read earlier" };
 
 export async function render(el, params, alive) {
   const page = PAGES.some((p) => p[0] === params.page) ? params.page : "overview";
@@ -99,8 +100,8 @@ function sourceNote(ctx, part) {
 function unanswered(ctx, part, what) {
   // a part that is empty: either the source did not answer (say so, offer to ask again) or it has nothing here
   const state = ctx.quick.sources[part];
-  if (state === "did not answer") {
-    return `<div class="state problem">${icon("alert")}<p>${esc(what)}: ${esc(ctx.c.sources[part] || "the source")} did not answer just now.</p><button type="button" class="btn" data-reload>Ask again</button></div>`;
+  if (noAnswer(state)) {
+    return `<div class="state problem">${icon("alert")}<p>${esc(what)}: ${esc(ctx.c.sources[part] || "the source")} ${whyNoAnswer(state)}.</p><button type="button" class="btn" data-reload>Ask again</button></div>`;
   }
   return missing(`${what}: not covered yet.`);
 }
@@ -159,7 +160,7 @@ function siteMap(box, ctx, { neighbours = false, stations = false, base = "aeria
   view.fit(bounds);
   if (legendBox) {
     legendBox.innerHTML = shown.size ? legend(c.zoning_kinds, shown)
-      : neighbours ? `<span class="missing">Neighbouring parcels: ${ctx.quick.sources.neighbour_shapes === "did not answer" ? "the city's map service did not answer just now" : "not covered yet"}.</span>` : "";
+      : neighbours ? `<span class="missing">Neighbouring parcels: ${noAnswer(ctx.quick.sources.neighbour_shapes) ? "the city's map service " + whyNoAnswer(ctx.quick.sources.neighbour_shapes) : "not covered yet"}.</span>` : "";
   }
   return view;
 }
@@ -171,7 +172,7 @@ function groundReading(g) {
   }
   if (inside) return [num(inside.range_ft) + " ft", "between the lowest and highest ground inside the outline"];
   if (five) return [cap(five.reading), `about ${five.rough_slope_pct}% across five spot heights only (rough)`];
-  return [NONE, g.sources.surface === "did not answer" ? "the elevation service did not answer just now" : "ground heights"];
+  return [NONE, noAnswer(g.sources.surface) ? "the elevation service " + whyNoAnswer(g.sources.surface) : "ground heights"];
 }
 
 function limitsCard() {
@@ -383,8 +384,8 @@ function nearby(section, legendBox, view, ctx) {
 
   // a part the source did not give: say which of the two reasons it is, never fill it in
   function absent(m, part, what) {
-    if (m.sources && m.sources[part] === "did not answer") {
-      return `<div class="state problem">${icon("alert")}<p>${esc(what)}: ${esc(c.sources[part] || "the source")} did not answer just now.</p><button type="button" class="btn" data-again>Ask again</button></div>`;
+    if (m.sources && noAnswer(m.sources[part])) {
+      return `<div class="state problem">${icon("alert")}<p>${esc(what)}: ${esc(c.sources[part] || "the source")} ${whyNoAnswer(m.sources[part])}.</p><button type="button" class="btn" data-again>Ask again</button></div>`;
     }
     return missing(`${what}: not covered yet.`);
   }
@@ -526,8 +527,8 @@ function terrain(box, ctx) {
       html += `<div class="view3d" id="view3d"></div>
         <p class="fine">Approximate ground surface drawn from ${num(known)} height samples (${source}), one about every ${num(H.spacing_ft)} ft. Ditches, mounds and anything smaller than that can be missed. Heights are stretched so gentle slopes can be seen; set the slider to 1× for true proportions. Gold line: parcel outline. Paler ground: outside the parcel. N: north. Read ${esc(when(g.fetched.surface))}.</p>`;
     } else {
-      html += g.sources.surface === "did not answer"
-        ? `<div class="state problem">${icon("alert")}<p>The U.S. Geological Survey's elevation service did not answer just now, so the 3D view cannot be drawn. It is often slow; trying again usually works.</p><button type="button" class="btn" data-ground>Ask again</button></div>`
+      html += noAnswer(g.sources.surface)
+        ? `<div class="state problem">${icon("alert")}<p>The U.S. Geological Survey's elevation service ${whyNoAnswer(g.sources.surface)}, so the 3D view cannot be drawn.${g.sources.surface === "did not answer" ? " It is often slow; trying again usually works." : ""}</p><button type="button" class="btn" data-ground>Ask again</button></div>`
         : missing("3D ground view: not covered yet for this parcel.");
     }
     html += "</section>";
@@ -546,7 +547,7 @@ function terrain(box, ctx) {
       html += `<p>A quick first check from five points only: ${T.fall_across_site_ft} ft between the highest and lowest of them, about ${T.rough_slope_pct}% across the parcel (${esc(T.reading)}).${inside && Math.abs(inside.range_ft - T.fall_across_site_ft) >= 3 ? ` The ${num(inside.samples_inside)} samples above find a larger difference (${num(inside.range_ft)} ft) because five points miss the highest and lowest ground.` : ""}</p>` +
         table(["Point", "Feet above sea level"], Object.keys(f).map((k) => [k === "centre" ? "Centre" : cap(k) + "-most point of the outline", num(f[k], 1)]));
     } else {
-      html += g.sources.terrain === "did not answer" ? missing("The elevation service did not answer for the five points just now.") : missing();
+      html += noAnswer(g.sources.terrain) ? missing(`The elevation service ${whyNoAnswer(g.sources.terrain)} for the five points.`) : missing();
     }
     html += "</section></div>";
     ground.innerHTML = html;

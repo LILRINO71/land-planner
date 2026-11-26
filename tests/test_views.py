@@ -149,8 +149,10 @@ class ParcelsInView(Base):
 
     def test_an_answer_in_a_shape_nobody_expected_is_treated_like_no_answer(self):
         self.city.fail = KeyError("parcels")
-        e = self.problem(self.app.parcels_in_view, "tinytown", -117.17, 33.65, -117.16, 33.66)
+        with self.assertLogs("landplanner", "WARNING") as logs:
+            e = self.problem(self.app.parcels_in_view, "tinytown", -117.17, 33.65, -117.16, 33.66)
         self.assertEqual((e.status, e.code), (502, "source-down"))
+        self.assertIn("KeyError", logs.output[0], "and the log says what really happened")
 
     def test_an_unknown_city_is_a_404(self):
         e = self.problem(self.app.parcels_in_view, "nowhere", -117.17, 33.65, -117.16, 33.66)

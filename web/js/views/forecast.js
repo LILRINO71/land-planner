@@ -7,7 +7,7 @@ import { api } from "../api.js";
 import { PAGES, FORECAST_ICON } from "./land.js";
 import { money as readNumber } from "../planmath.js";
 import { mountTerrain } from "../terrain3d.js";
-import { NONE, esc, has, num, plural, cap, icon, loading, problem, missing, debounce, dateOnly, when } from "../util.js";
+import { NONE, esc, has, num, plural, cap, icon, loading, problem, missing, debounce, dateOnly, when, noAnswer, whyNoAnswer } from "../util.js";
 
 // ---------------------------------------------------------------- words and numbers
 
@@ -22,6 +22,16 @@ function amount(v, unit) {
   if (!isNum(v)) return NONE;
   if (unit === "$") return "$" + num(v);
   return num(v) + (unit ? " " + esc(unit) : "");
+}
+// What to say of the sources that are not simply answering: which did not answer, which answered in a form the app could not read,
+// and which are shown from the copy read earlier. "" when every one of them is answering.
+function stateSentences(names, answered, wordOf) {
+  const said = (state, tail) => {
+    const hit = names.filter((p) => answered[p] === state).map(wordOf);
+    return hit.length ? `${cap(listWords(hit))} ${tail}.` : "";
+  };
+  return [said("did not answer", "did not answer just now"), said("could not be read", "answered in a form this app could not read"),
+    said("older copy", "did not answer just now, so the copy read earlier is used")].filter(Boolean).join(" ");
 }
 function listWords(items) {
   if (items.length <= 1) return items.join("");
@@ -402,8 +412,8 @@ export async function render(main, route, alive) {
     if (reason) text += " " + reason;
     else {
       const answered = data.answered || {};
-      const silent = (PARTS_FOR[partsKey] || []).filter((p) => answered[p] && answered[p] !== "ok");
-      if (silent.length) text += " " + cap(listWords(silent.map((p) => `${PART_WORDS[p] || p} ${answered[p] === "did not answer" ? "did not answer just now" : "had nothing for this spot"}`))) + ".";
+      const silent = (PARTS_FOR[partsKey] || []).filter((p) => answered[p] && answered[p] !== "ok" && answered[p] !== "older copy");
+      if (silent.length) text += " " + cap(listWords(silent.map((p) => `${PART_WORDS[p] || p} ${noAnswer(answered[p]) ? whyNoAnswer(answered[p]) : "had nothing for this spot"}`))) + ".";
     }
     return missing(text);
   }
@@ -1080,7 +1090,7 @@ export async function render(main, route, alive) {
     }
     const H = ground.surface, plan = ground.plan, P = ground.parcel;
     if (!H || !plan || !P || !P.outline || !(H.feet || []).some((v) => v !== null)) {
-      const why = !H ? `the ground heights ${ground.answered && ground.answered !== "ok" ? "did not answer just now" : "are not covered for this site"}`
+      const why = !H ? `the ground heights ${noAnswer(ground.answered) ? whyNoAnswer(ground.answered) : "are not covered for this site"}`
         : !plan || !P ? "no plan could be drawn on this land" : "the ground heights came back empty";
       box.innerHTML = missing(`The 3D view is not available for this site: ${why}.`) +
         (!H ? '<p><button type="button" class="btn small" data-ground-again>Ask again</button></p>' : "");
@@ -1130,8 +1140,8 @@ export async function render(main, route, alive) {
     return null;
   }
   function outlookMissing(what, silent) {
-    const names = (silent || []).map((p) => (OUTLOOK_WORDS[p] || [p])[0]);
-    return missing(`${what}: not covered yet.${names.length ? ` ${listWords(names)} did not answer just now.` : ""}`);
+    const says = stateSentences(silent || [], (outlook || {}).answered || {}, (p) => (OUTLOOK_WORDS[p] || [p])[0]);
+    return missing(`${what}: not covered yet.${says ? " " + says : ""}`);
   }
   function drawOutlook() {
     drawEconomy(); drawWeather(); drawHazards(); drawNearby(); drawResident(); drawTodo();
@@ -1210,7 +1220,7 @@ export async function render(main, route, alive) {
       <div class="fc-eco-bottom">
         <div class="card"><h3>What it says</h3>${(E.facts || []).length ? `<ul class="plain">${E.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : missing("Nothing to say yet.")}
           ${E.sales_ahead_basis ? `<p class="fine"><b>Sales ahead:</b> ${esc(E.sales_ahead_basis)}</p>` : ""}
-          ${(E.did_not_answer || []).length ? `<p class="fine fc-no">Did not answer just now: ${esc(listWords(E.did_not_answer.map((p) => (OUTLOOK_WORDS[p] || [p])[0])))}.</p>` : ""}</div>
+          ${(E.did_not_answer || []).length ? `<p class="fine fc-no">${esc(stateSentences(E.did_not_answer, outlook.answered || {}, (p) => (OUTLOOK_WORDS[p] || [p])[0]))}</p>` : ""}</div>
         <div class="fc-eco-table">${plainTable(["Year", "People<small>and homes</small>", "Homes permitted", "Shop and restaurant sales", "Sales a household", "Unemployment<small>of those working or looking</small>", "Home-loan rate<small>30-year, average</small>", "Prices rose"], tableRows, [1, 2, 3, 4, 5, 6, 7])}
           <p class="fine">Sources: ${(E.sources || []).map((s) => `${esc(s.source || (OUTLOOK_WORDS[s.name] || [s.name])[0])}${s.answered ? "" : " (did not answer)"}`).join("; ")}.</p></div>
       </div>`;
@@ -1474,11 +1484,11 @@ export async function render(main, route, alive) {
 
   function drawSources() {
     const answered = data.answered || {};
-    const silent = Object.keys(answered).filter((p) => answered[p] === "did not answer");
+    const says = stateSentences(Object.keys(answered), answered, (p) => PART_WORDS[p] || p);
     el.querySelector("#fcSources").innerHTML = `
       <div class="card"><h2>What answered</h2>
         ${plainTable(["Source", "What it gives", "Answered"], (data.sources || []).map((s) => [esc(s.name), esc(s.what), s.answered ? "Yes" : '<b class="fc-no">No</b>']))}
-        ${silent.length ? `<p class="fc-again">${esc(cap(listWords(silent.map((p) => PART_WORDS[p] || p))))} did not answer just now. <button type="button" class="btn small" data-ask-again>Ask again</button></p>` : ""}
+        ${says ? `<p class="fc-again">${esc(says)} <button type="button" class="btn small" data-ask-again>Ask again</button></p>` : ""}
         <h3 class="fc-gap">The wider picture</h3>
         ${outlookSources()}
       </div>
@@ -1492,11 +1502,13 @@ export async function render(main, route, alive) {
     if (outlookProblem) return `<p class="fc-again fc-no">The wider picture could not be read just now. <button type="button" class="btn small" data-outlook-again>Ask again</button></p>`;
     if (!outlook) return '<p class="plan-wait"><span class="spinner" aria-hidden="true"></span> Asking these sources now…</p>';
     const answered = outlook.answered || {}, names = Object.keys(answered);
-    const words = { ok: "Yes", "did not answer": '<b class="fc-no">Did not answer just now</b>', "nothing found there": "Answered, nothing for this spot" };
-    const silent = names.filter((p) => answered[p] !== "ok");
+    const words = { ok: "Yes", "did not answer": '<b class="fc-no">Did not answer just now</b>', "nothing found there": "Answered, nothing for this spot",
+      "could not be read": '<b class="fc-no">Answered in a form this app could not read</b>',
+      "older copy": '<b class="fc-no">Did not answer just now</b>: this is the copy read earlier' };
+    const says = stateSentences(names, answered, (p) => (OUTLOOK_WORDS[p] || [p])[0]);
     return plainTable(["Source", "What it gives", "Answered", "Read"], names.map((p) => [esc((OUTLOOK_WORDS[p] || [p])[0]), esc((OUTLOOK_WORDS[p] || ["", ""])[1]),
       words[answered[p]] || esc(answered[p]), (outlook.fetched || {})[p] ? esc(when((outlook.fetched || {})[p])) : ""])) +
-      `<p class="fc-again">${silent.length ? `${esc(cap(listWords(silent.map((p) => (OUTLOOK_WORDS[p] || [p])[0]))))} did not answer. ` : "Saved answers are reused for a while. "}<button type="button" class="btn small" data-outlook-again>Ask these sources again</button></p>`;
+      `<p class="fc-again">${says ? esc(says) + " " : "Saved answers are reused for a while. "}<button type="button" class="btn small" data-outlook-again>Ask these sources again</button></p>`;
   }
 
   // ---------------------------------------------------------------- what the person does

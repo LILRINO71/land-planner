@@ -13,6 +13,11 @@ export function num(v, digits = 0) {
 }
 // The word for a count: plural(1, "acre") is "acre", plural(2, "acre") is "acres", plural(1, "person", "people") is "person".
 // `digits` is how many decimals the number is shown with, so 1.004 shown as "1" is "1 acre".
+// A source's state as the server gives it: "ok", "nothing found there", "did not answer", "could not be read" (it answered, in a form
+// this app could not read) or "older copy" (it did not answer just now, so the copy read earlier is shown in its place).
+export const noAnswer = (state) => state === "did not answer" || state === "could not be read";
+export const whyNoAnswer = (state) => (state === "could not be read" ? "answered in a form this app could not read" : "did not answer just now");
+
 export function plural(n, one, many = one + "s", digits = 0) {
   const shown = Number(String(num(n, digits)).replace(/,/g, ""));
   return shown === 1 ? one : many;

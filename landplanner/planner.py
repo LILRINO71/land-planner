@@ -8,7 +8,9 @@ A site part that did not answer is not asked again for a minute, then the next v
 "Check again" buttons in the app pass fresh=True, which asks the service even when a young copy exists.
 """
 import hashlib
+import logging
 import math
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -31,8 +33,21 @@ FLOORS = (1.0, 2.0, 5.0)     # the list can start at these sizes as well as the 
 MAX_VIEW_DEGREES = 0.09      # the widest map view the "every parcel in view" layer answers for (about 5 miles)
 
 
-# A service that answers in a shape nobody expected is treated like one that did not answer.
-DOWN = (SourceError, KeyError, TypeError, ValueError, IndexError, AttributeError)
+# A source can fail in two ways, and the pages say which. It did not answer (SourceError). Or it answered and the
+# answer could not be read: a shape nobody expected, or a mistake in the code that reads it. The second kind never
+# takes a page down, and it is never passed off as a silent service: it is named on the page and written to the log
+# with where it happened, so it can be found and mended.
+UNREADABLE = (KeyError, TypeError, ValueError, IndexError, AttributeError)
+DOWN = (SourceError,) + UNREADABLE
+LOG = logging.getLogger("landplanner")
+
+
+def noted(what, error):
+    """Writes an answer that could not be read to the log, with where it happened. Says whether it was one."""
+    if error is None or isinstance(error, SourceError):
+        return False
+    LOG.warning("%s: the answer could not be read (%s: %s)", what, type(error).__name__, error, exc_info=error)
+    return True
 
 
 class Problem(Exception):
@@ -77,6 +92,7 @@ class LandPlanner:
         return {"cities": [c.describe() for c in self.cities.values()]}
 
     def _unreachable(self, city, what="map service"):
+        noted(f"{city.id} {what}", sys.exc_info()[1])       # called while the failure is being handled
         return Problem(502, "source-down", f"{city.name}'s public {what} did not answer just now. "
                                            "Check the internet connection and try again.")
 
@@ -100,7 +116,8 @@ class LandPlanner:
         """The city's zoning names, or an empty table when its service is down (codes are then shown as codes)."""
         try:
             return self.cache.get(f"{city.id}/zone-names", NAMES_TTL, city.zone_names, fresh)[0] or {}
-        except DOWN:
+        except DOWN as e:
+            noted(f"{city.id} zoning names", e)
             return {}
 
     def _decorate(self, city, row, names):
@@ -186,8 +203,8 @@ class LandPlanner:
         out = {"city": city.id, "records": None, "photo": None}
         try:
             out["records"] = self.cache.get(f"{city.id}/records-updated", UPDATED_TTL, city.records_updated)[0]
-        except DOWN:
-            pass
+        except DOWN as e:
+            noted(f"{city.id}/records-updated", e)
         if lat is None or lon is None:
             lat, lon = city.centre["lat"], city.centre["lon"]
         if -90 <= lat <= 90 and -180 <= lon <= 180:
@@ -195,8 +212,8 @@ class LandPlanner:
             try:
                 out["photo"] = self.cache.get(f"{city.id}/photo-date/{spot}", PHOTO_TTL,
                                               lambda: city.photo_date(round(lon, 2), round(lat, 2)))[0]
-            except DOWN:
-                pass
+            except DOWN as e:
+                noted(f"{city.id}/photo-date/{spot}", e)
         return out
 
     def _list_row(self, city, parcel, names):
@@ -216,22 +233,43 @@ class LandPlanner:
             raise self._unreachable(city) from e
 
     def _part(self, city, parcel, part, fresh):
-        """(value, state, fetched) for one site part; state is "ok", "nothing found there" or "did not answer"."""
+        """(value, state, fetched) for one site part; the states are listed in _asked."""
         return self._asked(f"{city.id}/site/{parcel['apn']}/{part}", lambda: city.site_part(part, parcel), PART_TTL, fresh)
 
     def _asked(self, key, load, ttl=PART_TTL, fresh=False):
         """(value, state, fetched) for one answer kept under `key`, asked for with `load` when no young copy is
-        kept. A source that just failed is not asked again for a minute."""
+        kept. state is one of:
+          "ok"                   it answered
+          "nothing found there"  it answered, with nothing for this spot
+          "did not answer"       it did not answer just now
+          "could not be read"    it answered in a form this app could not read (the log says where)
+          "older copy"           it failed just now, and the copy kept from before is given in its place
+                                 (fetched says when that copy was read)
+        A source that just failed is not asked again for a minute."""
         with self._guard:
-            recent = self.clock() - self._failed.get(key, -1e12) < RETRY_AFTER
-        if recent and not fresh:
-            return None, "did not answer", None
+            at, why = self._failed.get(key, (-1e12, ""))
+        if self.clock() - at < RETRY_AFTER and not fresh:
+            return None, why, None
+        seen = []
+
+        def asked():
+            try:
+                return load()
+            except DOWN as e:
+                seen.append(e)        # the cache may answer with its older copy: the failure is still noted
+                raise
+
         try:
-            value, meta = self.cache.get(key, ttl, load, fresh, retry_after=RETRY_AFTER)
-        except DOWN:
+            value, meta = self.cache.get(key, ttl, asked, fresh, retry_after=RETRY_AFTER)
+        except DOWN as e:
+            why = "could not be read" if noted(key, e) else "did not answer"
             with self._guard:
-                self._failed[key] = self.clock()
-            return None, "did not answer", None
+                self._failed[key] = (self.clock(), why)
+            return None, why, None
+        if seen:
+            noted(key, seen[0])
+        if meta.get("stale") and value:
+            return value, "older copy", meta["fetched"]
         return value, "ok" if value else "nothing found there", meta["fetched"]
 
     def _labelled(self, city, part, value, names):
@@ -486,7 +524,7 @@ class LandPlanner:
             row.update(apn_formatted=parcel.get("apn_formatted"), acres=parcel.get("acres"), zoning=parcel.get("zoning"),
                        zoning_name=decorated.get("zoning_name"), address=parcel.get("address") or "",
                        has_own_plan=kept is not None,
-                       did_not_answer=[k for k, v in sources.items() if v == "did not answer"],
+                       did_not_answer=[k for k, v in sources.items() if v in ("did not answer", "could not be read")],
                        plans={"kept": P.headline(P.make_plan(decorated, parts, kept or {"mode": "zoning"}, city.zoning_kind)),
                               "best": P.headline(P.make_plan(decorated, parts, {"mode": "best"}, city.zoning_kind))})
             return row

@@ -269,6 +269,7 @@ export async function render(main, route, alive) {
   let flow = false, cur = 0, order = [], scaleNow = 1;
   const recs = new Map();
   const wantSlide = (/[?&]slide=([\w-]+)/.exec(location.hash) || [])[1] || "";
+  let pendingSlide = "";      // the slide the address asks for, while it does not exist yet (it needs a slower answer)
 
   main.innerHTML = `<div class="pr-root${motion ? " pr-motion" : ""}" id="prRoot">
     <div class="pr-stage"><div class="pr-canvas">
@@ -1125,6 +1126,11 @@ export async function render(main, route, alive) {
     cur = keep >= 0 ? keep : Math.min(cur, order.length - 1);
     if (flow) watchFlow();
     paintFoot();
+    if (pendingSlide && order.includes(pendingSlide)) {
+      const wanted = order.indexOf(pendingSlide), still = cur === 0;   // only if the presenter has not moved on
+      pendingSlide = "";
+      if (still) later(() => go(wanted), 0);
+    }
   }
   function paintFoot() {
     segs.querySelectorAll(".pr-seg").forEach((b, i) => { b.classList.toggle("on", i === cur); b.classList.toggle("past", i < cur); b.setAttribute("aria-current", i === cur ? "step" : "false"); });
@@ -1324,6 +1330,7 @@ export async function render(main, route, alive) {
   sync();
   layout();
   const start = order.indexOf(wantSlide);
+  if (start < 0) pendingSlide = wantSlide;
   if (!flow) go(start >= 0 ? start : 0);
   else if (start > 0) later(() => go(start), 300);
   askOutlook();

@@ -111,7 +111,15 @@ python tools/menifee.py selfcheck                   did every public source answ
 python tests/record_fixtures.py forecast            re-record the forecast's sources (needs the internet)
 ```
 
-### How the forecast works
+### When a source fails
+
+Every figure comes from a public source, and each page says how each source answered: it answered, it answered
+with nothing for this spot, it did not answer just now, it did not answer just now and the copy read earlier is
+shown in its place (with the date that copy was read), or it answered in a form this app could not read. The last
+one is never passed off as a silent service: it is written to `problems.log` in the `data` folder with where it
+happened, so it can be mended. One failing source never takes a page down.
+
+## How the forecast works
 
 The Forecast page (`landplanner/forecast.py`) looks ten years ahead, year by year, for one parcel or for several
 parcels treated as one site. Open it from a land's own page, or tick lands on My lands and forecast them together.

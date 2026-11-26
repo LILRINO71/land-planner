@@ -7,6 +7,8 @@
 """
 import argparse
 import json
+import logging
+import logging.handlers
 import socket
 import sys
 import urllib.error
@@ -36,6 +38,26 @@ def already_running(port):
         return False
 
 
+def keep_a_log(data):
+    """Answers the app could not read are written to problems.log in the data folder (and to this window), with
+    where each one happened, so a mistake in reading a source can be found later. The file stays small."""
+    log = logging.getLogger("landplanner")
+    if log.handlers:
+        return
+    line = logging.Formatter("%(asctime)s %(message)s")
+    window = logging.StreamHandler()
+    window.setFormatter(line)
+    log.addHandler(window)
+    try:
+        Path(data).mkdir(parents=True, exist_ok=True)
+        kept = logging.handlers.RotatingFileHandler(Path(data) / "problems.log", maxBytes=500_000, backupCount=1,
+                                                    encoding="utf-8", delay=True)
+        kept.setFormatter(line)
+        log.addHandler(kept)
+    except OSError:
+        pass  # a log that cannot be written is only a log that is missing
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="landplanner", description="Land Planner, on this computer only.")
     ap.add_argument("--port", type=int, default=PORT)
@@ -43,6 +65,7 @@ def main(argv=None):
     ap.add_argument("--data", default=str(ROOT / "data"))
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args(argv)
+    keep_a_log(args.data)
 
     server = None
     for port in range(args.port, args.port + 20):
