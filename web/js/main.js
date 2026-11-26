@@ -7,6 +7,7 @@ import * as landsView from "./views/lands.js";
 import * as myLandsView from "./views/mylands.js";
 import * as landView from "./views/land.js";
 import * as forecastView from "./views/forecast.js";
+import * as presentView from "./views/present.js";
 
 const main = document.getElementById("main"), side = document.getElementById("side");
 let visit = 0, leaving = [], lastCity = null, openLand = null;
@@ -19,6 +20,8 @@ function parse() {
   if (first === "land" && a && b) return { name: "land", city: a, apn: b.replace(/\D/g, ""), page: c || "overview" };
   // #/forecast/menifee/360350024+360350017: one parcel, or several forecast as one site
   if (first === "forecast" && a) return { name: "forecast", city: a, apns: (b || "").split(/[+,\s]+/).map((x) => x.replace(/\D/g, "")).filter(Boolean) };
+  // #/present/menifee/360350024+360350017: the same site as slides for the city (the sidebar is hidden)
+  if (first === "present" && a) return { name: "present", city: a, apns: (b || "").split(/[+,\s]+/).map((x) => x.replace(/\D/g, "")).filter(Boolean) };
   return { name: "cities" };
 }
 
@@ -69,13 +72,14 @@ async function show() {
     lastCity = route.city;
     if (!openLand || openLand.apn !== route.apn || openLand.city !== route.city) openLand = { city: route.city, apn: route.apn };
   }
-  if (route.name === "forecast") lastCity = route.city;
-  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast" }[route.name] + " · Land Planner";
+  if (route.name === "forecast" || route.name === "present") lastCity = route.city;
+  document.body.classList.toggle("presenting", route.name === "present");
+  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast", present: "Presentation" }[route.name] + " · Land Planner";
   drawSide(route);
   main.scrollTop = 0;
   window.scrollTo(0, 0);
   main.className = "main " + route.name;
-  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView }[route.name];
+  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView, present: presentView }[route.name];
   try {
     await view.render(main, route, alive);
   } catch (e) {
