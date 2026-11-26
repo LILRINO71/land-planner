@@ -374,7 +374,6 @@ FLOOD_WORDS = {
     "undetermined": "Flood hazard not determined: the flood map has not studied this area.",
 }
 FIRE_LEVELS = ("Moderate", "High", "Very High")
-GROUND_STATES = ("in a mapped zone", "not in a zone", "not mapped by the state here")
 PALEO = {"L": "Low", "M": "Moderate", "H": "High", "U": "Undetermined", "N": "None"}
 
 

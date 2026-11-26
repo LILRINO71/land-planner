@@ -58,9 +58,9 @@ class Menifee(CityAdapter):
         "tracts": "U.S. Census Bureau, American Community Survey (served by Esri)",
     }
     not_covered = (
-        "The shops and offices that exist today, and what people spend in them (income is read from the census survey)",
+        "The shops and offices that exist today (the Forecast shows what growth adds, not what is missing now)",
         "Traffic counts on city streets (only state highways are counted)",
-        "Utilities, flood zones and protected habitat",
+        "Water, sewer and power capacity, and airport noise and height zones",
         "What the owner paid, and current market prices",
         "Which uses the zone allows outright, with a permit, or not at all",
         "Real quotes for costs and prices (the Plan page starts from editable figures)",

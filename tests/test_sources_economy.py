@@ -4,6 +4,7 @@ The network functions in landplanner/sources/fetch.py are replaced by small reco
 tests/fixtures/sources/ (files starting with econ_). One extra test reads the real saved Department of Finance
 workbook, and is skipped when that file is not on this computer.
 """
+import os
 import io
 import json
 import sys
@@ -19,8 +20,7 @@ from landplanner.cities import SourceError  # noqa: E402
 from landplanner.sources import economy  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "sources"
-REAL_E5 = Path(r"C:\Users\hiheo\AppData\Local\Temp\claude\c8734d0ba3930a0a\06bd6a43-b610-4366-991b-53001ecfe4b9"
-               r"\scratchpad\econ\E5_2026.xlsx")
+REAL_E5 = Path(os.environ.get("LANDPLANNER_REAL_E5") or "no-saved-copy.xlsx")   # a saved copy of the state's real workbook
 GET_BYTES = "landplanner.sources.fetch.get_bytes"
 GET_JSON = "landplanner.sources.fetch.get_json"
 
@@ -172,7 +172,7 @@ class PopulationTests(unittest.TestCase):
             with self.assertRaises(SourceError):
                 economy.population_by_year("Menifee", 2026)
 
-    @unittest.skipUnless(REAL_E5.exists(), "the saved copy of the real workbook is not on this computer")
+    @unittest.skipUnless(REAL_E5.exists(), "set LANDPLANNER_REAL_E5 to a saved copy of the real workbook to run this")
     def test_the_real_saved_workbook(self):
         with mock.patch(GET_BYTES, return_value=REAL_E5.read_bytes()):
             answer = economy.population_by_year("Menifee", 2026)

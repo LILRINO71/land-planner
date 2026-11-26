@@ -133,19 +133,36 @@ parcels treated as one site. Open it from a land's own page, or tick lands on My
 Everything that is not measured or an official forecast (the share of income spent in shops, floor space per job,
 the share of demand one site wins and so on) is a starting figure shown on the page, and the owner can change it.
 
+### The wider picture, and presenting it
+
+Below the forecast the same page reads the rest of what a planning department asks about, each from a named public
+source (`landplanner/sources/`, turned into findings by `landplanner/outlook.py`):
+
+- **The city's economy by year**: people and homes (state estimates), homes permitted (Census Bureau), shop and
+  restaurant sales (state tax agency), unemployment (state employment department), home-loan rates and prices.
+- **Weather** since 1985 and where its trend points; **hazards and limits on building** (flood, fire, faults, soft
+  ground, wetlands, protected habitat), each marked clear, know about it, or adds work.
+- **What is close by** (parks, fire, police, hospitals, colleges, transit) and **who lives nearby**.
+- **What needs to be done**: the steps with the city, the studies, the checks and when each part is offered, by
+  year. A starting checklist drawn from the facts by simple rules; the city decides what it requires.
+
+**Present to the city** (the button at the top of the Forecast page) shows all of it as full-screen slides for a
+projector: arrow keys or a click to move, `F` for full screen, and Ctrl+P prints one slide per page as a handout.
+
 ## What it cannot tell you yet
 
 - The shops and offices that exist today (no public list), so the forecast shows what growth adds, not whether the
   area is short of shops now.
 - Traffic counts by year (only the latest highway count is published as open data).
-- Traffic counts on city streets (only state highways are counted). Menifee publishes its own counts.
-- Utilities, flood zones, protected habitat, soil and other limits on what can be built.
+- Traffic counts on city streets (only state highways are counted).
+- Water, sewer and power capacity; airport noise and height zones (only the county serves them, behind a robot
+  check); soil tests. Flood, fire, faults, wetlands and habitat are read, but a map is not a study.
 - Real prices and quotes. The Plan page starts from editable figures; replace them with the owner's own.
 - Which uses each zone allows outright, with a permit, or not at all (the city's table is not read yet; "fits the
   zoning" means "this is what the zone is for").
 - City and agency fees.
 - Riverside County's own parcel site blocks automated reading, so the city's copy is used instead.
-- The aerial photo is the newest public one (2022 here); newer buildings are not in it.
+- The aerial photo is the newest public one (its date is shown under each map); newer buildings are not in it.
 
 ## What it is not
 
@@ -162,4 +179,7 @@ owner, his engineer and the city's planners.
 4. Costs and returns, with imported cost lines. *(done, from starting figures)*
 5. Buyers and builders per use, from the city's project lists. *(done)*
 6. Traffic, entrances, signals; jobs, residents and taxes. *(done)*
-7. Next: the owner's real parcel and real quotes; the zone-by-zone table of allowed uses; a second city.
+7. The ten-year forecast for one parcel or several as one site. *(done)*
+8. The wider picture: the city's economy, weather, hazards, what is close by, residents, the steps to take. *(done)*
+9. Present to the city: the same facts as full-screen slides that print one per page. *(done)*
+10. Next: real quotes from the owner; the zone-by-zone table of allowed uses; a second city.

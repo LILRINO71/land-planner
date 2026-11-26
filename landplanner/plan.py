@@ -70,7 +70,6 @@ ASSUMPTIONS = {
     "contingency_pct": ("Allowance for surprises", "% of costs", 15.0, "Costs"),
     "fees_total": ("City and agency fees (not covered yet: type your figure)", "$", 0.0, "Costs"),
 }
-RULES = "Rule of thumb"
 SLOPE_FACTOR = {"nearly flat": 1.0, "gentle": 1.25, "moderate": 1.7, "steep": 2.4}
 
 
