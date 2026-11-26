@@ -14,4 +14,5 @@ if errorlevel 1 (
   exit /b 1
 )
 echo  Done. You can close this window.
-timeout /t 6 >nul
+timeout /t 6 >nul 2>nul
+exit /b 0

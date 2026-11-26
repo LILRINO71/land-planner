@@ -29,7 +29,7 @@ try {
     if (Test-Path -LiteralPath $source) {
         Copy-Item -LiteralPath $source -Destination $zip
     } else {
-        Write-Host "  Downloading (about 15 MB)..."
+        Write-Host "  Downloading (about 11 MB)..."
         Invoke-WebRequest -Uri $source -OutFile $zip -UseBasicParsing
     }
     Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $work "new")
