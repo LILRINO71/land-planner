@@ -45,6 +45,116 @@ function backgroundLayer(L, name) {
   ]);
 }
 
+// ---- labels on pieces of land (shared by the Forecast site plan, the Plan page and the presentation)
+// Each label sits at the piece's visual centre: the point farthest from every edge, which stays inside L-shaped and thin
+// pieces where the average of the corners would not. Labels are kept from overlapping at the current zoom: a label that
+// would collide is moved a little within its own piece, then given its shorter wording, and left off (its piece still
+// has a tooltip) only when nothing fits. Larger pieces are placed first, so the smaller piece gives way.
+export function visualCentre(ring) {
+  const lat0 = ring.reduce((t, p) => t + p[1], 0) / ring.length, k = Math.cos(lat0 * Math.PI / 180);
+  const pts = ring.map((p) => [p[0] * k, p[1]]), n = pts.length;
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const size = Math.max(maxX - minX, maxY - minY);
+  if (!size) return ring[0];
+  const dist = (x, y) => {   // how far inside the piece (negative outside) from the nearest edge
+    let inside = false, near = Infinity;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+      let dx = a[0], dy = a[1];
+      const ex = b[0] - dx, ey = b[1] - dy;
+      if (ex || ey) { const t = Math.max(0, Math.min(1, ((x - dx) * ex + (y - dy) * ey) / (ex * ex + ey * ey))); dx += ex * t; dy += ey * t; }
+      near = Math.min(near, (x - dx) ** 2 + (y - dy) ** 2);
+    }
+    return (inside ? 1 : -1) * Math.sqrt(near);
+  };
+  const cell = (x, y, h) => { const d = dist(x, y); return { x, y, h, d, max: d + h * Math.SQRT2 }; };
+  let h = Math.min(maxX - minX, maxY - minY) / 2 || size / 2;
+  const queue = [];
+  for (let x = minX; x < maxX; x += h * 2) for (let y = minY; y < maxY; y += h * 2) queue.push(cell(x + h, y + h, h));
+  let best = cell((minX + maxX) / 2, (minY + maxY) / 2, 0);
+  queue.forEach((c) => { if (c.d > best.d) best = c; });
+  const precision = size / 300;
+  for (let guard = 0; queue.length && guard < 4000; guard++) {
+    let top = 0;
+    queue.forEach((c, i) => { if (c.max > queue[top].max) top = i; });
+    const c = queue.splice(top, 1)[0];
+    if (c.d > best.d) best = c;
+    if (c.max - best.d <= precision) continue;
+    h = c.h / 2;
+    [[-h, -h], [h, -h], [-h, h], [h, h]].forEach(([dx, dy]) => queue.push(cell(c.x + dx, c.y + dy, h)));
+  }
+  return [best.x / k, best.y];
+}
+function ringArea(ring) {
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+  return Math.abs(a / 2);
+}
+function pointIn(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+// One per map. set([{ ring: [[lon, lat]...], variants: [fullHtml, shorterHtml...], className }]) draws them (replacing
+// the last set) and returns the markers in the same order.
+export function pieceLabels(L, map) {
+  const group = L.layerGroup().addTo(map);
+  let entries = [];
+  function place() {
+    if (!map._loaded || !map.getSize().x) return;
+    const placed = [];
+    entries.slice().sort((a, b) => b.area - a.area).forEach((en) => {
+      const holder = en.marker.getElement(), span = holder && holder.firstChild;
+      if (!span) return;
+      const poly = en.ring.map((p) => map.latLngToContainerPoint([p[1], p[0]]));
+      const c = map.latLngToContainerPoint([en.centre[1], en.centre[0]]);
+      let done = false;
+      for (const html of en.variants) {
+        span.style.display = ""; span.style.transform = ""; span.innerHTML = html;
+        const w = span.offsetWidth, h = span.offsetHeight;
+        const tries = [[0, 0]];
+        for (let step = 1; step <= 3; step++) {
+          tries.push([0, -step * h * 0.9], [0, step * h * 0.9], [-step * w * 0.35, 0], [step * w * 0.35, 0],
+            [-step * w * 0.3, -step * h * 0.7], [step * w * 0.3, -step * h * 0.7], [-step * w * 0.3, step * h * 0.7], [step * w * 0.3, step * h * 0.7]);
+        }
+        for (const [dx, dy] of tries) {
+          const at = { x: c.x + dx, y: c.y + dy };
+          if ((dx || dy) && !pointIn(at, poly)) continue;
+          const box = { l: at.x - w / 2 - 3, r: at.x + w / 2 + 3, t: at.y - h / 2 - 2, b: at.y + h / 2 + 2 };
+          if (placed.some((o) => box.r > o.l && box.l < o.r && box.b > o.t && box.t < o.b)) continue;
+          if (dx || dy) span.style.transform = `translate(calc(-50% + ${Math.round(dx)}px), calc(-50% + ${Math.round(dy)}px))`;
+          placed.push(box);
+          done = true;
+          break;
+        }
+        if (done) break;
+      }
+      if (!done) span.style.display = "none";
+    });
+  }
+  map.on("load moveend zoomend resize", place);
+  return {
+    set(specs) {
+      group.clearLayers();
+      entries = [];
+      const markers = specs.map((spec) => {
+        if (!spec.ring || spec.ring.length < 3) return null;
+        const centre = visualCentre(spec.ring);
+        const marker = L.marker([centre[1], centre[0]], { icon: L.divIcon({ className: spec.className || "", iconSize: [0, 0], html: "<span></span>" }), interactive: false, keyboard: false }).addTo(group);
+        entries.push({ marker, centre, ring: spec.ring, variants: spec.variants, area: ringArea(spec.ring) });
+        return marker;
+      });
+      place();
+      return markers.filter(Boolean);
+    },
+  };
+}
+
 // el: the box to fill. base: "aerial" (the default) or "streets".
 // city + at ({lat, lon}): when given, a line under the map says when its records and its photo were last updated.
 // Returns { map, fit(bounds), release(), destroy(), base(), onBase(fn), note(html) }.
@@ -113,13 +223,20 @@ export function createMap(el, { base = "aerial", city = null, at = null } = {}) 
     line.textContent = "Checking when this map was last updated…";
     const frame = el.parentElement && el.parentElement.classList.contains("map-frame") ? el.parentElement : null;
     if (frame) frame.appendChild(line); else el.insertAdjacentElement("afterend", line);
+    // the strip's height, for a page that lays the map's corner controls above it (the presentation does)
+    const lift = () => { if (!gone && line.isConnected && line.offsetHeight) line.parentElement.style.setProperty("--updated-h", line.offsetHeight + "px"); };
+    lift();
+    map.on("resize", lift);
     api.updated(city, at.lat, at.lon)
       .then((d) => { if (!gone && line.isConnected) line.innerHTML = updatedWords(d); })
-      .catch(() => { if (!gone && line.isConnected) line.textContent = "When this map was last updated could not be read just now."; });
+      .catch(() => { if (!gone && line.isConnected) line.textContent = "When this map was last updated could not be read just now."; })
+      .then(lift);
   }
 
+  let labels = null;
   return {
     map, fit, note,
+    pieceLabels() { return labels || (labels = pieceLabels(L, map)); },
     base: () => current,
     onBase(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     release() { wanted = null; },   // stop re-fitting (after the person has moved the map themselves)

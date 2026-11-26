@@ -636,13 +636,15 @@ export async function render(main, route, alive) {
         const L = window.L, view = newMap(rec, el.querySelector("[data-map]")), m = view.map, items = [];
         drawStreetLines(L, m);
         drawParcels(L, m, { fill: 0, weight: 3 });
+        const labelSpecs = [];
         pieces.forEach((p) => {
           const u = useById[p.use] || { label: p.use, short: p.use, colour: "#9aa0a6" };
           const poly = L.polygon(ll([p.ring]), { color: "#ffffff", weight: 2.5, opacity: 1, fillColor: colourOf(u.colour), fillOpacity: 0.78 })
             .bindTooltip(`${esc(u.label)}: ${num(p.acres, 1)} ${plural(p.acres, "acre", "acres", 1)}`, { sticky: true }).addTo(m);
           items.push({ layer: poly, style: { opacity: 1, fillOpacity: 0.78 } });
-          if (p.label_at) { const lab = label(L, [p.label_at[1], p.label_at[0]], `<b>${esc(u.short)}</b> ${num(p.acres, 1)} ac`, "use").addTo(m); items.push({ marker: lab }); }
+          labelSpecs.push({ ring: p.ring, className: "pr-lab use", variants: [`<b>${esc(u.short)}</b> ${num(p.acres, 1)} ac`, `<b>${esc(u.short)}</b>`] });
         });
+        view.pieceLabels().set(labelSpecs).forEach((lab) => items.push({ marker: lab }));
         drawings.forEach((d) => (d.streets || []).forEach((s) => {
           const line = s.line.map((q) => [q[1], q[0]]);
           L.polyline(line, { color: "#1d2a24", weight: 11, opacity: 0.45, interactive: false }).addTo(m);

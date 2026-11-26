@@ -340,17 +340,14 @@ export function plan(box, ctx) {
     const site = L.polygon(outline, { color: "#f2b632", weight: 3, fill: false, interactive: false }).addTo(layers);
     const d = data.drawing;
     if (d) {
+      const labelSpecs = [];
       d.pieces.forEach((p) => {
         const u = names[p.use] || { label: p.use, short: p.use };
         L.polygon(ll([p.ring]), { color: "#fff", weight: 2, opacity: 0.95, fillColor: colours[p.use], fillOpacity: 0.5 })
           .bindTooltip(`${esc(u.label)}: ${ac(p.acres)} ${plural(p.acres, "acre", "acres", 1)}`, { sticky: true }).addTo(layers);
-        if (p.label_at) {
-          L.marker([p.label_at[1], p.label_at[0]], {
-            icon: L.divIcon({ className: "plan-label", iconSize: [0, 0], html: `<span><b>${esc(u.short)}</b> ${ac(p.acres)} ac</span>` }),
-            interactive: false, keyboard: false,
-          }).addTo(layers);
-        }
+        labelSpecs.push({ ring: p.ring, className: "plan-label", variants: [`<b>${esc(u.short)}</b> ${ac(p.acres)} ac`, `<b>${esc(u.short)}</b>`] });
       });
+      mapView.pieceLabels().set(labelSpecs);
       d.streets.forEach((s) => {
         const line = s.line.map((p) => [p[1], p[0]]);
         L.polyline(line, { color: "#1d2a24", weight: 9, opacity: 0.5, interactive: false }).addTo(layers);

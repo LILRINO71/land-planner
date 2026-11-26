@@ -96,10 +96,11 @@ body.presenting .app{display:block}
 .pr-mapframe{position:relative;background:#d9d4c6;min-height:0;overflow:hidden}
 .pr-map{position:absolute;inset:0;z-index:0;background:#d9d4c6}
 .pr-maplegend{position:absolute;left:20px;bottom:48px;right:20px;margin:0;z-index:500;display:flex;flex-wrap:wrap;gap:8px 24px;background:#f5f2eaf0;border-radius:10px;padding:12px 18px;font-size:16px;pointer-events:none;width:fit-content}
-.pr-mapframe .map-updated{position:absolute;left:0;right:0;bottom:0;z-index:500;font-size:15px;background:#f5f2eaf0;border:0;padding:10px 20px}
+.pr-mapframe .map-updated{position:absolute;left:0;right:0;bottom:0;z-index:500;font-size:15px;color:#4a5750;background:#f5f2eaf5;border:0;padding:10px 20px}
+/* the map is its own layer under that strip, so its corner controls (the photo credit, the scale) are lifted to stand above it */
+.pr-mapframe .leaflet-bottom{bottom:var(--updated-h,0px)}
 .pr-root .leaflet-control-scale-line{font-size:14px}
-.pr-root .leaflet-control-attribution{font-size:13px;line-height:1.4}
-.pr-root .leaflet-bottom.leaflet-left{bottom:0}
+.pr-root .leaflet-control-attribution{font-size:15px;line-height:1.4;color:#1d2a24;background:#f5f2ea;padding:3px 10px}
 
 .pr-mapleft{position:absolute;inset:0;display:grid;grid-template-columns:1100px minmax(0,1fr)}
 .pr-mapright{position:absolute;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 900px}

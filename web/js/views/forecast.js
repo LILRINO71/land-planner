@@ -317,6 +317,7 @@ export async function render(main, route, alive) {
         <section class="two fc-last" id="fcSources"></section>
       </div>`;
     el.querySelector(".fc-head").insertAdjacentHTML("afterend", jumpNav());
+    spySoon();
     drawAll(false);
     drawMap();
     loadOutlook(false);
@@ -910,8 +911,30 @@ export async function render(main, route, alive) {
 
   function jumpNav() {
     return `<nav class="fc-jump" aria-label="Parts of this page">${JUMPS.map(([id, words]) =>
-      `<button type="button" data-goto="${id}"${id === "fcTodo" ? ' class="key"' : ""}>${esc(words)}</button>`).join("")}</nav>`;
+      `<button type="button" data-goto="${id}">${esc(words)}</button>`).join("")}</nav>`;
   }
+  // the highlighted jump link follows the part of the page in view: the Summary at the top of the page, the last part at its end
+  let spying = 0;
+  function spyJumps() {
+    spying = 0;
+    const nav = el.querySelector(".fc-jump");
+    if (!nav || !alive()) return;
+    // a part counts as in view once its top has passed just under the links (where a jump link lands it)
+    const first = el.querySelector("#" + JUMPS[0][0]);
+    const line = Math.max(nav.getBoundingClientRect().bottom + 24, (first ? parseFloat(getComputedStyle(first).scrollMarginTop) || 0 : 0) + 60);
+    let current = JUMPS[0][0];
+    JUMPS.forEach(([id]) => { const s = el.querySelector("#" + id); if (s && s.getBoundingClientRect().top <= line) current = id; });
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) current = JUMPS[JUMPS.length - 1][0];
+    nav.querySelectorAll("button").forEach((b) => {
+      const on = b.dataset.goto === current;
+      b.classList.toggle("key", on);
+      if (on) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+    });
+  }
+  const spySoon = () => { if (!spying) spying = requestAnimationFrame(spyJumps); };
+  window.addEventListener("scroll", spySoon, true);
+  window.addEventListener("resize", spySoon);
+  alive.onLeave(() => { window.removeEventListener("scroll", spySoon, true); window.removeEventListener("resize", spySoon); });
   // redraw something without moving what the person is reading: the first section at the top of the screen stays put
   function keepScreen(fn) {
     const top = [...el.querySelectorAll(".fc > section, .fc > .fc-top")].find((s) => s.getBoundingClientRect().bottom > 60);
@@ -921,6 +944,7 @@ export async function render(main, route, alive) {
       const shift = top.getBoundingClientRect().top - before;
       if (Math.abs(shift) > 1) window.scrollBy(0, shift);
     }
+    spySoon();
   }
 
   // ---------------------------------------------------------------- site plan (from the forecast: where each use sits)
@@ -962,7 +986,7 @@ export async function render(main, route, alive) {
       L.polyline(line, { color: "#1d2a24", weight: weight + 3, opacity: 0.55, interactive: false }).addTo(planLayers);
       L.polyline(line, { color: "#8fc3ff", weight, opacity: 0.95 }).bindTooltip(`${esc(s.name)}: ${esc(s.class)} (the city's planned street network)`, { sticky: true }).addTo(planLayers);
     }));
-    const shades = new Map();
+    const shades = new Map(), labelSpecs = [];
     pieces.forEach((p) => {
       if (!p.ring || p.ring.length < 3) return;
       const info = useInfo(p.use), phase = phaseOf(p.use);
@@ -970,13 +994,12 @@ export async function render(main, route, alive) {
       if (planView === "when") shades.set(phase.key, phase);
       L.polygon(ll([p.ring]), { color: "#fff", weight: 2, opacity: 0.95, fillColor: fill, fillOpacity: planView === "when" ? 0.78 : 0.55 })
         .bindTooltip(`${esc(info.label)}: ${num(p.acres, 1)} ${plural(p.acres, "acre", "acres", 1)}${planView === "when" ? " · " + esc(phase.words.toLowerCase()) : ""}`, { sticky: true }).addTo(planLayers);
-      if (p.label_at) {
-        L.marker([p.label_at[1], p.label_at[0]], {
-          icon: L.divIcon({ className: "plan-label", iconSize: [0, 0], html: `<span><b>${esc(info.short)}</b> ${planView === "when" ? esc(phase.year ? "from " + phase.year : phase.key === "never" ? "after ten years" : phase.key === "with" ? "with the rest" : "not forecast") : num(p.acres, 1) + " ac"}</span>` }),
-          interactive: false, keyboard: false,
-        }).addTo(planLayers);
-      }
+      labelSpecs.push({
+        ring: p.ring, className: "plan-label",
+        variants: [`<b>${esc(info.short)}</b> ${planView === "when" ? esc(phase.year ? "from " + phase.year : phase.key === "never" ? "after ten years" : phase.key === "with" ? "with the rest" : "not forecast") : num(p.acres, 1) + " ac"}`, `<b>${esc(info.short)}</b>`],
+      });
     });
+    planMap.pieceLabels().set(labelSpecs);
     drawings.forEach((d) => (d.streets || []).forEach((s) => {
       const line = (s.line || []).map((p) => [p[1], p[0]]);
       if (line.length < 2) return;
