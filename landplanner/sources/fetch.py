@@ -39,6 +39,11 @@ def get_bytes(url, params=None, timeout=30, tries=2, limit=6_000_000, first_byte
             if len(body) > limit:
                 raise SourceError(f"{url}: the file is larger than {limit // 1_000_000} MB, so it is not read")
             return body
+        except urllib.error.HTTPError as e:
+            if 400 <= e.code < 500:
+                raise SourceError(f"{url}: the service answered {e.code} (not there, or not allowed)") from None
+            last = f"{url}: HTTPError: {e}"
+            time.sleep(0.6 * (attempt + 1))
         # a reply cut short (IncompleteRead) or a broken one (BadStatusLine, RemoteDisconnected...) is an
         # http.client.HTTPException, which is not an OSError: it is a network failure like the rest
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException) as e:

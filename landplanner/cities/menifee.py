@@ -167,7 +167,10 @@ class Menifee(CityAdapter):
         if part == "nearby":
             return S.nearby(lon, lat)
         if part == "residents":
-            return S.residents(tracts or []) if tracts else None
+            if not tracts:
+                # the census tracts did not answer: that is a source not answering, not an empty answer to keep
+                raise SourceError("the census tracts did not answer, so the residents nearby cannot be described")
+            return S.residents(tracts)
         return None
 
     @staticmethod

@@ -757,10 +757,14 @@ class TheMenifeeAdapter(unittest.TestCase):
         tracts = [{"id": "06065042739", "households": 2356, "share": 1.0}]
         self.assertEqual(self.city.outlook_part("residents", self.PARCEL, tracts), {"read": "residents"})
         self.assertEqual(self.asked(), [("residents", (tracts,), {})])
+        # without tracts the census did not answer: that is a silent source (retried next time), not an empty
+        # answer to keep for a week
         for none in (None, []):
             with self.subTest(tracts=none):
-                self.assertIsNone(self.city.outlook_part("residents", self.PARCEL, none))
-        self.assertIsNone(self.city.outlook_part("residents", self.PARCEL))
+                with self.assertRaises(SourceError):
+                    self.city.outlook_part("residents", self.PARCEL, none)
+        with self.assertRaises(SourceError):
+            self.city.outlook_part("residents", self.PARCEL)
         self.assertEqual(self.asked(), [])
 
     def test_an_unknown_place_part_is_none_and_asks_nothing(self):

@@ -421,9 +421,9 @@ class LandPlanner:
         """Several parcels as one site: what the page shows about it, and a stand-in parcel at its middle that
         the facts around it are read (and saved) under."""
         rows = [self._decorate(city, p, names) for p in parcels]
-        total = sum(p.get("acres") or 0 for p in parcels) or float(len(parcels))
-        lat = sum((p.get("acres") or 1) * p["centre"]["lat"] for p in parcels) / total
-        lon = sum((p.get("acres") or 1) * p["centre"]["lon"] for p in parcels) / total
+        weights = [p.get("acres") or 1 for p in parcels]      # a parcel with no recorded size still counts
+        lat = sum(w * p["centre"]["lat"] for w, p in zip(weights, parcels)) / sum(weights)
+        lon = sum(w * p["centre"]["lon"] for w, p in zip(weights, parcels)) / sum(weights)
         k = 69.17 * math.cos(math.radians(lat))
         spread = max(math.hypot((p["centre"]["lon"] - lon) * k, (p["centre"]["lat"] - lat) * 69.17) for p in parcels)
         site = {"apns": [p["apn"] for p in parcels], "acres": round(sum(p.get("acres") or 0 for p in parcels), 2),
