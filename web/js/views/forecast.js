@@ -6,6 +6,7 @@ import { createMap, ll } from "../maps.js";
 import { api } from "../api.js";
 import { PAGES, FORECAST_ICON } from "./land.js";
 import { money as readNumber } from "../planmath.js";
+import { mountTerrain } from "../terrain3d.js";
 import { NONE, esc, has, num, cap, icon, loading, problem, missing, debounce, dateOnly, when } from "../util.js";
 
 // ---------------------------------------------------------------- words and numbers
@@ -51,13 +52,6 @@ const JUMPS = [["fcTop", "Summary"], ["fcPeople", "People and homes"], ["fcIncom
   ["fcTraffic", "Traffic"], ["fcLand", "The land by year"], ["fcPlan", "Site plan"], ["fcEconomy", "Economy"], ["fcWeather", "Weather"],
   ["fcHazards", "Hazards"], ["fcNearby", "Close by"], ["fcResident", "Who lives nearby"], ["fcTodo", "What needs to be done"],
   ["fcFigures", "Figures"], ["fcSources", "Sources"]];
-// names and colours of the plan's uses (as plan.py names them), for drawing pieces whose use the forecast does not
-// take up on its own (parks); a use the forecast does take up brings its own name and colour
-const USE_NAMES = {
-  retail: { label: "Shops and restaurants", short: "Shops", colour: "#d9455f" }, office: { label: "Offices and medical", short: "Offices", colour: "#8a6bbd" },
-  apartments: { label: "Apartments and townhomes", short: "Apartments", colour: "#e08a2e" }, homes: { label: "Houses", short: "Houses", colour: "#f4d35e" },
-  business: { label: "Business park and light industry", short: "Business park", colour: "#5b8fb9" }, park: { label: "Parks, open space and drainage", short: "Parks", colour: "#3f9d68" },
-};
 // the outlook's sources: [name on screen, what it gives]
 const OUTLOOK_WORDS = {
   population: ["State population estimates", "People and homes in the city, by year"], permits: ["Building permits (Census Bureau)", "Homes permitted, by year"],
@@ -66,6 +60,10 @@ const OUTLOOK_WORDS = {
   climate: ["NASA weather grids", "Weather since 1985"], hazards: ["Hazard maps (FEMA, state, city)", "Flood, fire, faults, ground, water, habitat"],
   nearby: ["City and federal place lists", "Parks, stops, stations, schools, hospitals"], residents: ["Census survey", "Who lives nearby"],
 };
+// an entrance by the signal it would use: a letter on the marker as well as a colour (as on the Plan page)
+const SIGNAL_MARK = { existing: "S", study: "N", none: "E", unknown: "?" };
+const SIGNAL_WORDS = { existing: "Uses a signal that is already there", study: "A new signal is worth studying", none: "No signal likely needed",
+  unknown: "Not known whether a signal already stands there" };
 // hazard levels: words and a mark, never colour alone
 const LEVELS = { clear: { words: "Clear", mark: "✓" }, note: { words: "Know about it", mark: "!" }, work: { words: "Adds work", mark: "+" } };
 // kinds of nearby places: a letter and a shape each, so the map does not rely on colour
@@ -179,10 +177,17 @@ export async function render(main, route, alive) {
   // the wider picture (outlook) arrives after the forecast; its own maps are made once and redrawn in place
   let outlook = null, outlookProblem = "", outlookSeq = 0, planView = "uses";
   let planMap = null, planLayers = null, planFitted = false, nearMap = null, nearLayers = null, nearFitted = false;
+  let roadMap = null, roadLayers = null, roadFitted = false;
+  // the site plan in 3D: asked for only when chosen (the ground heights can be slow the first time)
+  let ground = null, groundProblem = "", groundAsking = false, unmount3d = null;
   const charts = {};
   function dropMaps() {
     [mapView, planMap, nearMap].forEach((m) => { if (m) m.destroy(); });
     mapView = planMap = nearMap = null; planLayers = nearLayers = null; planFitted = nearFitted = false;
+    if (roadMap) roadMap.destroy();
+    roadMap = roadLayers = null; roadFitted = false;
+    if (unmount3d) unmount3d();
+    unmount3d = null;
   }
   alive.onLeave(() => {
     dropMaps();
@@ -195,7 +200,7 @@ export async function render(main, route, alive) {
 
   function first() {
     dropMaps();
-    mapDrawn = false; outlook = null; outlookProblem = ""; outlookSeq++;
+    mapDrawn = false; outlook = null; outlookProblem = ""; outlookSeq++; ground = null; groundProblem = "";
     el.innerHTML = `<header class="page-head"><p class="kicker">Forecast</p><h1>Working out the forecast…</h1></header>` +
       loading("Reading the Census, the regional plan, the census survey, the city's project lists and the highway counts around this site. The first time takes several seconds.");
     if (!apns.length) {
@@ -279,14 +284,20 @@ export async function render(main, route, alive) {
           </div>
         </section>
         <section id="fcNeeds" aria-labelledby="fcNeedsTitle"></section>
-        <section id="fcTraffic" aria-labelledby="fcTrafficTitle"></section>
+        <section id="fcTraffic" aria-labelledby="fcTrafficTitle">
+          <div id="fcTrafficBody"></div>
+          <div class="fc-entr">
+            <div class="fc-entr-map"><div class="map-frame"><div class="map fc-map" id="fcRoadMap"></div></div><div class="legend" id="fcRoadLegend"></div></div>
+            <div id="fcEntrText"></div>
+          </div>
+        </section>
         <section id="fcLand" aria-labelledby="fcLandTitle"></section>
         <section id="fcPlan" aria-labelledby="fcPlanTitle">
           <div class="fc-sec-head"><h2 id="fcPlanTitle">Site plan</h2>
             <div class="plan-switch small" role="group" aria-label="What the site plan shows">
-              <button type="button" data-planview="uses">The uses</button><button type="button" data-planview="when">When each part is offered</button></div></div>
+              <button type="button" data-planview="uses">The uses</button><button type="button" data-planview="when">When each part is offered</button><button type="button" data-planview="3d">In 3D on the real ground</button></div></div>
           <div class="fc-plan">
-            <div class="fc-plan-map"><div class="map-frame"><div class="map fc-map" id="fcPlanMap"></div></div><div class="legend" id="fcPlanLegend"></div></div>
+            <div class="fc-plan-map"><div class="map-frame" id="fcPlanFrame"><div class="map fc-map" id="fcPlanMap"></div></div><div id="fcPlan3d" hidden></div><div class="legend" id="fcPlanLegend"></div></div>
             <div id="fcPlanText"></div>
           </div>
         </section>
@@ -749,8 +760,9 @@ export async function render(main, route, alive) {
   // ---------------------------------------------------------------- traffic
 
   function drawTraffic() {
-    const box = el.querySelector("#fcTraffic"), T = data.traffic || {};
+    const box = el.querySelector("#fcTrafficBody"), T = data.traffic || {};
     const head = `<h2 id="fcTrafficTitle">Traffic</h2>`;
+    drawRoads();
     if (!T.available) { box.innerHTML = head + notCovered("Highway traffic by year", "traffic"); return; }
     const rows = T.rows || [], xs = rows.map((r) => r.year), hw = T.highway || {};
     const where = `Route ${hw.route || ""} at ${hw.where || ""}`;
@@ -786,6 +798,58 @@ export async function render(main, route, alive) {
           <p class="fine">Today's count is Caltrans' latest (${isNum(hw.today) ? num(hw.today) + " vehicles a day" : NONE}), both directions together. It grows with the homes around it; trips from the site follow its own take-up below.</p>
           ${restsOn("traffic")}</div>
       </div>`;
+  }
+
+  // the site's entrances (marked by what kind of signal they would use) and the signals standing nearby today
+  function drawRoads() {
+    const L = window.L, T = data.traffic || {}, entrances = (T.entrances || []).filter((e) => isNum(e.lat) && isNum(e.lon));
+    const signals = (T.existing_signals || []).filter((s) => isNum(s.lat) && isNum(s.lon));
+    if (!roadMap) {
+      roadMap = createMap(el.querySelector("#fcRoadMap"), { base: "aerial" });
+      roadLayers = L.layerGroup().addTo(roadMap.map);
+    }
+    roadLayers.clearLayers();
+    let bounds = null;
+    const grow = (ll2) => { bounds = bounds ? bounds.extend(ll2) : L.latLngBounds([ll2, ll2]); };
+    ((data.site || {}).parcels || []).forEach((p) => {
+      if (!p.outline || !p.outline.coordinates) return;
+      const shape = ll(p.outline.type === "MultiPolygon" ? p.outline.coordinates.flat() : p.outline.coordinates);
+      L.polygon(shape, { color: "#1d2a24", weight: 6, fill: false, interactive: false }).addTo(roadLayers);
+      const g = L.polygon(shape, { color: "#f2b632", weight: 3, fillColor: "#f2b632", fillOpacity: 0.2 }).bindTooltip("The site", { sticky: true }).addTo(roadLayers);
+      grow(g.getBounds().getSouthWest()); grow(g.getBounds().getNorthEast());
+    });
+    signals.forEach((s) => {
+      L.circleMarker([Number(s.lat), Number(s.lon)], { radius: 6, color: "#fff", weight: 2, fillColor: "#1d2a24", fillOpacity: 1 })
+        .bindTooltip(`Traffic signal today at ${esc(s.street)} and ${esc(s.cross_street)}, ${num(s.miles_away, 2)} miles away`).addTo(roadLayers);
+      grow([Number(s.lat), Number(s.lon)]);
+    });
+    entrances.forEach((e) => {
+      const kind = SIGNAL_MARK[e.signal] ? e.signal : "unknown";
+      L.marker([Number(e.lat), Number(e.lon)], {
+        icon: L.divIcon({ className: "plan-pin", iconSize: [26, 26], iconAnchor: [13, 13], html: `<span class="plan-ent plan-ent-${kind}">${SIGNAL_MARK[kind]}</span>` }),
+        title: `Entrance onto ${e.street}: ${SIGNAL_WORDS[kind]}`, alt: `Entrance onto ${e.street}`,
+      }).bindTooltip(`<b>Entrance onto ${esc(e.street)}</b> (${esc(e.class || "")}): about ${num(e.trips)} trips a day. ${esc(e.text || "")}`).addTo(roadLayers);
+      grow([Number(e.lat), Number(e.lon)]);
+    });
+    if (bounds && !roadFitted) { roadMap.fit(bounds.pad(0.12)); roadFitted = true; }
+    const kinds = [...new Set(entrances.map((e) => (SIGNAL_MARK[e.signal] ? e.signal : "unknown")))];
+    el.querySelector("#fcRoadLegend").innerHTML = '<span><i class="fc-key site"></i>The site</span>' +
+      kinds.map((k) => `<span><b class="plan-ent plan-ent-${k} small">${SIGNAL_MARK[k]}</b>Entrance: ${esc(SIGNAL_WORDS[k].toLowerCase())}</span>`).join("") +
+      (signals.length ? '<span><i class="fc-key signal"></i>Traffic signal today</span>' : "");
+    const box = el.querySelector("#fcEntrText");
+    if (!entrances.length && !signals.length) {
+      box.innerHTML = `<h3>Entrances and signals</h3>` + missing("Where the site's entrances go, and the traffic signals nearby: not covered yet.");
+      return;
+    }
+    box.innerHTML = `<div class="card"><h3>The site's entrances</h3>
+        ${entrances.length ? `<ul class="plan-ents fc-ents">${entrances.map((e) => {
+          const kind = SIGNAL_MARK[e.signal] ? e.signal : "unknown";
+          return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b>${e.class ? ` (${esc(e.class)})` : ""}, about ${num(e.trips)} trips a day. <b>${esc(SIGNAL_WORDS[kind])}.</b> ${esc(e.text || "")}</span></li>`;
+        }).join("")}</ul>` : missing("Where the entrances go: not covered yet.")}
+        ${isNum(T.signals_to_study) ? `<p>${Number(T.signals_to_study) ? `<b>${num(T.signals_to_study)}</b> new ${Number(T.signals_to_study) === 1 ? "signal is" : "signals are"} worth studying at the entrances.` : "No new signal is likely to be needed at the entrances."}</p>` : ""}
+        <h3 class="fc-gap">Traffic signals today, nearest first</h3>
+        ${signals.length ? plainTable(["Where", "Miles away"], signals.slice().sort((a, b) => a.miles_away - b.miles_away).map((s) => [`${esc(s.street)} and ${esc(s.cross_street)}`, num(s.miles_away, 2)]), [1]) : missing("Traffic signals nearby: not covered yet.")}
+        <p class="fine">The entrances come from the site plan and the trip rates under each parcel's Plan page, which are starting figures. This is not a traffic study.</p></div>`;
   }
 
   // ---------------------------------------------------------------- the site's own land
@@ -860,9 +924,11 @@ export async function render(main, route, alive) {
 
   // ---------------------------------------------------------------- site plan (from the forecast: where each use sits)
 
+  // a use's name and colour: each drawn piece carries its own; the forecast's uses carry them too
   function useInfo(id) {
-    const u = ((data.programme || {}).uses || []).find((x) => x.id === id), f = USE_NAMES[id] || {};
-    return { label: (u && u.label) || f.label || cap(String(id)), short: (u && u.short) || f.short || cap(String(id)), colour: colourOf((u && u.colour) || f.colour), taken: u || null };
+    const G = data.programme || {}, u = (G.uses || []).find((x) => x.id === id);
+    const p = (G.drawings || []).flatMap((d) => d.pieces || []).find((x) => x.use === id) || {};
+    return { label: p.label || (u && u.label) || cap(String(id)), short: p.short || (u && u.short) || cap(String(id)), colour: colourOf(p.colour || (u && u.colour)), taken: u || null };
   }
   const firstYear = (u) => { const r = (u.by_year || []).find((x) => Number(x.taken) > 0); return r ? r.year : null; };
   // the shade of a piece in "When each part is offered": its use's first year, or why it has none
@@ -930,7 +996,12 @@ export async function render(main, route, alive) {
     const legend = planView === "when"
       ? [...shades.values()].sort((a, b) => (a.year || 9999) - (b.year || 9999)).map((p) => `<span><i style="background:${p.colour}"></i>${esc(p.words)}</span>`).join("")
       : ids.map((id) => `<span><i style="background:${useInfo(id).colour}"></i>${esc(useInfo(id).label)}</span>`).join("");
-    el.querySelector("#fcPlanLegend").innerHTML = pieces.length ? legend + '<span><i class="fc-key street"></i>New streets inside the site</span><span><i class="fc-key city-street"></i>The city\'s planned streets</span><span><i class="fc-key site"></i>Parcel outlines</span>' : "";
+    el.querySelector("#fcPlanLegend").innerHTML = !pieces.length ? "" : planView === "3d"
+      ? legend + '<span><i class="fc-key street"></i>New streets inside the site</span><span><i class="fc-key site"></i>Site outline</span>'
+      : legend + '<span><i class="fc-key street"></i>New streets inside the site</span><span><i class="fc-key city-street"></i>The city\'s planned streets</span><span><i class="fc-key site"></i>Parcel outlines</span>';
+    el.querySelector("#fcPlanFrame").hidden = planView === "3d";
+    el.querySelector("#fcPlan3d").hidden = planView !== "3d";
+    if (planView === "3d") draw3d();
 
     const box = el.querySelector("#fcPlanText");
     if (!pieces.length) {
@@ -953,6 +1024,57 @@ export async function render(main, route, alive) {
         ${plainTable(["Use", "Acres", "First offered", "All taken up"], rows, [1])}
         <p class="fine">“First offered” is the first year the forecast takes up any of that use (expected line, your figures if you changed them). The pieces are a first sketch cut from the assessor's outlines: not lot lines and not a site plan the city has seen.</p>
       </div>`;
+  }
+
+  function askGround(fresh) {
+    groundAsking = true;
+    api.ground(cityId, data.apns, fresh).then((g) => {
+      groundAsking = false;
+      if (!alive()) return;
+      ground = g;
+      if (planView === "3d") draw3d();
+    }, (e) => {
+      groundAsking = false;
+      if (!alive()) return;
+      groundProblem = e.message;
+      if (planView === "3d") draw3d();
+    });
+  }
+  // the site plan on the real ground: asked for the first time "In 3D" is chosen, then kept
+  function draw3d() {
+    const box = el.querySelector("#fcPlan3d");
+    if (!ground && !groundProblem) {
+      if (!box.querySelector(".plan-wait")) {
+        box.innerHTML = '<p class="plan-wait fc-3d-wait"><span class="spinner" aria-hidden="true"></span> Reading the ground heights under the site. The first time can take up to a minute; after that it is quick.</p>';
+      }
+      if (!groundAsking) askGround(false);
+      return;
+    }
+    if (groundProblem) {
+      box.innerHTML = `<div class="state problem">${icon("alert")}<p>The ground heights could not be read just now: ${esc(groundProblem)}</p><button type="button" class="btn" data-ground-again>Try again</button></div>`;
+      return;
+    }
+    const H = ground.surface, plan = ground.plan, P = ground.parcel;
+    if (!H || !plan || !P || !P.outline || !(H.feet || []).some((v) => v !== null)) {
+      const why = !H ? `the ground heights ${ground.answered && ground.answered !== "ok" ? "did not answer just now" : "are not covered for this site"}`
+        : !plan || !P ? "no plan could be drawn on this land" : "the ground heights came back empty";
+      box.innerHTML = missing(`The 3D view is not available for this site: ${why}.`) +
+        (!H ? '<p><button type="button" class="btn small" data-ground-again>Ask again</button></p>' : "");
+      return;
+    }
+    if (unmount3d && box.querySelector("canvas")) return;   // already on screen; it does not change with the figures
+    const d = plan.drawing || {};
+    if (!(d.pieces || []).length) {
+      box.innerHTML = missing("The 3D view is not available for this site: the plan could not be drawn on the outline.");
+      return;
+    }
+    const colours = Object.fromEntries((plan.uses || []).map((u) => [u.id, colourOf(u.colour)]));
+    const amounts = Object.fromEntries((plan.uses || []).map((u) => [u.id, { homes: u.homes, sq_ft: u.sq_ft }]));
+    box.innerHTML = `<div class="view3d fc-3d" id="fcPlan3dView"></div>
+      <p class="fine">The ground in the plan's colours, the new streets as light lines, and simple boxes for buildings: about as many and as large as the plan's figures make, standing on the ground. The boxes are <b>a picture of scale, not a site plan</b>; trees mark the parks. Only the ground's height is stretched by the slider. ${ground.one_plan === false ? "These parcels are not planned as one block, so the 3D view shows the plan worked out for the site as a whole." : ""}${H.source ? ` Ground heights: ${esc(H.source)}.` : ""}</p>`;
+    unmount3d = mountTerrain(box.querySelector("#fcPlan3dView"), P, H, {
+      pieces: d.pieces, streets: (d.streets || []).map((s) => s.line), colours, front: d.front, amounts, cap: 1500,
+    });
   }
 
   // ---------------------------------------------------------------- the wider picture (the outlook answer)
@@ -1005,6 +1127,7 @@ export async function render(main, route, alive) {
     const xs = rows.map((r) => r.year), xMin = Math.min(...xs), xMax = Math.max(...xs);
     const partialSales = (r) => isNum(r.sales_quarters) && Number(r.sales_quarters) < 4;
     const partialPermits = (r) => isNum(r.permit_months) && Number(r.permit_months) < 12;
+    const partialLoan = (r) => isNum(r.mortgage_weeks) && Number(r.mortgage_weeks) < 50;
     charts["eco-people"] = (w) => chart({
       width: w, height: 210, xMin, xMax, values: rows.flatMap((r) => [r.people, r.homes]), zero: true, unit: `People and homes in ${place}`,
       label: `Chart of people and homes in ${place} by year. The table gives the same figures.`,
@@ -1038,8 +1161,10 @@ export async function render(main, route, alive) {
       width: w, height: 210, xMin, xMax, values: rows.flatMap((r) => [r.unemployment_pct, r.mortgage_pct]), zero: true, unit: "Percent",
       label: `Chart of unemployment in ${place} and the 30-year home-loan rate, by year.`,
       draw: (s) => line(s, rows.map((r) => [r.year, r.unemployment_pct]), "fc-line jobless") + dots(s, rows.map((r) => [r.year, r.unemployment_pct]), "fc-dot jobless") +
-        line(s, rows.map((r) => [r.year, r.mortgage_pct]), "fc-line loan") + dots(s, rows.map((r) => [r.year, r.mortgage_pct]), "fc-dot loan"),
-      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: unemployment ${isNum(r.unemployment_pct) ? num(r.unemployment_pct, 1) + "%" : "not given"}, home loans ${isNum(r.mortgage_pct) ? num(r.mortgage_pct, 2) + "%" : "not given"}` })),
+        line(s, rows.map((r) => [r.year, r.mortgage_pct]), "fc-line loan") + dots(s, rows.filter((r) => !partialLoan(r)).map((r) => [r.year, r.mortgage_pct]), "fc-dot loan") +
+        dots(s, rows.filter((r) => partialLoan(r)).map((r) => [r.year, r.mortgage_pct]), "fc-dot loan partial", 4) +
+        rows.filter((r) => partialLoan(r) && isNum(r.mortgage_pct)).map((r) => `<text class="fc-pt-lab small" x="${s.x(r.year).toFixed(1)}" y="${(s.y(r.mortgage_pct) - 8).toFixed(1)}" text-anchor="middle">${esc(r.mortgage_weeks)} wk</text>`).join(""),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: unemployment ${isNum(r.unemployment_pct) ? num(r.unemployment_pct, 1) + "%" : "not given"}, home loans ${isNum(r.mortgage_pct) ? num(r.mortgage_pct, 2) + "%" : "not given"}${partialLoan(r) ? ` (${r.mortgage_weeks} weeks so far)` : ""}` })),
     });
     const tableRows = rows.map((r) => [
       `<b>${esc(r.year)}</b>${r.year === outlook.year ? "<small>this year, so far</small>" : ""}`,
@@ -1048,14 +1173,15 @@ export async function render(main, route, alive) {
       given(r.shop_sales_usd, millions(r.shop_sales_usd) + (partialSales(r) ? `<small>${esc(r.sales_quarters)} of 4 quarters</small>` : "")),
       given(r.sales_per_home_usd, "$" + num(r.sales_per_home_usd)),
       given(r.unemployment_pct, num(r.unemployment_pct, 1) + "%") + (isNum(r.labour_force) ? `<small>of ${num(r.labour_force)}</small>` : ""),
-      given(r.mortgage_pct, num(r.mortgage_pct, 2) + "%"), given(r.prices_change_pct, num(r.prices_change_pct, 1) + "%")]);
+      given(r.mortgage_pct, num(r.mortgage_pct, 2) + "%" + (partialLoan(r) ? `<small>${esc(r.mortgage_weeks)} of 52 weeks</small>` : "")), given(r.prices_change_pct, num(r.prices_change_pct, 1) + "%")]);
     box.innerHTML = `<h2 id="fcEconomyTitle">${title}</h2>
       <p class="fc-intro">${esc(place)} as a whole, as measured by the state and federal agencies below. A year not yet complete is marked.</p>
       <div class="fc-eco-charts">
         <div class="card"><h3>People and homes</h3><div class="fc-chart" data-chart="eco-people"></div><div class="legend fc-legend">${key("line", "People")}${key("line alt", "Homes")}</div></div>
         <div class="card"><h3>Homes permitted</h3><div class="fc-chart" data-chart="eco-permits"></div><div class="legend fc-legend">${key("bar", "Homes permitted")}${key("bar partial", "Year not complete (months marked)")}</div></div>
-        <div class="card"><h3>Shop and restaurant sales</h3><div class="fc-chart" data-chart="eco-sales"></div><div class="legend fc-legend">${key("bar", "Measured")}${key("bar partial", "Part of the year only")}${ahead.length ? key("band", "Ahead, low to high") + key("line", "Ahead, expected") : ""}</div></div>
-        <div class="card"><h3>Unemployment and home loans</h3><div class="fc-chart" data-chart="eco-rates"></div><div class="legend fc-legend">${key("line jobless", "Unemployment")}${key("line loan", "30-year home-loan rate")}</div></div>
+        <div class="card"><h3>Shop and restaurant sales</h3><div class="fc-chart" data-chart="eco-sales"></div><div class="legend fc-legend">${key("bar", "Measured")}${key("bar partial", "Part of the year only")}${ahead.length ? key("band", "Ahead, low to high") + key("line", "Ahead, expected") : ""}</div>
+          ${!ahead.length && E.sales_ahead_note ? `<p class="fine fc-ahead-note"><b>Years ahead:</b> ${esc(E.sales_ahead_note)}</p>` : ""}</div>
+        <div class="card"><h3>Unemployment and home loans</h3><div class="fc-chart" data-chart="eco-rates"></div><div class="legend fc-legend">${key("line jobless", "Unemployment")}${key("line loan", "30-year home-loan rate")}${rows.some(partialLoan) ? key("dot-partial", "Year not complete (weeks marked)") : ""}</div></div>
       </div>
       <div class="fc-eco-bottom">
         <div class="card"><h3>What it says</h3>${(E.facts || []).length ? `<ul class="plain">${E.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : missing("Nothing to say yet.")}
@@ -1383,6 +1509,14 @@ export async function render(main, route, alive) {
       return;
     }
     if (b.dataset.outlookAgain !== undefined) { loadOutlook(true); return; }
+    if (b.dataset.groundAgain !== undefined) {
+      groundProblem = ""; ground = null;
+      if (unmount3d) { unmount3d(); unmount3d = null; }
+      el.querySelector("#fcPlan3d").innerHTML = "";
+      askGround(true);
+      draw3d();
+      return;
+    }
     if (b.dataset.ring) {
       ringMiles = Number(b.dataset.ring);
       drawPeople();
