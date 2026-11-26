@@ -1,0 +1,44 @@
+{
+ "help": "https://publish.data.ca.gov/api/3/action/help_show?name=datastore_search",
+ "success": true,
+ "result": {
+  "filters": {
+   "Jurisdiction": [
+    "SAN FRANCISCO"
+   ]
+  },
+  "include_next_page": false,
+  "include_total": true,
+  "limit": 20,
+  "records_format": "objects",
+  "resource_id": "1e80a9cf-724c-432d-8374-e9708a6a92dc",
+  "filterops": {
+   "op": "in",
+   "field": "Jurisdiction",
+   "value": [
+    "SAN FRANCISCO"
+   ]
+  },
+  "records": [
+   {
+    "_id": 408,
+    "Jurisdiction": "SAN FRANCISCO",
+    "Planning Period": "01/31/2023 - 01/31/2031",
+    "unsafe_6th_cycle_started": "TRUE",
+    "VLI UNITS": 1685,
+    "RHNA VLI": 20867,
+    "vli__": 0.08,
+    "LI UNITS": 1215,
+    "RHNA LI": 12014,
+    "li__": 0.1,
+    "MOD UNITS": 971,
+    "RHNA MOD": 13717,
+    "mod__": 0.07,
+    "ABOVE MOD UNITS": 2215,
+    "RHNA ABOVE MOD": 35471,
+    "above_mod__": 0.06
+   }
+  ],
+  "total": 1
+ }
+}

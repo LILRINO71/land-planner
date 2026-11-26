@@ -121,7 +121,8 @@ class CityAdapter:
     place = {}                          # {"name", "planning", "water"}
 
     def economy_part(self, part, year):
-        """One of outlook.ECONOMY_PARTS for the whole city (population, permits, sales, work, borrowing, prices)."""
+        """One of outlook.CITY_PARTS for the whole city (population, permits, sales, work, borrowing, prices, and
+        housing: the state housing target and the permits counted toward it)."""
         return None
 
     def outlook_part(self, part, parcel, tracts=None):

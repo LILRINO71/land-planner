@@ -1,0 +1,10 @@
+{
+ "help": "https://publish.data.ca.gov/api/3/action/help_show?name=resource_show",
+ "success": true,
+ "result": {
+  "id": "1e80a9cf-724c-432d-8374-e9708a6a92dc",
+  "name": "6th Cycle RHNA Progress Report",
+  "last_modified": "2026-11-20T16:54:31.984633",
+  "total_record_count": 539
+ }
+}

@@ -32,8 +32,8 @@ import test_forecast_routes as forecast_routes
 NOW = calendar.timegm((2026, 11, 25, 12, 0, 0))
 DAY = 86400
 PATH = "/api/cities/tinytown/outlook"
-BLOCKS = ("economy", "climate", "hazards", "nearby", "resident", "todo")
-ALL_PARTS = O.ECONOMY_PARTS + O.PLACE_PARTS
+BLOCKS = ("economy", "housing", "climate", "hazards", "nearby", "resident", "todo")
+ALL_PARTS = O.CITY_PARTS + O.PLACE_PARTS
 
 
 def tearDownModule():
@@ -56,7 +56,20 @@ def made_up_economy():
             "work": {"rows": [{"year": 2025, "unemployment_pct": 4.5, "labour_force": 600, "employed": 573}], "county_rows": None, "source": "Tinytown jobs"},
             "borrowing": {"rows": [{"year": 2025, "rate_pct": 6.2, "weeks": 52}, {"year": 2026, "rate_pct": 6.5, "weeks": 46}],
                           "latest": {"date": "2026-11-20", "rate_pct": 6.9}, "source": "Tinytown loans"},
-            "prices": {"rows": [{"year": 2024, "index": 100.0, "change_pct": 2.0}, {"year": 2025, "index": 103.0, "change_pct": 3.0}], "source": "Tinytown prices"}}
+            "prices": {"rows": [{"year": 2024, "index": 100.0, "change_pct": 2.0}, {"year": 2025, "index": 103.0, "change_pct": 3.0}], "source": "Tinytown prices"},
+            "housing": made_up_housing()}
+
+
+def made_up_housing():
+    """What the state housing reader gives for a town: the cycle's target, the permits so far, what is left, the years."""
+    return {"cycle": "6th", "from_year": 2021, "to_year": 2029, "planning_period": "10/15/2021 - 10/15/2029", "jurisdiction": "TINYTOWN",
+            "target": {"very_low": 100, "low": 60, "moderate": 40, "above_moderate": 200, "total": 400},
+            "permitted": {"very_low": 10, "low": 20, "moderate": 30, "above_moderate": 250, "total": 310},
+            "left": {"very_low": 90, "low": 40, "moderate": 10, "above_moderate": 0, "total": 140},
+            "share_pct": {"very_low": 10.0, "low": 33.3, "moderate": 75.0, "above_moderate": 125.0, "total": 77.5},
+            "by_year": [{"year": 2024, "very_low": 5, "low": 10, "moderate": 10, "above_moderate": 100, "total": 125},
+                        {"year": 2025, "very_low": 5, "low": 10, "moderate": 20, "above_moderate": 150, "total": 185}],
+            "through_year": 2025, "notes": [], "source": "Tinytown housing department", "as_of": "annual reports through 2025"}
 
 
 def made_up_place():
@@ -153,7 +166,7 @@ class OnTown(unittest.TestCase):
 # ---------------------------------------------------------------- the answer
 
 class TheAnswer(OnTown):
-    def test_it_has_the_six_blocks_and_what_was_asked_and_when(self):
+    def test_it_has_the_seven_blocks_and_what_was_asked_and_when(self):
         out = self.get()
         for block in BLOCKS:
             self.assertIn(block, out)
@@ -174,6 +187,17 @@ class TheAnswer(OnTown):
         self.assertEqual(out["resident"]["typical"]["median_age"], 36.4)
         self.assertEqual(out["todo"]["steps"][0]["who"], "Tinytown Planning Office")
         self.assertIn("Fire protection plan: cleared space, fire-resistant building, two ways out", [s["what"] for s in out["todo"]["steps"]])
+
+    def test_the_housing_block_is_made_from_what_the_town_answered_and_the_homes_of_the_plan(self):
+        out = self.get()
+        block = out["housing"]
+        self.assertTrue(block["available"])
+        self.assertEqual((block["target"], block["permitted"], block["left"], block["through_year"], block["to_year"]), (400, 310, 140, 2025, 2029))
+        self.assertEqual(block["lower"]["left"], 140)
+        self.assertEqual(block["source"], "Tinytown housing department")
+        self.assertTrue(block["facts"][0].startswith("The state requires Tinytown to plan for 400 new homes between 2021 and 2029."))
+        self.assertEqual(out["answered"]["housing"], "ok")
+        self.assertEqual(out["fetched"]["housing"], float(NOW))
 
     def test_the_year_is_the_year_of_the_clock_and_goes_to_the_city_with_each_economy_part(self):
         self.clock.now = calendar.timegm((2031, 3, 1, 0, 0, 0))
@@ -257,6 +281,7 @@ class WhatTheAddressMustHave(OnTown):
         out = self.get(app=self.make_app())
         self.assertEqual(set(out["answered"].values()), {"nothing found there"})
         self.assertEqual(out["economy"], {"available": False, "did_not_answer": list(O.ECONOMY_PARTS)})
+        self.assertEqual(out["housing"], {"available": False})
         for block in ("climate", "hazards", "nearby", "resident"):
             self.assertEqual(out[block], {"available": False})
         self.assertEqual(out["todo"]["steps"][0]["who"], "the city's planning department", "its adapter names no place")
@@ -290,6 +315,49 @@ class WhenAPartDoesNotAnswer(OnTown):
                 self.assertFalse(out["economy"]["sources"][O.ECONOMY_PARTS.index(part)]["answered"])
                 self.assertTrue(all(out[b]["available"] for b in ("climate", "hazards", "nearby", "resident")))
 
+    def test_a_silent_housing_part_is_a_block_that_is_not_available_and_the_other_blocks_still_answer(self):
+        self.city.silence("housing")
+        out = self.get()
+        self.assertEqual(out["housing"], {"available": False})
+        self.assertEqual(out["answered"]["housing"], "did not answer")
+        self.assertIsNone(out["fetched"]["housing"])
+        self.assertEqual({p: s for p, s in out["answered"].items() if p != "housing"}, {p: "ok" for p in ALL_PARTS if p != "housing"})
+        self.assertTrue(all(out[b]["available"] for b in ("economy", "climate", "hazards", "nearby", "resident")))
+        self.assertEqual(out["economy"]["did_not_answer"], [], "housing is not one of the economy's own parts")
+        self.assertNotIn("Ask how the homes would count toward the city's state housing target", [s["what"] for s in out["todo"]["steps"]])
+        self.assertTrue(out["todo"]["steps"])
+
+    def test_a_housing_reader_that_is_silent_is_said_to_be_silent_and_nothing_is_logged(self):
+        self.city.silence("housing")
+        with self.assertNoLogs("landplanner", "WARNING"):
+            out = self.get()
+        self.assertEqual((out["housing"], out["answered"]["housing"]), ({"available": False}, "did not answer"))
+
+    def test_a_housing_answer_that_could_not_be_read_is_said_so_and_logged_and_the_rest_answers(self):
+        for error in (KeyError("x"), TypeError("x"), ValueError("x"), AttributeError("x")):
+            with self.subTest(error=type(error).__name__):
+                self.setUp()
+                self.city.silence("housing", error=error)
+                with self.assertLogs("landplanner", "WARNING") as logs:
+                    out = self.get()
+                self.assertEqual((out["housing"], out["answered"]["housing"]), ({"available": False}, "could not be read"))
+                self.assertTrue(any("housing" in r.getMessage() for r in logs.records))
+                self.assertTrue(all(out[b]["available"] for b in ("economy", "climate", "hazards", "nearby", "resident")))
+
+    def test_a_housing_answer_without_a_target_is_a_block_that_is_not_available_and_the_rest_answers(self):
+        self.city.economy["housing"]["target"]["total"] = 0
+        out = self.get()
+        self.assertEqual(out["housing"], {"available": False})
+        self.assertEqual(out["answered"]["housing"], "ok", "the town answered; what it said had nothing to count")
+        self.assertTrue(all(out[b]["available"] for b in ("economy", "climate", "hazards", "nearby", "resident")))
+
+    def test_the_housing_step_is_on_the_checklist_when_the_town_answers(self):
+        out = self.get()
+        step = next((s for s in out["todo"]["steps"] if s["what"] == "Ask how the homes would count toward the city's state housing target"), None)
+        if step is not None:                                  # the made-up town's plan may hold no homes
+            self.assertIn("still has to permit 140 homes", step["why"])
+            self.assertEqual(step["who"], "Tinytown Planning Office")
+
     def test_every_economy_part_silent_is_a_block_that_is_not_available_and_has_no_numbers(self):
         self.city.silence(*O.ECONOMY_PARTS)
         out = self.get()
@@ -302,7 +370,7 @@ class WhenAPartDoesNotAnswer(OnTown):
         out = self.get()
         self.assertEqual(set(out["answered"].values()), {"did not answer"})
         self.assertEqual(set(out["fetched"].values()), {None})
-        self.assertFalse(any(out[b]["available"] for b in ("economy", "climate", "hazards", "nearby", "resident")))
+        self.assertFalse(any(out[b]["available"] for b in ("economy", "housing", "climate", "hazards", "nearby", "resident")))
         self.assertTrue(out["todo"]["steps"])
         json.dumps(out, allow_nan=False)
 
@@ -467,8 +535,48 @@ class TheKeptCopies(OnTown):
 
     def test_each_part_is_asked_once_for_the_first_answer_the_population_too(self):
         self.get()
-        self.assertEqual(sorted(p for p, _ in self.city.economy_calls), sorted(O.ECONOMY_PARTS), "the forecast and the outlook share the city's homes")
+        self.assertEqual(sorted(p for p, _ in self.city.economy_calls), sorted(O.CITY_PARTS), "the forecast and the outlook share the city's homes")
+        self.assertEqual(self.city.asked("housing"), 1)
         self.assertEqual(sorted(p for p, _, _ in self.city.here_calls), sorted(O.PLACE_PARTS))
+
+    def test_the_housing_part_is_asked_once_and_the_kept_copy_is_reused(self):
+        first = self.get()
+        self.assertEqual(self.city.asked("housing"), 1)
+        for _ in range(3):
+            again = self.get()
+        self.assertEqual(self.city.asked("housing"), 1)
+        self.assertEqual(again["housing"], first["housing"])
+        self.assertEqual(again["fetched"]["housing"], first["fetched"]["housing"])
+
+    def test_the_housing_part_is_asked_with_the_year_of_the_clock_and_again_with_fresh(self):
+        self.get()
+        self.get(fresh=1)
+        self.assertEqual([c for c in self.city.economy_calls if c[0] == "housing"], [("housing", 2026), ("housing", 2026)])
+
+    def test_a_new_housing_answer_after_fresh_is_the_one_kept(self):
+        self.get()
+        self.city.economy["housing"]["target"]["total"] = 500
+        self.assertEqual(self.get()["housing"]["target"], 400, "kept")
+        self.assertEqual(self.get(fresh=1)["housing"]["target"], 500)
+        self.assertEqual(self.get()["housing"]["target"], 500)
+
+    def test_the_housing_part_is_kept_with_the_cities_figures_for_14_days(self):
+        self.get()
+        self.clock.now += 8 * DAY
+        self.get()
+        self.assertEqual(self.city.asked("housing"), 1, "kept as long as the economy parts, not as long as the site's parts")
+        self.clock.now += 7 * DAY
+        self.get()
+        self.assertEqual(self.city.asked("housing"), 2)
+
+    def test_a_silent_housing_part_is_asked_again_only_once_a_minute(self):
+        self.city.silence("housing")
+        self.get()
+        self.get()
+        self.assertEqual(self.city.asked("housing"), 1)
+        self.clock.now += RETRY_AFTER + 1
+        self.get()
+        self.assertEqual(self.city.asked("housing"), 2)
 
     def test_fresh_asks_every_part_again(self):
         self.get()
@@ -503,10 +611,10 @@ class TheKeptCopies(OnTown):
         self.clock.now += 8 * DAY
         self.get()
         self.assertEqual({p: self.city.asked(p) for p in O.PLACE_PARTS}, {p: 2 for p in O.PLACE_PARTS}, "7 days: asked again at 8")
-        self.assertEqual({p: self.city.asked(p) for p in O.ECONOMY_PARTS}, {p: 1 for p in O.ECONOMY_PARTS}, "14 days: not yet")
+        self.assertEqual({p: self.city.asked(p) for p in O.CITY_PARTS}, {p: 1 for p in O.CITY_PARTS}, "14 days: not yet")
         self.clock.now += 7 * DAY
         self.get()
-        self.assertEqual({p: self.city.asked(p) for p in O.ECONOMY_PARTS}, {p: 2 for p in O.ECONOMY_PARTS}, "15 days: asked again")
+        self.assertEqual({p: self.city.asked(p) for p in O.CITY_PARTS}, {p: 2 for p in O.CITY_PARTS}, "15 days: asked again")
         self.assertEqual((ECONOMY_TTL, PART_TTL), (14 * DAY, 7 * DAY))
 
     def test_the_kept_copies_survive_a_restart(self):
@@ -520,7 +628,7 @@ class TheKeptCopies(OnTown):
     def test_the_citys_figures_are_kept_for_the_city_and_the_rest_for_the_site(self):
         self.get()
         keys = {json.loads(p.read_text(encoding="utf-8"))["key"] for p in (Path(self.folder.name) / "cache").glob("*.json")}
-        for part in O.ECONOMY_PARTS:
+        for part in O.CITY_PARTS:
             self.assertIn(f"tinytown/economy/{part}", keys)
         for part in O.PLACE_PARTS:
             self.assertIn(f"tinytown/site/100000001/outlook-{part}", keys)
@@ -528,7 +636,7 @@ class TheKeptCopies(OnTown):
     def test_another_site_in_the_same_city_asks_for_the_site_parts_only(self):
         self.get("100000001")
         self.get("100000002")
-        for part in O.ECONOMY_PARTS:
+        for part in O.CITY_PARTS:
             self.assertEqual(self.city.asked(part), 1, part)
         self.assertEqual([(p, apn) for p, apn, _ in self.city.here_calls].count(("climate", "100000002")), 1)
         self.assertEqual({apn for _, apn, _ in self.city.here_calls}, {"100000001", "100000002"})
@@ -703,6 +811,7 @@ class TheBaseAdapter(unittest.TestCase):
 
     def test_the_parts_the_engine_reads_are_the_parts_the_adapter_is_asked_for(self):
         self.assertEqual(O.ECONOMY_PARTS, ("population", "permits", "sales", "work", "borrowing", "prices"))
+        self.assertEqual(O.CITY_PARTS, O.ECONOMY_PARTS + ("housing",))
         self.assertEqual(O.PLACE_PARTS, ("climate", "hazards", "nearby", "residents"))
 
 
@@ -854,14 +963,15 @@ class OnMenifee(unittest.TestCase):
         self.assertEqual(status, 200)
         return out
 
-    def test_the_example_parcel_has_all_six_blocks(self):
+    def test_the_example_parcel_has_all_seven_blocks(self):
         out = self.get()
         self.assertEqual((out["city"], out["city_name"], out["apns"], out["year"]), ("menifee", "Menifee", [EXAMPLE], 2026))
         self.assertEqual(set(out["answered"]), set(ALL_PARTS))
         self.assertEqual(set(out["answered"].values()), {"ok"})
-        self.assertTrue(all(out[b]["available"] for b in ("economy", "climate", "hazards", "nearby", "resident")))
+        self.assertTrue(all(out[b]["available"] for b in ("economy", "housing", "climate", "hazards", "nearby", "resident")))
         self.assertTrue(out["todo"]["steps"])
         self.assertTrue(out["economy"]["facts"][0].startswith("Menifee had 1,000 people in 2020"))
+        self.assertTrue(out["housing"]["facts"][0].startswith("The state requires Menifee to plan for 400 new homes"))
         json.dumps(out, allow_nan=False)
 
     def test_the_economy_grows_with_the_homes_of_the_forecast_ring(self):
@@ -898,7 +1008,7 @@ class OnMenifee(unittest.TestCase):
 
     def test_the_example_does_not_reach_the_network_for_any_part(self):
         self.get(fresh=1)         # the recorded answers raise AssertionError for any question that was not recorded
-        self.assertEqual(sorted(p for p, _ in self.economy_calls), sorted(O.ECONOMY_PARTS + ("population",)),
+        self.assertEqual(sorted(p for p, _ in self.economy_calls), sorted(O.CITY_PARTS + ("population",)),
                          "each part once, and the city's homes twice (the forecast asked, then fresh asked again)")
 
 

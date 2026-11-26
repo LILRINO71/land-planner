@@ -8,6 +8,7 @@ import * as myLandsView from "./views/mylands.js";
 import * as landView from "./views/land.js";
 import * as forecastView from "./views/forecast.js";
 import * as presentView from "./views/present.js";
+import * as handoutView from "./views/handout.js";
 
 const main = document.getElementById("main"), side = document.getElementById("side");
 let visit = 0, leaving = [], lastCity = null, openLand = null;
@@ -37,6 +38,8 @@ function parse() {
   if (first === "forecast" && a) { const l = apnList(raw[2] || ""); return { name: "forecast", city: a, apns: l.apns, bad: l.bad }; }
   // #/present/menifee/360350024+360350017: the same site as slides for the city (the sidebar is hidden)
   if (first === "present" && a) { const l = apnList(raw[2] || ""); return { name: "present", city: a, apns: l.apns, bad: l.bad }; }
+  // #/handout/menifee/360350024+360350017: the same site on one printed page, to leave with the people in the room
+  if (first === "handout" && a) { const l = apnList(raw[2] || ""); return { name: "handout", city: a, apns: l.apns, bad: l.bad }; }
   return { name: "cities" };
 }
 
@@ -102,15 +105,15 @@ async function show() {
     lastCity = route.city;
     if (!openLand || openLand.apn !== route.apn || openLand.city !== route.city) openLand = { city: route.city, apn: route.apn };
   }
-  if (route.name === "forecast" || route.name === "present") lastCity = route.city;
+  if (route.name === "forecast" || route.name === "present" || route.name === "handout") lastCity = route.city;
   document.body.classList.toggle("presenting", route.name === "present");
-  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast", present: "Presentation" }[route.name] + " · Land Planner";
+  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast", present: "Presentation", handout: "One-page summary" }[route.name] + " · Land Planner";
   drawSide(route);
   main.scrollTop = 0;
   window.scrollTo(0, 0);
   main.className = "main " + route.name;
   if (route.bad && route.bad.length) { notAParcel(route); return; }
-  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView, present: presentView }[route.name];
+  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView, present: presentView, handout: handoutView }[route.name];
   try {
     await view.render(main, route, alive);
   } catch (e) {

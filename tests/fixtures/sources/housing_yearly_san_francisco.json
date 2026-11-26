@@ -1,0 +1,57 @@
+{
+ "help": "https://publish.data.ca.gov/api/3/action/help_show?name=datastore_search_sql",
+ "success": true,
+ "result": {
+  "sql": "SELECT \"YEAR\" AS year, MIN(\"CNTY_NAME\") AS county, COUNT(*) AS projects, SUM(\"BP_ACUTELY_LOW_INCOME_DR\") AS \"BP_ACUTELY_LOW_INCOME_DR\", SUM(\"BP_ACUTELY_LOW_INCOME_NDR\") AS \"BP_ACUTELY_LOW_INCOME_NDR\", SUM(\"BP_EXTREMELY_LOW_INCOME_DR\") AS \"BP_EXTREMELY_LOW_INCOME_DR\", SUM(\"BP_EXTREMELY_LOW_INCOME_NDR\") AS \"BP_EXTREMELY_LOW_INCOME_NDR\", SUM(\"BP_VLOW_INCOME_DR\") AS \"BP_VLOW_INCOME_DR\", SUM(\"BP_VLOW_INCOME_NDR\") AS \"BP_VLOW_INCOME_NDR\", SUM(\"BP_LOW_INCOME_DR\") AS \"BP_LOW_INCOME_DR\", SUM(\"BP_LOW_INCOME_NDR\") AS \"BP_LOW_INCOME_NDR\", SUM(\"BP_MOD_INCOME_DR\") AS \"BP_MOD_INCOME_DR\", SUM(\"BP_MOD_INCOME_NDR\") AS \"BP_MOD_INCOME_NDR\", SUM(\"BP_ABOVE_MOD_INCOME\") AS \"BP_ABOVE_MOD_INCOME\" FROM \"fe505d9b-8c36-42ba-ba30-08bc4f34e022\" WHERE \"JURIS_NAME\" = 'SAN FRANCISCO' AND \"YEAR\" >= 2023 GROUP BY \"YEAR\" ORDER BY \"YEAR\"",
+  "records": [
+   {
+    "year": 2023,
+    "county": "San Francisco",
+    "projects": 586,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 514,
+    "BP_VLOW_INCOME_NDR": 0,
+    "BP_LOW_INCOME_DR": 373,
+    "BP_LOW_INCOME_NDR": 0,
+    "BP_MOD_INCOME_DR": 151,
+    "BP_MOD_INCOME_NDR": 267,
+    "BP_ABOVE_MOD_INCOME": 1750
+   },
+   {
+    "year": 2024,
+    "county": "San Francisco",
+    "projects": 805,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 409,
+    "BP_VLOW_INCOME_NDR": 0,
+    "BP_LOW_INCOME_DR": 275,
+    "BP_LOW_INCOME_NDR": 0,
+    "BP_MOD_INCOME_DR": 68,
+    "BP_MOD_INCOME_NDR": 210,
+    "BP_ABOVE_MOD_INCOME": 111
+   },
+   {
+    "year": 2025,
+    "county": "San Francisco",
+    "projects": 572,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 258,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 451,
+    "BP_VLOW_INCOME_NDR": 53,
+    "BP_LOW_INCOME_DR": 515,
+    "BP_LOW_INCOME_NDR": 52,
+    "BP_MOD_INCOME_DR": 224,
+    "BP_MOD_INCOME_NDR": 52,
+    "BP_ABOVE_MOD_INCOME": 354
+   }
+  ]
+ }
+}

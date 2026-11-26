@@ -1,0 +1,44 @@
+{
+ "help": "https://publish.data.ca.gov/api/3/action/help_show?name=datastore_search",
+ "success": true,
+ "result": {
+  "filters": {
+   "Jurisdiction": [
+    "MENIFEE"
+   ]
+  },
+  "include_next_page": false,
+  "include_total": true,
+  "limit": 20,
+  "records_format": "objects",
+  "resource_id": "1e80a9cf-724c-432d-8374-e9708a6a92dc",
+  "filterops": {
+   "op": "in",
+   "field": "Jurisdiction",
+   "value": [
+    "MENIFEE"
+   ]
+  },
+  "records": [
+   {
+    "_id": 280,
+    "Jurisdiction": "MENIFEE",
+    "Planning Period": "10/15/2021 - 10/15/2029",
+    "unsafe_6th_cycle_started": "TRUE",
+    "VLI UNITS": 9,
+    "RHNA VLI": 1761,
+    "vli__": 0.01,
+    "LI UNITS": 21,
+    "RHNA LI": 1051,
+    "li__": 0.02,
+    "MOD UNITS": 37,
+    "RHNA MOD": 1106,
+    "mod__": 0.03,
+    "ABOVE MOD UNITS": 3819,
+    "RHNA ABOVE MOD": 2691,
+    "above_mod__": 1.42
+   }
+  ],
+  "total": 1
+ }
+}

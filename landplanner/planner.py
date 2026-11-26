@@ -359,7 +359,7 @@ class LandPlanner:
         city = self.city(city_id)
         year = time.gmtime(self.clock()).tm_year
         asked = {name: (f"{city.id}/economy/{name}", lambda name=name: city.economy_part(name, year), ECONOMY_TTL)
-                 for name in O.ECONOMY_PARTS}
+                 for name in O.CITY_PARTS}
         tracts = [{"id": t.get("id"), "households": t.get("households"),
                    "share": (t.get("share_within") or {}).get(F.MARKET_MILES) or (t.get("share_within") or {}).get(str(F.MARKET_MILES)) or 0}
                   for t in (parts.get("tracts") or {}).get("tracts") or []]

@@ -12,6 +12,7 @@ from .sources.place import paleo_words
 from .words import counted
 
 ECONOMY_PARTS = ("population", "permits", "sales", "work", "borrowing", "prices")
+CITY_PARTS = ECONOMY_PARTS + ("housing",)       # asked once for the whole city: the economy, and the state housing target
 PLACE_PARTS = ("climate", "hazards", "nearby", "residents")
 BIG_SITE_ACRES = 10        # the state's quick exemption for infill sites stops at 5 acres; at twice that the review is certain
 WET_ZONE = re.compile(r"[AV](E|H|O|R|\d{1,2}(-\d{1,2})?)?")   # FEMA zones A, AE, AH, AO, AR, A99, A1-30, V, VE...: land a 1-in-100-year flood covers
@@ -292,6 +293,76 @@ def hazards(part):
                             "Water, sewer and power capacity"]}
 
 
+HOUSING_LEVELS = (("very_low", "Very low income"), ("low", "Low income"), ("moderate", "Moderate income"),
+                  ("above_moderate", "Above moderate income"))
+LOWER_LEVELS = ("very_low", "low", "moderate")
+
+
+def housing(part, forecast, name):
+    """The homes the state requires the city to plan for in this eight-year cycle, by income level, how many it has
+    permitted so far, and this site's homes beside what is left. Every figure is the state housing department's;
+    the site's homes are the forecast's. Nothing says which income level the site's homes would count toward, so
+    this does not say it either."""
+    target, permitted, left = ((part or {}).get(k) or {} for k in ("target", "permitted", "left"))
+    if not isinstance(target.get("total"), (int, float)) or not isinstance(permitted.get("total"), (int, float)) or target["total"] <= 0:
+        return {"available": False}
+    share = part.get("share_pct") or {}
+    levels = [{"id": k, "label": label, "target": target.get(k), "permitted": permitted.get(k), "left": left.get(k), "share_pct": share.get(k)}
+              for k, label in HOUSING_LEVELS]
+    start, end, through = part.get("from_year"), part.get("to_year"), part.get("through_year")
+    out = {"available": True, "cycle": part.get("cycle"), "from_year": start, "to_year": end, "through_year": through,
+           "planning_period": part.get("planning_period"), "levels": levels,
+           "target": target["total"], "permitted": permitted["total"], "left": left.get("total"), "share_pct": share.get("total"),
+           "by_year": part.get("by_year") or [], "notes": list(part.get("notes") or []),
+           "source": part.get("source"), "as_of": part.get("as_of"), "facts": []}
+    facts = out["facts"]
+    span = f" between {start} and {end}" if start and end else ""
+    by = f"By the end of {through}" if through else "So far"
+    facts.append(f"The state requires {name} to plan for {target['total']:,} new homes{span}. {by} it had given building permits for "
+                 f"{permitted['total']:,} of them" + (f" ({share['total']:g}%)." if isinstance(share.get("total"), (int, float)) else "."))
+
+    def known(group, keys):
+        return all(isinstance(group.get(k), (int, float)) for k in keys)
+
+    lower = None
+    if known(target, LOWER_LEVELS) and known(permitted, LOWER_LEVELS):
+        lower = {"target": sum(target[k] for k in LOWER_LEVELS), "permitted": sum(permitted[k] for k in LOWER_LEVELS)}
+        lower["left"] = sum(max(0, target[k] - permitted[k]) for k in LOWER_LEVELS)
+        top_t, top_p = target.get("above_moderate"), permitted.get("above_moderate")
+        if isinstance(top_t, (int, float)) and isinstance(top_p, (int, float)):
+            facts.append(f"For homes at above moderate incomes it has permitted {top_p:,} against a target of {top_t:,}. For the very low, low "
+                         f"and moderate income levels together it has permitted {lower['permitted']:,} of {lower['target']:,}, so "
+                         f"{lower['left']:,} are still to come.")
+        else:
+            facts.append(f"For the very low, low and moderate income levels together it has permitted {lower['permitted']:,} of "
+                         f"{lower['target']:,}, so {lower['left']:,} are still to come.")
+        years = [r for r in out["by_year"] if isinstance(r.get("year"), int) and known(r, LOWER_LEVELS)]
+        ahead = end - through if isinstance(end, int) and isinstance(through, int) else 0
+        if years and ahead > 0 and lower["left"] > 0:
+            now = _avg([sum(r[k] for k in LOWER_LEVELS) for r in years])
+            lower.update(a_year_now=round(now), a_year_needed=round(lower["left"] / ahead), years_left=ahead,
+                         counted_years=[years[0]["year"], years[-1]["year"]])
+            facts.append(f"To reach those three targets by {end}, about {lower['a_year_needed']:,} such homes a year would need permits. "
+                         f"From {years[0]['year']} to {years[-1]['year']} the city reported about {lower['a_year_now']:,} a year.")
+    out["lower"] = lower
+    homes = [u for u in (forecast.get("programme") or {}).get("uses") or [] if u.get("kind") == "homes" and (u.get("amount") or 0) > 0]
+    count = round(sum(u["amount"] for u in homes))
+    out["site"] = None
+    if count:
+        left_all = left.get("total")
+        out["site"] = {"homes": count, "kinds": [u.get("label") for u in homes],
+                       "pct_of_left": round(100 * count / left_all, 1) if isinstance(left_all, (int, float)) and left_all > 0 else None}
+        kinds = ", ".join(str(u.get("label") or "").lower() for u in homes if u.get("label"))
+        text = f"This site's plan holds {counted(count, 'home')}" + (f" ({kinds})" if kinds else "")
+        if out["site"]["pct_of_left"] is not None:
+            text += f": {out['site']['pct_of_left']:g}% of the {left_all:,} homes the city still has to permit"
+        facts.append(text + ". Which income level they count toward depends on what they rent or sell for, which this plan does not "
+                            "set: that is agreed with the city.")
+    else:
+        facts.append("This site's plan holds no homes, so it does not add to this count.")
+    return out
+
+
 def resident(part):
     if not part or not part.get("typical"):
         return {"available": False}
@@ -325,7 +396,7 @@ def resident(part):
     return out
 
 
-def steps(site, forecast, plans, hazard, place):
+def steps(site, forecast, plans, hazard, place, housing_block=None):
     """What needs to be done, in order: who to see, which studies, and when the land is offered. Each step says
     the fact that puts it on the list."""
     year = forecast["year"]
@@ -383,6 +454,11 @@ def steps(site, forecast, plans, hazard, place):
             add(1, max(1, ready), "study", what, f["text"], who)
     add(1, max(1, ready), "check", "Ask for letters saying water, sewer and power can serve the site",
         "No public record this app reads shows utility capacity.", place.get("water") or "The water and sewer district, and the power company")
+    lower_left = ((housing_block or {}).get("lower") or {}).get("left")
+    if homes and lower_left:
+        add(1, 1, "city", "Ask how the homes would count toward the city's state housing target",
+            f"The city still has to permit {lower_left:,} homes for very low, low and moderate incomes by {housing_block.get('to_year')}. "
+            f"The plan adds about {counted(homes, 'home')}; which level they count toward is agreed with the city.", planning)
     if homes:
         add(1, max(1, ready), "check", "Check school room and fees with the school district",
             f"The plan adds about {counted(homes, 'home')}.", "The school district that serves the site")
@@ -402,9 +478,11 @@ def make_outlook(site, forecast, plans, parts, place):
     residents (any may be None); `place` is {"name", "planning", "water"} from the city adapter."""
     hazard = hazards(parts.get("hazards"))
     near = parts.get("nearby")
+    homes_target = housing(parts.get("housing"), forecast, place.get("name") or "the city")
     return {"economy": economy(parts, forecast, place.get("name") or "The city"),
+            "housing": homes_target,
             "climate": climate(parts.get("climate"), forecast["year"]),
             "hazards": hazard,
             "nearby": {"available": True, **near} if near else {"available": False},
             "resident": resident(parts.get("residents")),
-            "todo": steps(site, forecast, plans, hazard, place)}
+            "todo": steps(site, forecast, plans, hazard, place, homes_target)}

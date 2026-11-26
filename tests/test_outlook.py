@@ -95,6 +95,36 @@ def resident_part():
             "earlier": {"years": "2010-2014", "home_value_usd": 244032, "rent_usd": 1484, "tracts_matched": 14}, "tracts": []}
 
 
+def housing_part():
+    """The state housing answer for Menifee's 6th cycle, as landplanner/sources/housing.py reads it (the made-up town is called Testville)."""
+    return {"cycle": "6th", "from_year": 2021, "to_year": 2029, "planning_period": "10/15/2021 - 10/15/2029", "jurisdiction": "MENIFEE",
+            "target": {"very_low": 1761, "low": 1051, "moderate": 1106, "above_moderate": 2691, "total": 6609},
+            "permitted": {"very_low": 9, "low": 21, "moderate": 37, "above_moderate": 3819, "total": 3886},
+            "by_year": [{"year": 2021, "very_low": 0, "low": 12, "moderate": 8, "above_moderate": 1206, "total": 1226},
+                        {"year": 2022, "very_low": 4, "low": 4, "moderate": 5, "above_moderate": 892, "total": 905},
+                        {"year": 2023, "very_low": 0, "low": 0, "moderate": 14, "above_moderate": 1575, "total": 1589},
+                        {"year": 2024, "very_low": 2, "low": 6, "moderate": 10, "above_moderate": 617, "total": 635},
+                        {"year": 2025, "very_low": 3, "low": 11, "moderate": 8, "above_moderate": 736, "total": 758}],
+            "left": {"very_low": 1752, "low": 1030, "moderate": 1069, "above_moderate": 0, "total": 3851},
+            "share_pct": {"very_low": 0.5, "low": 2.0, "moderate": 3.3, "above_moderate": 141.9, "total": 58.8},
+            "through_year": 2025,
+            "notes": ["the yearly rows do not add up to the state's own count of permits for the cycle; use the state's total for progress"],
+            "source": "Test state housing department", "as_of": "annual reports through 2025"}
+
+
+def with_homes(fc=None, *amounts):
+    """A forecast whose programme holds homes (and one use that is not homes, which must not be counted)."""
+    fc = fc or forecast()
+    amounts = amounts or (300.4, 199.7)
+    uses = [{"kind": "homes", "label": label, "amount": a} for label, a in zip(("Houses", "Apartments", "Townhomes"), amounts)]
+    fc["programme"]["uses"] = uses + [{"kind": "shops", "label": "Shops", "amount": 40000}]
+    return fc
+
+
+def homes_of(part=None, fc=None, name="Testville"):
+    return O.housing(housing_part() if part is None else part, with_homes() if fc is None else fc, name)
+
+
 def finding(out, topic):
     return next((f for f in out["findings"] if f["topic"] == topic), None)
 
@@ -121,9 +151,9 @@ def site(acres=100.0, *zonings):
     return {"acres": acres, "parcels": [{"zoning": z} for z in (zonings or ("R-1",))]}
 
 
-def todo(site_=None, fc=None, plans="houses", hazard=None, place=None):
+def todo(site_=None, fc=None, plans="houses", hazard=None, place=None, housing_block=None):
     plans = [plan(use("homes", "Houses", 100.0, homes=500))] if plans == "houses" else plans
-    return O.steps(site_ or site(), fc or forecast(), plans, hazard, {} if place is None else place)
+    return O.steps(site_ or site(), fc or forecast(), plans, hazard, {} if place is None else place, housing_block)
 
 
 def whats(out):
@@ -971,6 +1001,259 @@ class TheResident(unittest.TestCase):
         self.assertIn("typical rent is $900 a month, down from $1,000.", O.resident(part)["facts"][0])
 
 
+# ---------------------------------------------------------------- the state housing target
+
+
+class TheHousing(unittest.TestCase):
+    def setUp(self):
+        self.out = homes_of()
+
+    def test_the_totals_are_the_states_own(self):
+        out = self.out
+        self.assertTrue(out["available"])
+        self.assertEqual((out["cycle"], out["from_year"], out["to_year"], out["through_year"]), ("6th", 2021, 2029, 2025))
+        self.assertEqual(out["planning_period"], "10/15/2021 - 10/15/2029")
+        self.assertEqual((out["target"], out["permitted"], out["left"], out["share_pct"]), (6609, 3886, 3851, 58.8))
+        self.assertEqual((out["source"], out["as_of"]), ("Test state housing department", "annual reports through 2025"))
+        self.assertEqual(out["by_year"], housing_part()["by_year"])
+        self.assertEqual(out["notes"], housing_part()["notes"])
+
+    def test_there_is_a_row_for_each_income_level_in_order(self):
+        self.assertEqual([(r["id"], r["label"], r["target"], r["permitted"], r["left"], r["share_pct"]) for r in self.out["levels"]], [
+            ("very_low", "Very low income", 1761, 9, 1752, 0.5),
+            ("low", "Low income", 1051, 21, 1030, 2.0),
+            ("moderate", "Moderate income", 1106, 37, 1069, 3.3),
+            ("above_moderate", "Above moderate income", 2691, 3819, 0, 141.9)])
+
+    def test_the_lower_three_levels_are_added_up_with_the_pace_it_takes(self):
+        self.assertEqual(self.out["lower"], {"target": 3918, "permitted": 67, "left": 3851, "a_year_now": 17, "a_year_needed": 963,
+                                             "years_left": 4, "counted_years": [2021, 2025]})
+
+    def test_the_pace_now_is_the_average_of_the_yearly_rows_of_the_three_levels(self):
+        # 20, 13, 14, 18 and 22 homes in the five years: 87 in all, 17.4 a year
+        self.assertEqual(sum(r["very_low"] + r["low"] + r["moderate"] for r in housing_part()["by_year"]), 87)
+        self.assertEqual(self.out["lower"]["a_year_now"], 17)
+
+    def test_the_pace_needed_is_what_is_left_over_the_years_to_the_end_of_the_cycle(self):
+        self.assertEqual(self.out["lower"]["a_year_needed"], round(3851 / (2029 - 2025)))
+
+    def test_the_site_is_its_homes_beside_what_is_left(self):
+        self.assertEqual(self.out["site"], {"homes": 500, "kinds": ["Houses", "Apartments"], "pct_of_left": 13.0})
+
+    def test_the_site_homes_come_from_the_programme_and_shops_are_not_homes(self):
+        site_ = homes_of(fc=with_homes(forecast(), 1000.0, 1000.0, 1000.0))["site"]
+        self.assertEqual((site_["homes"], site_["kinds"]), (3000, ["Houses", "Apartments", "Townhomes"]))
+        self.assertEqual(site_["pct_of_left"], round(100 * 3000 / 3851, 1))
+
+    def test_the_sentences_say_exactly_this(self):
+        self.assertEqual(self.out["facts"], [
+            "The state requires Testville to plan for 6,609 new homes between 2021 and 2029. By the end of 2025 it had given building "
+            "permits for 3,886 of them (58.8%).",
+            "For homes at above moderate incomes it has permitted 3,819 against a target of 2,691. For the very low, low and moderate "
+            "income levels together it has permitted 67 of 3,918, so 3,851 are still to come.",
+            "To reach those three targets by 2029, about 963 such homes a year would need permits. From 2021 to 2025 the city reported "
+            "about 17 a year.",
+            "This site's plan holds 500 homes (houses, apartments): 13% of the 3,851 homes the city still has to permit. Which income "
+            "level they count toward depends on what they rent or sell for, which this plan does not set: that is agreed with the city."])
+
+    def test_every_sentence_carries_the_figures_it_rests_on(self):
+        facts = self.out["facts"]
+        for figure in ("6,609", "2021", "2029", "2025", "3,886", "58.8%"):
+            self.assertIn(figure, facts[0], figure)
+        for figure in ("3,819", "2,691", "67", "3,918", "3,851"):
+            self.assertIn(figure, facts[1], figure)
+        for figure in ("2029", "963", "2021", "2025", "17"):
+            self.assertIn(figure, facts[2], figure)
+        for figure in ("500 homes", "13%", "3,851"):
+            self.assertIn(figure, facts[3], figure)
+
+    def test_it_does_not_say_which_income_level_the_sites_homes_would_count_toward(self):
+        text = " ".join(self.out["facts"])
+        self.assertIn("Which income level they count toward depends on what they rent or sell for", text)
+        self.assertNotIn("would count as", text)
+
+    def test_no_sentence_has_an_em_dash_or_prints_none(self):
+        for text in strings(self.out):
+            self.assertNotIn("\u2014", text)
+            self.assertNotRegex(text, r"\bNone\b|\bnan\b")
+
+    def test_it_can_be_sent_as_json_without_nan(self):
+        json.dumps(self.out, allow_nan=False)
+
+    def test_the_inputs_are_not_changed(self):
+        part, fc = housing_part(), with_homes()
+        before = copy.deepcopy((part, fc))
+        O.housing(part, fc, "Testville")
+        self.assertEqual((part, fc), before)
+
+    def test_the_name_of_the_city_is_the_one_it_was_given(self):
+        self.assertTrue(homes_of(name="the city")["facts"][0].startswith("The state requires the city to plan for"))
+
+
+class TheHousingWhenTheAnswerIsThin(unittest.TestCase):
+    def test_no_answer_is_not_available(self):
+        for part in (None, {}):
+            with self.subTest(part=part):
+                self.assertEqual(O.housing(part, with_homes(), "Testville"), {"available": False})
+
+    def test_a_target_total_that_is_missing_zero_negative_or_text_is_not_available(self):
+        for total in ("gone", None, 0, -5, "6609", "", [], {}):
+            with self.subTest(total=total):
+                part = housing_part()
+                if total == "gone":
+                    del part["target"]["total"]
+                else:
+                    part["target"]["total"] = total
+                self.assertEqual(homes_of(part), {"available": False})
+
+    def test_a_target_or_permitted_block_that_is_missing_is_not_available(self):
+        for key in ("target", "permitted"):
+            with self.subTest(key=key):
+                part = housing_part()
+                part[key] = None
+                self.assertEqual(homes_of(part), {"available": False})
+
+    def test_a_permitted_total_that_is_missing_or_text_is_not_available(self):
+        for total in (None, "3886"):
+            with self.subTest(total=total):
+                part = housing_part()
+                part["permitted"]["total"] = total
+                self.assertEqual(homes_of(part), {"available": False})
+
+    def test_a_level_with_no_figure_has_no_lower_sums_and_no_crash(self):
+        for key in ("target", "permitted"):
+            for level in O.LOWER_LEVELS:
+                with self.subTest(key=key, level=level):
+                    part = housing_part()
+                    part[key][level] = None
+                    out = homes_of(part)
+                    self.assertTrue(out["available"])
+                    self.assertIsNone(out["lower"])
+                    self.assertEqual(len(out["facts"]), 2, "the totals and the site, and no sentence made of sums that were not there")
+                    self.assertFalse(any("still to come" in f or "a year would need" in f for f in out["facts"]))
+                    json.dumps(out, allow_nan=False)
+
+    def test_a_row_that_is_missing_a_level_leaves_that_figure_as_none(self):
+        part = housing_part()
+        part["target"].pop("very_low")
+        out = homes_of(part)
+        self.assertIsNone(out["levels"][0]["target"])
+        self.assertEqual(out["levels"][1]["target"], 1051)
+
+    def test_with_no_above_moderate_figures_the_lower_sentence_stands_alone(self):
+        part = housing_part()
+        part["target"]["above_moderate"] = None
+        out = homes_of(part)
+        self.assertEqual(out["facts"][1], "For the very low, low and moderate income levels together it has permitted 67 of 3,918, so "
+                                          "3,851 are still to come.")
+        self.assertEqual(out["lower"]["left"], 3851)
+
+    def test_no_yearly_rows_means_no_pace_sentence(self):
+        for rows in ([], None, [{"year": 2024, "very_low": None, "low": 1, "moderate": 1}], [{"year": "2024", "very_low": 1, "low": 1, "moderate": 1}]):
+            with self.subTest(rows=rows):
+                part = housing_part()
+                part["by_year"] = rows
+                out = homes_of(part)
+                self.assertEqual(out["lower"], {"target": 3918, "permitted": 67, "left": 3851})
+                self.assertFalse(any("a year would need" in f for f in out["facts"]))
+                self.assertEqual(len(out["facts"]), 3)
+
+    def test_a_cycle_that_is_over_has_no_pace_and_no_division_by_zero(self):
+        for through in (2029, 2030, None):
+            with self.subTest(through=through):
+                part = housing_part()
+                part["through_year"] = through
+                out = homes_of(part)
+                self.assertEqual(out["lower"], {"target": 3918, "permitted": 67, "left": 3851})
+                self.assertFalse(any("a year would need" in f for f in out["facts"]))
+                json.dumps(out, allow_nan=False)
+
+    def test_a_cycle_with_no_end_year_has_no_pace_and_no_between_years(self):
+        part = housing_part()
+        part["to_year"] = None
+        out = homes_of(part)
+        self.assertNotIn("a_year_needed", out["lower"])
+        self.assertNotIn("between", out["facts"][0])
+        self.assertIn("between 2021 and 2029", homes_of()["facts"][0])
+
+    def test_with_no_through_year_the_first_sentence_says_so_far(self):
+        part = housing_part()
+        part["through_year"] = None
+        self.assertIn(" So far it had given building permits for 3,886 of them (58.8%).", homes_of(part)["facts"][0])
+
+    def test_with_no_share_the_first_sentence_has_no_bracket(self):
+        part = housing_part()
+        part["share_pct"] = None
+        out = homes_of(part)
+        self.assertTrue(out["facts"][0].endswith("permits for 3,886 of them."))
+        self.assertIsNone(out["share_pct"])
+        self.assertTrue(all(r["share_pct"] is None for r in out["levels"]))
+
+    def test_permitted_above_target_at_a_level_never_leaves_less_than_nothing(self):
+        part = housing_part()
+        part["permitted"]["moderate"] = 2000          # far past the 1,106 asked for
+        out = homes_of(part)
+        self.assertEqual(out["lower"]["left"], 1752 + 1030 + 0)
+        self.assertEqual(out["lower"]["permitted"], 9 + 21 + 2000)
+        self.assertEqual(out["lower"]["a_year_needed"], round(2782 / 4))
+        self.assertGreaterEqual(out["lower"]["left"], 0)
+
+    def test_every_lower_level_past_its_target_is_no_pace_at_all(self):
+        part = housing_part()
+        for level in O.LOWER_LEVELS:
+            part["permitted"][level] = part["target"][level] + 10
+        out = homes_of(part)
+        self.assertEqual(out["lower"]["left"], 0)
+        self.assertNotIn("a_year_needed", out["lower"], "nothing is left, so there is no pace to ask for")
+        self.assertIn("so 0 are still to come", " ".join(out["facts"]))
+
+    def test_a_site_with_no_homes_says_so(self):
+        for uses in ([], [{"kind": "shops", "label": "Shops", "amount": 100}], [{"kind": "homes", "label": "Houses", "amount": 0}],
+                     [{"kind": "homes", "label": "Houses", "amount": None}], None):
+            with self.subTest(uses=uses):
+                fc = forecast()
+                fc["programme"]["uses"] = uses
+                out = homes_of(fc=fc)
+                self.assertIsNone(out["site"])
+                self.assertEqual(out["facts"][-1], "This site's plan holds no homes, so it does not add to this count.")
+
+    def test_a_forecast_with_no_programme_at_all_is_a_site_with_no_homes(self):
+        out = homes_of(fc={"year": YEAR})
+        self.assertIsNone(out["site"])
+        self.assertEqual(out["facts"][-1], "This site's plan holds no homes, so it does not add to this count.")
+
+    def test_nothing_left_means_no_share_of_it(self):
+        for left in (0, None):
+            with self.subTest(left=left):
+                part = housing_part()
+                part["left"]["total"] = left
+                out = homes_of(part)
+                self.assertEqual(out["site"], {"homes": 500, "kinds": ["Houses", "Apartments"], "pct_of_left": None})
+                self.assertNotIn("%", out["facts"][-1])
+                self.assertNotIn("still has to permit", out["facts"][-1])
+                self.assertTrue(out["facts"][-1].startswith("This site's plan holds 500 homes (houses, apartments). Which income level"))
+
+    def test_a_site_of_a_single_home(self):
+        out = homes_of(fc=with_homes(forecast(), 1.0))
+        self.assertTrue(out["facts"][-1].startswith("This site's plan holds 1 home (houses): 0%"))
+        self.assertEqual(out["site"]["pct_of_left"], 0.0)
+
+    def test_a_missing_left_block_still_gives_the_lower_figures_from_target_and_permitted(self):
+        part = housing_part()
+        part["left"] = None
+        out = homes_of(part)
+        self.assertIsNone(out["left"])
+        self.assertEqual(out["lower"]["left"], 3851)
+        self.assertIsNone(out["site"]["pct_of_left"])
+
+    def test_a_label_that_is_missing_leaves_the_brackets_out(self):
+        fc = forecast()
+        fc["programme"]["uses"] = [{"kind": "homes", "amount": 40}]
+        out = homes_of(fc=fc)
+        self.assertEqual(out["site"]["kinds"], [None])
+        self.assertTrue(out["facts"][-1].startswith("This site's plan holds 40 homes: "))
+
+
 # ---------------------------------------------------------------- the checklist
 
 class TheStepsAlwaysPresent(unittest.TestCase):
@@ -1259,24 +1542,81 @@ class TheOrderOfTheSteps(unittest.TestCase):
         self.assertEqual(next(s for s in todo(fc=fc)["steps"] if s["what"] == "Soils and geology report")["to_year"], 2028)
 
 
+class TheHousingStep(unittest.TestCase):
+    WHAT = "Ask how the homes would count toward the city's state housing target"
+
+    def block(self, **changes):
+        out = homes_of()
+        out.update(changes)
+        return out
+
+    def test_the_step_is_there_when_the_plan_has_homes_and_the_lower_levels_have_homes_left(self):
+        step = next(s for s in todo(housing_block=self.block())["steps"] if s["what"] == self.WHAT)
+        self.assertEqual(step, {"from_year": 2027, "to_year": 2027, "kind": "city", "what": self.WHAT,
+                                "why": "The city still has to permit 3,851 homes for very low, low and moderate incomes by 2029. The plan "
+                                       "adds about 500 homes; which level they count toward is agreed with the city.",
+                                "who": "the city's planning department"})
+
+    def test_it_asks_the_planning_department_the_place_names(self):
+        step = next(s for s in todo(housing_block=self.block(), place={"planning": "City Planning"})["steps"] if s["what"] == self.WHAT)
+        self.assertEqual(step["who"], "City Planning")
+
+    def test_it_sits_with_the_other_city_steps_and_before_the_studies(self):
+        out = todo(housing_block=self.block())
+        self.assertEqual(whats(out)[:3], ["Meet the city's planners before applying", "File the map that divides the land into the pieces to be sold",
+                                          self.WHAT])
+        self.assertEqual(len(out["steps"]), len(todo()["steps"]) + 1)
+
+    def test_the_figure_in_the_reason_is_the_left_of_the_lower_levels_and_the_year_is_the_end_of_the_cycle(self):
+        step = next(s for s in todo(housing_block=self.block(lower={"left": 10}, to_year=2031))["steps"] if s["what"] == self.WHAT)
+        self.assertIn("still has to permit 10 homes", step["why"])
+        self.assertIn("by 2031", step["why"])
+
+    def test_the_homes_in_the_reason_are_the_homes_of_the_plans(self):
+        out = todo(plans=[plan(use("homes", "Houses", 50.0, homes=120)), plan(use("homes", "Flats", 5.0, homes=30))], housing_block=self.block())
+        self.assertIn("The plan adds about 150 homes;", next(s for s in out["steps"] if s["what"] == self.WHAT)["why"])
+
+    def test_no_step_when_the_plan_has_no_homes(self):
+        for plans in ([plan(use("retail", "Shops", 10.0, "change"))], [], [plan(use("homes", "Houses", 100.0, homes=0))]):
+            with self.subTest(plans=plans):
+                self.assertNotIn(self.WHAT, whats(todo(plans=plans, housing_block=self.block())))
+
+    def test_no_step_when_nothing_is_left_for_the_lower_levels(self):
+        self.assertNotIn(self.WHAT, whats(todo(housing_block=self.block(lower={"left": 0}))))
+
+    def test_no_step_when_the_housing_answer_is_not_available(self):
+        for block in ({"available": False}, {}, None, self.block(lower=None)):
+            with self.subTest(block=block):
+                self.assertNotIn(self.WHAT, whats(todo(housing_block=block)))
+
+    def test_no_step_when_the_housing_answer_was_not_passed_at_all(self):
+        self.assertNotIn(self.WHAT, whats(todo()))
+
+    def test_a_town_with_a_thin_housing_answer_gets_no_step_and_the_rest_of_the_list(self):
+        part = housing_part()
+        part["target"]["low"] = None
+        block = homes_of(part)
+        self.assertEqual(whats(todo(housing_block=block)), whats(todo()))
+
+
 # ---------------------------------------------------------------- the whole outlook
 
 def parts_all():
-    return dict(economy_parts(), climate=climate_part(), hazards=rich_hazards(), nearby={"places": [{"kind": "park", "name": "Mosaic Park", "miles_away": 0.85}]},
-                residents=resident_part())
+    return dict(economy_parts(), housing=housing_part(), climate=climate_part(), hazards=rich_hazards(),
+                nearby={"places": [{"kind": "park", "name": "Mosaic Park", "miles_away": 0.85}]}, residents=resident_part())
 
 
 def made(parts=None, plans="houses", fc=None, place="Testville"):
     plans = [plan(use("homes", "Houses", 60.0, "review", homes=500), use("retail", "Shops", 10.0, "change"))] if plans == "houses" else plans
-    return O.make_outlook(site(), fc or forecast(trips=5000, steps=TheSellingSteps.PERIODS), plans, parts_all() if parts is None else parts,
+    return O.make_outlook(site(), fc or with_homes(forecast(trips=5000, steps=TheSellingSteps.PERIODS)), plans, parts_all() if parts is None else parts,
                           {"name": "Testville", "planning": "Testville Planning", "water": "Testville Water"} if place == "Testville" else place)
 
 
 class TheWholeOutlook(unittest.TestCase):
-    def test_it_has_the_six_blocks_and_nothing_else(self):
+    def test_it_has_the_seven_blocks_and_nothing_else(self):
         out = made()
-        self.assertEqual(sorted(out), ["climate", "economy", "hazards", "nearby", "resident", "todo"])
-        for block in ("economy", "climate", "hazards", "nearby", "resident"):
+        self.assertEqual(sorted(out), ["climate", "economy", "hazards", "housing", "nearby", "resident", "todo"])
+        for block in ("economy", "housing", "climate", "hazards", "nearby", "resident"):
             self.assertTrue(out[block]["available"], block)
         self.assertIn("steps", out["todo"])
         self.assertTrue(out["todo"]["steps"])
@@ -1291,6 +1631,7 @@ class TheWholeOutlook(unittest.TestCase):
     def test_every_block_with_no_input_is_not_available_and_has_no_numbers(self):
         out = made(parts={})
         self.assertEqual(out["economy"], {"available": False, "did_not_answer": list(O.ECONOMY_PARTS)})
+        self.assertEqual(out["housing"], {"available": False})
         self.assertEqual(out["climate"], {"available": False})
         self.assertEqual(out["hazards"], {"available": False})
         self.assertEqual(out["nearby"], {"available": False})
@@ -1299,20 +1640,32 @@ class TheWholeOutlook(unittest.TestCase):
         json.dumps(out, allow_nan=False)
 
     def test_every_block_set_to_none_is_the_same_as_left_out(self):
-        nones = {p: None for p in O.ECONOMY_PARTS + O.PLACE_PARTS}
+        nones = {p: None for p in O.CITY_PARTS + O.PLACE_PARTS}
         self.assertEqual(made(parts=nones), made(parts={}))
 
     def test_an_empty_nearby_is_not_available(self):
         self.assertEqual(made(parts={"nearby": {}})["nearby"], {"available": False})
 
     def test_one_block_missing_does_not_take_the_others_with_it(self):
-        for gone in ("climate", "hazards", "nearby", "residents", "sales"):
+        for gone in ("climate", "hazards", "nearby", "residents", "sales", "housing"):
             with self.subTest(gone=gone):
                 parts = parts_all()
                 parts[gone] = None
                 out = made(parts=parts)
-                self.assertEqual(sum(1 for b in ("climate", "hazards", "nearby", "resident") if not out[b]["available"]), 1 if gone != "sales" else 0)
+                self.assertEqual(sum(1 for b in ("housing", "climate", "hazards", "nearby", "resident") if not out[b]["available"]),
+                                 1 if gone != "sales" else 0)
                 self.assertTrue(out["economy"]["available"])
+
+    def test_the_housing_block_is_made_from_the_housing_part_and_the_forecast(self):
+        out = made()
+        self.assertEqual(out["housing"]["target"], 6609)
+        self.assertEqual(out["housing"]["site"]["homes"], 500)
+        self.assertTrue(out["housing"]["facts"][0].startswith("The state requires Testville to plan for 6,609 new homes"))
+
+    def test_the_housing_answer_feeds_the_checklist_and_without_it_the_step_is_gone(self):
+        what = "Ask how the homes would count toward the city's state housing target"
+        self.assertIn(what, whats(made()["todo"]))
+        self.assertNotIn(what, whats(made(parts=dict(parts_all(), housing=None))["todo"]))
 
     def test_the_hazards_it_found_feed_the_checklist(self):
         out = made()

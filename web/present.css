@@ -443,3 +443,12 @@ body.presenting .app{display:block}
   .pr-print-foot{display:flex;justify-content:space-between;gap:20px;position:absolute;left:0;right:0;bottom:0;height:50px;align-items:center;margin:0;padding:0 64px;font-size:12px;color:#56645c;background:#ebe6d8}
   .pr-root .leaflet-control-container,.pr-root .map-switch,.pr-3d .controls{display:none!important}
 }
+
+/* the city's state housing target */
+.pr-housebody{grid-template-columns:minmax(0,1.35fr) minmax(0,.65fr);gap:70px;align-items:center}
+.pr-housebody .pr-hbars{gap:22px;margin-top:26px}
+.pr-housebody .pr-hbar{grid-template-columns:290px minmax(0,1fr) 240px;font-size:24px}
+.pr-housebody .pr-hbar i{height:40px}
+.pr-housefigs{display:flex;flex-direction:column;gap:34px}
+.pr-housefigs .pr-fig b{font-size:54px}
+a.pr-tool{text-decoration:none}

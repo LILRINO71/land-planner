@@ -8,6 +8,7 @@ import { PAGES, FORECAST_ICON } from "./land.js";
 import { money as readNumber } from "../planmath.js";
 import { mountTerrain } from "../terrain3d.js";
 import { NONE, esc, has, num, plural, cap, icon, loading, problem, missing, debounce, dateOnly, when, noAnswer, whyNoAnswer } from "../util.js";
+import { chapters, fold, watchFolds, watchMotion, printEverything, drawIn, countUp, motionOn } from "../calm.js";
 
 // ---------------------------------------------------------------- words and numbers
 
@@ -57,11 +58,11 @@ const GROUPS_FOR = {
   homes: ["Projects on the city's list"], shops: ["Shops", "Projects on the city's list"], jobs: ["Jobs", "Projects on the city's list"],
   traffic: ["Traffic", "The site"], programme: ["The site"],
 };
-// the in-page jump links, top to bottom
-const JUMPS = [["fcTop", "Summary"], ["fcPeople", "People and homes"], ["fcIncome", "Income"], ["fcNeeds", "Homes, shops, jobs"],
-  ["fcTraffic", "Traffic"], ["fcLand", "The land by year"], ["fcPlan", "Site plan"], ["fcEconomy", "Economy"], ["fcWeather", "Weather"],
-  ["fcHazards", "Hazards"], ["fcNearby", "Close by"], ["fcResident", "Who lives nearby"], ["fcTodo", "What needs to be done"],
-  ["fcFigures", "Figures"], ["fcSources", "Sources"]];
+// the page's chapters, one on screen at a time (print shows them all, in the order of the page)
+const CHAPTERS = [["summary", "Summary"], ["market", "People and market"], ["site", "This site"], ["city", "The city around it"],
+  ["todo", "What needs to be done"], ["figures", "Figures and sources"]];
+// the findings shown on the Summary before "Show the other findings"
+const FIRST_FINDINGS = 4;
 // the outlook's sources: [name on screen, what it gives]
 const OUTLOOK_WORDS = {
   population: ["State population estimates", "People and homes in the city, by year"], permits: ["Building permits (Census Bureau)", "Homes permitted, by year"],
@@ -69,6 +70,7 @@ const OUTLOOK_WORDS = {
   borrowing: ["Freddie Mac home-loan survey", "The 30-year home-loan rate"], prices: ["Consumer prices (Bureau of Labor Statistics)", "How much prices rose"],
   climate: ["NASA weather grids", "Weather since 1985"], hazards: ["Hazard maps (FEMA, state, city)", "Flood, fire, faults, ground, water, habitat"],
   nearby: ["City and federal place lists", "Parks, stops, stations, schools, hospitals"], residents: ["Census survey", "Who lives nearby"],
+  housing: ["State housing department progress reports", "The city's state housing target, and permits toward it"],
 };
 // an entrance by the signal it would use: a letter on the marker as well as a colour (as on the Plan page)
 const SIGNAL_MARK = { existing: "S", study: "N", none: "E", unknown: "?" };
@@ -132,7 +134,7 @@ function chart(o) {
     if (!o.xLabel && step >= 5 ? v % step !== 0 : (v - o.xMin) % step !== 0) continue;
     out += `<text class="fc-xlab" x="${x(v).toFixed(1)}" y="${H - 7}" text-anchor="middle">${esc(o.xLabel ? o.xLabel(v) : v)}</text>`;
   }
-  out += o.draw(s);
+  out += `<g class="calm-data">${o.draw(s)}</g>`;   // what draws in, left to right, the first time the chart is seen
   (o.hover || []).forEach((h) => {
     out += `<rect class="fc-hit" x="${(x(h.x) - slot / 2).toFixed(1)}" y="${top}" width="${slot.toFixed(1)}" height="${ph}"><title>${esc(h.text)}</title></rect>`;
   });
@@ -191,6 +193,18 @@ export async function render(main, route, alive) {
   // the site plan in 3D: asked for only when chosen (the ground heights can be slow the first time)
   let ground = null, groundProblem = "", groundAsking = false, unmount3d = null;
   const charts = {};
+  // calm: the open chapter, the disclosures the reader opened (kept through every redraw), the charts already drawn in
+  const folds = new Set(), seenCharts = new Set();
+  let counted = false;
+  const book = chapters({ root: el, list: CHAPTERS, onShow: (id) => {
+    paintCharts();
+    if (id === "summary") countStats();
+  } });
+  const stopFolds = watchFolds(el, folds, () => paintCharts());
+  const stopMotion = watchMotion(el);
+  const stopPrint = printEverything(el, () => paintCharts());
+  alive.onLeave(() => { stopFolds(); stopMotion(); stopPrint(); });
+  const folded = (key, summary, body, cls) => fold(key, summary, body, folds, cls);
   function dropMaps() {
     [mapView, planMap, nearMap].forEach((m) => { if (m) m.destroy(); });
     mapView = planMap = nearMap = null; planLayers = nearLayers = null; planFitted = nearFitted = false;
@@ -276,13 +290,18 @@ export async function render(main, route, alive) {
     const P0 = (data.site.parcels || [])[0] || {};
     document.title = `Forecast · ${single ? P0.apn_formatted || P0.apn : data.apns.length + " parcels"} · Land Planner`;
     if (single) document.dispatchEvent(new CustomEvent("land-open", { detail: { city: data.city, apn: P0.apn, number: P0.apn_formatted || P0.apn, acres: P0.acres } }));
+    // the parts stay in their printed order; on screen only the open chapter's parts show (data-part), each in the
+    // order its chapter reads best (--o)
     el.innerHTML = `
       <div class="fc">
         <header class="page-head fc-head" id="fcHead"></header>
+        ${book.tabs()}
         <div id="fcEdited"></div>
-        <div class="fc-top" id="fcTop"><section class="stats fc-stats" id="fcStats" aria-label="The forecast in numbers"></section><section class="card fc-advice" id="fcAdvice"></section></div>
-        <section id="fcPeople" aria-labelledby="fcPeopleTitle"></section>
-        <section id="fcIncome" aria-labelledby="fcIncomeTitle">
+        <div class="fc-top" id="fcTop" data-part="summary" style="--o:1">
+          <div class="fc-about" id="fcAbout"></div>
+          <section class="stats fc-stats" id="fcStats" aria-label="The forecast in numbers"></section><section class="card fc-advice" id="fcAdvice"></section></div>
+        <section id="fcPeople" data-part="market" style="--o:1" aria-labelledby="fcPeopleTitle"></section>
+        <section id="fcIncome" data-part="market" style="--o:3" aria-labelledby="fcIncomeTitle">
           <h2 id="fcIncomeTitle">Income areas</h2>
           <div class="fc-income">
             <div class="fc-income-map">
@@ -290,19 +309,19 @@ export async function render(main, route, alive) {
               <div class="legend" id="fcMapLegend"></div>
             </div>
             <div class="fc-income-text" id="fcIncomeText"></div>
-            <div class="fc-income-tracts" id="fcTracts"></div>
           </div>
+          <div class="fc-income-tracts" id="fcTracts"></div>
         </section>
-        <section id="fcNeeds" aria-labelledby="fcNeedsTitle"></section>
-        <section id="fcTraffic" aria-labelledby="fcTrafficTitle">
+        <section id="fcNeeds" data-part="market" style="--o:2" aria-labelledby="fcNeedsTitle"></section>
+        <section id="fcTraffic" data-part="site" style="--o:3" aria-labelledby="fcTrafficTitle">
           <div id="fcTrafficBody"></div>
           <div class="fc-entr">
             <div class="fc-entr-map"><div class="map-frame"><div class="map fc-map" id="fcRoadMap"></div></div><div class="legend" id="fcRoadLegend"></div></div>
             <div id="fcEntrText"></div>
           </div>
         </section>
-        <section id="fcLand" aria-labelledby="fcLandTitle"></section>
-        <section id="fcPlan" aria-labelledby="fcPlanTitle">
+        <section id="fcLand" data-part="site" style="--o:1" aria-labelledby="fcLandTitle"></section>
+        <section id="fcPlan" data-part="site" style="--o:2" aria-labelledby="fcPlanTitle">
           <div class="fc-sec-head"><h2 id="fcPlanTitle">Site plan</h2>
             <div class="plan-switch small" role="group" aria-label="What the site plan shows">
               <button type="button" data-planview="uses">The uses</button><button type="button" data-planview="when">When each part is offered</button><button type="button" data-planview="3d">In 3D on the real ground</button></div></div>
@@ -311,25 +330,26 @@ export async function render(main, route, alive) {
             <div id="fcPlanText"></div>
           </div>
         </section>
-        <section id="fcEconomy" aria-labelledby="fcEconomyTitle"></section>
-        <section id="fcWeather" aria-labelledby="fcWeatherTitle"></section>
-        <section id="fcHazards" aria-labelledby="fcHazardsTitle"></section>
-        <section id="fcNearby" aria-labelledby="fcNearbyTitle">
+        <section id="fcEconomy" data-part="city" style="--o:1" aria-labelledby="fcEconomyTitle"></section>
+        <section id="fcHousing" data-part="city" style="--o:2" aria-labelledby="fcHousingTitle"></section>
+        <section id="fcWeather" data-part="city" style="--o:4" aria-labelledby="fcWeatherTitle"></section>
+        <section id="fcHazards" data-part="site" style="--o:4" aria-labelledby="fcHazardsTitle"></section>
+        <section id="fcNearby" data-part="city" style="--o:3" aria-labelledby="fcNearbyTitle">
           <h2 id="fcNearbyTitle">What is close by</h2>
           <div class="fc-nearby">
-            <div class="fc-nearby-map"><div class="map-frame"><div class="map fc-map" id="fcNearMap"></div></div><div class="legend" id="fcNearLegend"></div><div id="fcNearSummary"></div></div>
-            <div id="fcNearText"></div>
+            <div class="fc-nearby-map"><div class="map-frame"><div class="map fc-map" id="fcNearMap"></div></div><div class="legend" id="fcNearLegend"></div></div>
+            <div><div id="fcNearSummary"></div><div id="fcNearText"></div></div>
           </div>
         </section>
-        <section id="fcResident" aria-labelledby="fcResidentTitle"></section>
-        <section id="fcTodo" aria-labelledby="fcTodoTitle"></section>
-        <section id="fcFigures" aria-labelledby="fcFiguresTitle"></section>
-        <section class="two fc-last" id="fcSources"></section>
+        <section id="fcResident" data-part="market" style="--o:4" aria-labelledby="fcResidentTitle"></section>
+        <section id="fcTodo" data-part="todo" style="--o:1" aria-labelledby="fcTodoTitle"></section>
+        <section id="fcFigures" data-part="figures" style="--o:1" aria-labelledby="fcFiguresTitle"></section>
+        <section class="two fc-last" id="fcSources" data-part="figures" style="--o:2"></section>
+        <div class="fc-pager-box" data-calm-pager></div>
       </div>`;
-    el.querySelector(".fc-head").insertAdjacentHTML("afterend", jumpNav());
-    spySoon();
     drawAll(false);
     drawMap();
+    book.open(book.current(), { write: false, first: true });
     loadOutlook(false);
     if (data.kept) status("Your own figures for this site are kept on this computer and used below.", "ok");
     if (window.ResizeObserver && !observer) {
@@ -376,11 +396,21 @@ export async function render(main, route, alive) {
       if (Math.abs(shift) > 1) window.scrollBy(0, shift);
     }
   }
+  // a chart is drawn at the width of its box; a box out of sight (another chapter, a closed disclosure) has no width
+  // and is drawn when it is shown. The first time a chart is drawn on screen its lines draw in.
   function paintCharts() {
     el.querySelectorAll("[data-chart]").forEach((box) => {
-      const fn = charts[box.dataset.chart];
-      if (fn) box.innerHTML = fn(box.clientWidth);
+      const fn = charts[box.dataset.chart], w = box.clientWidth;
+      if (!fn || !w) return;
+      box.innerHTML = fn(w);
+      if (!seenCharts.has(box.dataset.chart)) { seenCharts.add(box.dataset.chart); drawIn(box); }
     });
+  }
+  // the headline numbers count up once, the first time the Summary is on screen
+  function countStats() {
+    if (counted || !data || !el.querySelector("#fcStats [data-to]")) return;
+    counted = true;
+    el.querySelectorAll("#fcStats [data-to]").forEach((b) => countUp(b, Number(b.dataset.to), (v) => amount(Math.round(v), b.dataset.unit || "")));
   }
 
   // ---------------------------------------------------------------- shared pieces
@@ -462,12 +492,14 @@ export async function render(main, route, alive) {
         <div class="head-actions">
           ${single ? "" : `<a class="btn" href="#/my-lands">${icon("saved")} My lands</a>`}
           <button type="button" class="btn" id="fcPrint">Print</button>
+          <a class="btn" href="#/handout/${esc(encodeURIComponent(data.city))}/${data.apns.map((a) => esc(a)).join("+")}" title="The whole site on one printed page, to leave with the people in the room">One-page summary</a>
           <a class="btn primary" href="#/present/${esc(encodeURIComponent(data.city))}/${data.apns.map((a) => esc(a)).join("+")}">${icon("cities")} Present to the city</a>
         </div>
       </div>
-      ${together}
-      <p class="fc-years-line">Next ten years, year by year: <b>${esc(now() + 1)} to ${esc(now() + 5)}</b> in focus, ${esc(now() + 6)} to ${esc(now() + 10)} lighter, and ${esc(data.background_year)} as background. Low, expected and high lines come from the real readings of growth below; nothing is filled in where a source gives nothing.</p>
       ${tabs}`;
+    // what the site is and how the years are shown: read once, on the Summary
+    el.querySelector("#fcAbout").innerHTML = `${together}
+      <p class="fc-years-line">Next ten years, year by year: <b>${esc(now() + 1)} to ${esc(now() + 5)}</b> in focus, ${esc(now() + 6)} to ${esc(now() + 10)} lighter, and ${esc(data.background_year)} as background. Low, expected and high lines come from the real readings of growth; nothing is filled in where a source gives nothing.</p>`;
   }
   function drawEdited() {
     const box = el.querySelector("#fcEdited"), mine = (data.figures || []).filter((f) => f.yours);
@@ -486,13 +518,18 @@ export async function render(main, route, alive) {
     el.querySelector("#fcStats").innerHTML = list.length ? list.map((h) => {
       const bare = (v) => (h.unit === "$" ? amount(v, "$") : num(v));
       const spread = isNum(h.low) && isNum(h.high) ? `<span>low ${bare(h.low)} to high ${bare(h.high)}</span>` : "";
-      return `<div class="stat"><span class="label">${esc(h.label)}</span><b>${amount(h.value, h.unit)}</b>${spread}${h.note ? `<span>${esc(h.note)}</span>` : ""}</div>`;
+      const to = isNum(h.value) ? ` data-to="${Number(h.value)}" data-unit="${esc(h.unit || "")}"` : "";
+      return `<div class="stat"><span class="label">${esc(h.label)}</span><b${to}>${amount(h.value, h.unit)}</b>${spread}${h.note ? `<span>${esc(h.note)}</span>` : ""}</div>`;
     }).join("") : `<div class="stat"><span class="label">Forecast</span><b class="small">${cap(NONE)}</b><span>no reading of growth answered for this site</span></div>`;
   }
   function drawAdvice() {
     const items = data.advice || [];
+    // the first findings, then the rest on request
+    const list = (some) => `<ul class="plain fc-advice-list">${some.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`;
+    const rest = items.slice(FIRST_FINDINGS);
     el.querySelector("#fcAdvice").innerHTML = `<h2>What this says</h2>` +
-      (items.length ? `<ul class="plain fc-advice-list">${items.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : missing("Nothing to say yet: the forecast is not covered for this site."));
+      (items.length ? list(items.slice(0, FIRST_FINDINGS)) + (rest.length ? folded("advice", `Show the other ${rest.length === 1 ? "finding" : rest.length + " findings"}`, list(rest)) : "")
+        : missing("Nothing to say yet: the forecast is not covered for this site."));
   }
 
   // ---------------------------------------------------------------- people and homes
@@ -547,21 +584,19 @@ export async function render(main, route, alive) {
         g.to ? `${num(g.to.homes)} ${plural(g.to.homes, "home")}<small>in ${esc(g.to.year)}</small>` : NONE];
     });
     box.innerHTML = head + intro + `
-      <div class="fc-people">
-        <div class="card fc-people-chart">
-          <div class="fc-chart" data-chart="people"></div>
-          <div class="legend fc-legend">${key("band", "Low to high")}${key("line", "Expected")}${key("counted", "Counted by the Census")}${key("focus", "Next five years")}${key("now", "This year")}</div>
-          ${ring.today_from && ring.today_from.words ? `<p class="fine">Where “this year” (${esc(ring.today_from.year || now())}) comes from: ${esc(ring.today_from.words)}</p>` : ""}
-        </div>
-        <div class="fc-people-table"><h3>Year by year, within ${esc(mi(ring.miles))}</h3>
+      <div class="card fc-people-chart">
+        <div class="fc-chart" data-chart="people"></div>
+        <div class="legend fc-legend">${key("band", "Low to high")}${key("line", "Expected")}${key("counted", "Counted by the Census")}${key("focus", "Next five years")}${key("now", "This year")}</div>
+      </div>
+      <div class="fc-folds">
+        ${folded("people-years", "Show the year-by-year figures", `<h3>Year by year, within ${esc(mi(ring.miles))}</h3>
           ${yearTable(["Year", "People<small>expected, then low to high</small>", "Homes<small>expected, then low to high</small>"],
             rows.map((x) => ({ year: x.year, cells: [cellRange(x.people), cellRange(x.homes)] })))}
-        </div>
-        <div class="fc-people-readings"><h3>The readings of growth</h3>
+          ${allRings()}`)}
+        ${folded("people-how", "How this was worked out", `<h3>The readings of growth</h3>
           ${readings.length ? plainTable(["What it is, and its source", "A year", "From", "To"], readings, [1, 2, 3]) : missing("Readings of growth: not covered yet.")}
           <p class="fine">Each reading is a steady yearly growth rate in homes. People are homes times the people a home counted in ${esc(cYears[cYears.length - 1] || "the last Census")}.</p>
-          ${allRings()}
-        </div>
+          ${ring.today_from && ring.today_from.words ? `<p class="fine">Where “this year” (${esc(ring.today_from.year || now())}) comes from: ${esc(ring.today_from.words)}</p>` : ""}`)}
       </div>`;
   }
 
@@ -641,23 +676,23 @@ export async function render(main, route, alive) {
     const dirs = inc.by_direction || [], far = (data.rings || []).map((r) => r.miles).filter(isNum);
     textBox.innerHTML = `<div class="card fc-income-card">
       <p class="fc-summary">${esc(inc.summary || "")}</p>
-      ${dirs.length ? `<div class="fc-dirs">${dirs.map((d) => `<div><span class="label">${esc(cap(d.direction))}</span><b>$${num(d.income)}</b><span>${num(d.households)} ${plural(d.households, "household")} in ${num(d.tracts)} ${plural(d.tracts, "tract")}</span></div>`).join("")}</div>
-        <p class="fine">By direction: the households' typical income in the tracts on that side${far.length ? `, within ${esc(mi(Math.max(...far)))}` : ""}. A tract to the north-east counts toward both north and east.</p>` : ""}
-      <dl class="facts">
+      ${dirs.length ? `<div class="fc-dirs">${dirs.map((d) => `<div><span class="label">${esc(cap(d.direction))}</span><b>$${num(d.income)}</b><span>${num(d.households)} ${plural(d.households, "household")} in ${num(d.tracts)} ${plural(d.tracts, "tract")}</span></div>`).join("")}</div>` : ""}
+      ${folded("income-facts", "Show the figures and how they were read", `<dl class="facts">
         <dt>Typical household income within ${esc(mi(data.market_miles))}</dt><dd>${amount(inc.typical, "$")} a year</dd>
         <dt>${esc(inc.county_name || "The county")}</dt><dd>${amount(inc.county, "$")} a year</dd>
         <dt>Households that rent</dt><dd>${isNum(inc.renters_pct) ? `about ${num(inc.renters_pct, 1)}%` : NONE}</dd>
         <dt>Homes built in 2020 or later, within ${esc(mi(data.market_miles))}</dt><dd>${isNum(inc.built_since_2020) ? "about " + num(inc.built_since_2020) : NONE}${inc.homes_survey ? ` <small class="muted">(survey ${esc(inc.homes_survey)})</small>` : ""}</dd>
       </dl>
-      <p class="fine">${esc(inc.source || "Census survey")}${inc.survey ? `, ${esc(inc.survey)}` : ""}. Survey dollars, not adjusted for inflation.</p></div>`;
+      ${dirs.length ? `<p class="fine">By direction: the households' typical income in the tracts on that side${far.length ? `, within ${esc(mi(Math.max(...far)))}` : ""}. A tract to the north-east counts toward both north and east.</p>` : ""}
+      <p class="fine">${esc(inc.source || "Census survey")}${inc.survey ? `, ${esc(inc.survey)}` : ""}. Survey dollars, not adjusted for inflation.</p>`)}</div>`;
     const rows = (inc.tracts || []).map((t) => [
       `<span class="swatch" style="background:${scale ? scale.colourOf(t.income) : "#ccc"}"></span>${esc(String(t.name || NONE).replace(/^Census Tract /, "Tract "))}`,
       `${num(t.miles_away, 2)} mi<small>${esc(t.direction || NONE)}</small>`, amount(t.income, "$"), num(t.households),
       isNum(t.share_in_market) ? num(100 * t.share_in_market) + "%" : NONE,
       t.against_county ? `<span class="fc-against ${esc(t.against_county.replace(/\s+/g, "-"))}">${esc(t.against_county)}</span>` : NONE]);
-    tracts.innerHTML = `<h3>Census tracts, nearest first</h3>
-      ${rows.length ? `<div class="fc-tracts">${plainTable(["Census tract", "Away", "Typical income", "Households", `Inside ${esc(mi(data.market_miles))}`, `Against ${esc(inc.county_name || "the county")}`], rows, [1, 2, 3, 4])}</div>` : missing("Census tracts: not covered yet.")}
-      <p class="fine">“Inside ${esc(mi(data.market_miles))}” is the share of the tract's area within that distance; the typical income above weighs each tract by its households inside. “Higher” and “lower” mean 15% or more above or below ${esc(inc.county_name || "the county")}.</p>`;
+    tracts.innerHTML = `<div class="fc-folds">${folded("income-tracts", `Show the census tracts, nearest first${rows.length ? ` (${num(rows.length)})` : ""}`,
+      `${rows.length ? `<div class="fc-tracts">${plainTable(["Census tract", "Away", "Typical income", "Households", `Inside ${esc(mi(data.market_miles))}`, `Against ${esc(inc.county_name || "the county")}`], rows, [1, 2, 3, 4])}</div>` : missing("Census tracts: not covered yet.")}
+      <p class="fine">“Inside ${esc(mi(data.market_miles))}” is the share of the tract's area within that distance; the typical income above weighs each tract by its households inside. “Higher” and “lower” mean 15% or more above or below ${esc(inc.county_name || "the county")}.</p>`)}</div>`;
   }
 
   // ---------------------------------------------------------------- homes needed, shops, jobs
@@ -693,10 +728,13 @@ export async function render(main, route, alive) {
         });
       };
     } else delete charts[spec.name + "-sum"];
-    return `<div class="fc-chart" data-chart="${spec.name}-year"></div>
-      <div class="legend fc-legend">${key("band", "Needed, low to high")}${key("line", "Needed, expected")}${key("bar", "Already on the city's lists")}</div>
-      ${sum.length > 1 ? `<h4 class="fc-sub">Added up</h4><div class="fc-chart" data-chart="${spec.name}-sum"></div>
-      <div class="legend fc-legend">${key("band", "Needed so far, low to high")}${key("line", "Needed so far, expected")}${key("lists", "On the city's lists so far")}</div>` : ""}`;
+    // the year chart leads; the added-up chart goes with the year-by-year figures
+    return {
+      year: `<div class="fc-chart" data-chart="${spec.name}-year"></div>
+      <div class="legend fc-legend">${key("band", "Needed, low to high")}${key("line", "Needed, expected")}${key("bar", "Already on the city's lists")}</div>`,
+      sum: sum.length > 1 ? `<h4 class="fc-sub">Added up</h4><div class="fc-chart" data-chart="${spec.name}-sum"></div>
+      <div class="legend fc-legend">${key("band", "Needed so far, low to high")}${key("line", "Needed so far, expected")}${key("lists", "On the city's lists so far")}</div>` : "",
+    };
   }
   // the expected figure, with low to high under it (left out when all three are the same)
   const cellRange = (o) => `${num(o && o.expected)}${o && Number(o.low) === Number(o.high) && Number(o.low) === Number(o.expected) ? "" : `<small>${range(o)}</small>`}`;
@@ -707,46 +745,53 @@ export async function render(main, route, alive) {
     let homes;
     if (!H.available) homes = notCovered("Homes needed", "homes");
     else {
-      homes = `<p class="fc-summary">${esc(H.summary || "")}</p><div class="fc-need-body"><div>` + needCharts({
+      const c = needCharts({
         name: "homes", rows: H.rows || [], need: (r) => r.need, list: (r) => r.pipeline, needSoFar: (r) => r.need_so_far, listSoFar: (r) => r.pipeline_so_far,
         unit: "homes", what: `new homes needed within ${mi(data.market_miles)}`,
-      }) + "</div><div>" + yearTable(["Year", "Needed a year", "On the city's lists", "Needed so far", "On the lists so far", "To rent / to own"],
-        (H.rows || []).map((r) => ({ year: r.year, cells: [cellRange(r.need), num(r.pipeline), r.need_so_far ? cellRange(r.need_so_far) : "", has(r.pipeline_so_far) ? num(r.pipeline_so_far) : "",
-          has(r.rented) ? `${num(r.rented)} / ${num(r.owned)}` : ""] })), "fc-compact") +
+      });
+      homes = `<p class="fc-summary">${esc(H.summary || "")}</p>` + c.year +
         `<dl class="facts fc-totals"><dt>Needed over ten years</dt><dd>${cellRange(H.need_10_years)}</dd><dt>On the city's lists over ten years</dt><dd>${num(H.pipeline_10_years)}</dd>
-          <dt>Years of the expected need the lists cover</dt><dd>${isNum(H.pipeline_covers_years) ? num(H.pipeline_covers_years, 1) : NONE}</dd></dl>
-        <p class="fine">To rent and to own splits the expected need by today's share of renters (census survey).</p>` + restsOn("homes") + "</div></div>";
+          <dt>Years of the expected need the lists cover</dt><dd>${isNum(H.pipeline_covers_years) ? num(H.pipeline_covers_years, 1) : NONE}</dd></dl>` +
+        folded("homes-years", "Show the year-by-year figures", c.sum + yearTable(["Year", "Needed a year", "On the city's lists", "Needed so far", "On the lists so far", "To rent / to own"],
+          (H.rows || []).map((r) => ({ year: r.year, cells: [cellRange(r.need), num(r.pipeline), r.need_so_far ? cellRange(r.need_so_far) : "", has(r.pipeline_so_far) ? num(r.pipeline_so_far) : "",
+            has(r.rented) ? `${num(r.rented)} / ${num(r.owned)}` : ""] })), "fc-compact") +
+          `<p class="fine">To rent and to own splits the expected need by today's share of renters (census survey).</p>`) +
+        folded("homes-how", "How this was worked out", restsOn("homes"));
     }
     let shops;
     if (!S.available) shops = notCovered("Shop space", "shops");
     else {
-      shops = `<p class="fc-summary">${esc(S.summary || "")}</p><div class="fc-need-body"><div>` + needCharts({
+      const c = needCharts({
         name: "shops", rows: S.rows || [], need: (r) => r.new_sq_ft, list: (r) => r.pipeline_sq_ft, needSoFar: (r) => r.new_so_far, listSoFar: (r) => r.pipeline_so_far,
         unit: "sq ft", what: `new shop space that growth within ${mi(data.market_miles)} supports`,
-      }) + "</div><div>" + yearTable(["Year", "Supported a year (sq ft)", "On the city's lists", "Supported so far", "On the lists so far"],
-        (S.rows || []).map((r) => ({ year: r.year, cells: [cellRange(r.new_sq_ft), num(r.pipeline_sq_ft), cellRange(r.new_so_far), num(r.pipeline_so_far)] })), "fc-compact") +
-        `<dl class="facts fc-totals"><dt>Shop space a household supports</dt><dd>${isNum(S.sq_ft_per_home) ? num(S.sq_ft_per_home, 1) + " sq ft" : NONE}</dd>
-          <dt>What homes within ${mm} support today</dt><dd>${cellRange(S.supported_today_sq_ft)} sq ft</dd>
-          <dt>New over ten years</dt><dd>${cellRange(S.new_10_years_sq_ft)} sq ft</dd><dt>On the city's lists over ten years</dt><dd>${num(S.pipeline_10_years_sq_ft)} sq ft</dd></dl>` + restsOn("shops") + "</div></div>";
+      });
+      shops = `<p class="fc-summary">${esc(S.summary || "")}</p>` + c.year +
+        `<dl class="facts fc-totals"><dt>New over ten years</dt><dd>${cellRange(S.new_10_years_sq_ft)} sq ft</dd><dt>On the city's lists over ten years</dt><dd>${num(S.pipeline_10_years_sq_ft)} sq ft</dd></dl>` +
+        folded("shops-years", "Show the year-by-year figures", c.sum + yearTable(["Year", "Supported a year (sq ft)", "On the city's lists", "Supported so far", "On the lists so far"],
+          (S.rows || []).map((r) => ({ year: r.year, cells: [cellRange(r.new_sq_ft), num(r.pipeline_sq_ft), cellRange(r.new_so_far), num(r.pipeline_so_far)] })), "fc-compact")) +
+        folded("shops-how", "How this was worked out", `<dl class="facts fc-totals"><dt>Shop space a household supports</dt><dd>${isNum(S.sq_ft_per_home) ? num(S.sq_ft_per_home, 1) + " sq ft" : NONE}</dd>
+          <dt>What homes within ${mm} support today</dt><dd>${cellRange(S.supported_today_sq_ft)} sq ft</dd></dl>` + restsOn("shops"));
     }
     let jobs;
     if (!J.available) jobs = notCovered("Jobs and work space", "jobs");
     else {
       const readings = (J.readings || []).map((g) => [`<b>${esc(g.label)}</b> <span class="fc-tag official">official forecast</span><small>${esc(g.source || NONE)}</small>`, num(g.jobs_per_year),
         g.from ? `${num(g.from.jobs)}<small>in ${esc(g.from.year)}</small>` : NONE, g.to ? `${num(g.to.jobs)}<small>in ${esc(g.to.year)}</small>` : NONE]);
-      jobs = `<p class="fc-summary">${esc(J.summary || "")}</p><div class="fc-need-body"><div>` + needCharts({
+      const c = needCharts({
         name: "jobs", rows: J.rows || [], need: (r) => r.space_sq_ft, list: (r) => r.pipeline_sq_ft, needSoFar: (r) => r.space_so_far, listSoFar: (r) => r.pipeline_so_far,
         unit: "sq ft", what: `work space new jobs within ${mi(data.market_miles)} need`,
-      }) + "</div><div>" + yearTable(["Year", "New jobs", "Space a year (sq ft)", "On the city's lists", "Space so far", "On the lists so far"],
-        (J.rows || []).map((r) => ({ year: r.year, cells: [cellRange(r.new_jobs), cellRange(r.space_sq_ft), num(r.pipeline_sq_ft), cellRange(r.space_so_far), num(r.pipeline_so_far)] })), "fc-compact") +
-        (readings.length ? `<h4 class="fc-sub">The readings of jobs</h4>${plainTable(["What it is, and its source", "New jobs a year", "From", "To"], readings, [1, 2, 3])}` : "") + restsOn("jobs") + "</div></div>";
+      });
+      jobs = `<p class="fc-summary">${esc(J.summary || "")}</p>` + c.year +
+        folded("jobs-years", "Show the year-by-year figures", c.sum + yearTable(["Year", "New jobs", "Space a year (sq ft)", "On the city's lists", "Space so far", "On the lists so far"],
+          (J.rows || []).map((r) => ({ year: r.year, cells: [cellRange(r.new_jobs), cellRange(r.space_sq_ft), num(r.pipeline_sq_ft), cellRange(r.space_so_far), num(r.pipeline_so_far)] })), "fc-compact")) +
+        folded("jobs-how", "How this was worked out", (readings.length ? `<h4 class="fc-sub">The readings of jobs</h4>${plainTable(["What it is, and its source", "New jobs a year", "From", "To"], readings, [1, 2, 3])}` : "") + restsOn("jobs"));
     }
     box.innerHTML = `<h2 id="fcNeedsTitle">Homes needed, shops, jobs and work space</h2>
       <p class="fc-intro">What growth within ${mm} needs each year, beside what is already on the city's lists. The band is low to high, the line expected; the bars are projects already on the city's lists, spread over the years they are likely to open.</p>
       <div class="fc-needs">
         <article class="card fc-need"><h3>Homes needed</h3>${homes}</article>
         <article class="card fc-need"><h3>Shops and restaurants</h3>${shops}</article>
-        <article class="card fc-need fc-wide"><h3>Jobs and work space</h3>${jobs}</article>
+        <article class="card fc-need"><h3>Jobs and work space</h3>${jobs}</article>
         <article class="card fc-need fc-stages">${stagesHtml()}</article>
       </div>`;
   }
@@ -754,6 +799,10 @@ export async function render(main, route, alive) {
     const pipe = ((data.homes || {}).pipeline) || {}, counted = pipe.stages || [];
     const head = `<h3>Already on the city's lists, by stage</h3>`;
     if (!pipe.available) return head + notCovered("The city's project lists", "projects");
+    return head + `<p class="fc-summary">Counted: <b>${num(pipe.projects_counted)}</b> ${plural(pipe.projects_counted, "project")} within ${esc(mi(data.market_miles))} that state a number of homes or a building size.</p>` +
+      folded("stages", "Show the projects by stage, and the lists used", stagesBody(pipe, counted));
+  }
+  function stagesBody(pipe, counted) {
     const review = (data.figures || []).find((f) => f.id === "built_review_pct");
     // a stage with no project counted in it has nothing to show, so it is left out
     const rows = (data.stages || []).filter((st) => { const c = counted.find((x) => x.label === st.label); return c && Number(c.projects) > 0; }).map((st) => {
@@ -763,7 +812,7 @@ export async function render(main, route, alive) {
         `${esc(st.from_year)} to ${esc(st.to_year)}`, num(c.projects), num(c.homes), num(c.shops_sq_ft), num(c.work_sq_ft)] };
     });
     const lists = Object.entries(pipe.lists_updated || {});
-    return head + (rows.length ? plainTable(["Stage", "Likely to open", "Projects", "Homes", "Shop space (sq ft)", "Work space (sq ft)"], rows, [2, 3, 4, 5]) : missing("No project on the city's lists is counted in any stage yet.")) +
+    return (rows.length ? plainTable(["Stage", "Likely to open", "Projects", "Homes", "Shop space (sq ft)", "Work space (sq ft)"], rows, [2, 3, 4, 5]) : missing("No project on the city's lists is counted in any stage yet.")) +
       `<p class="fine">Counted: <b>${num(pipe.projects_counted)}</b> projects within ${esc(mi(data.market_miles))} that state a number of homes or a building size.${isNum(pipe.projects_without_sizes) && pipe.projects_without_sizes ? ` ${num(pipe.projects_without_sizes)} more within that distance state neither, so they are left out.` : ""}${Number(pipe.projects_other_kinds) > 0 ? ` ${num(pipe.projects_other_kinds)} are not homes, shops or work space, so they are not counted.` : ""}${Number(pipe.projects_dropped) > 0 ? ` ${num(pipe.projects_dropped)} were withdrawn, denied, expired or cancelled, so they are not counted as coming.` : ""} The lists hold ${num(pipe.projects_listed)} ${plural(pipe.projects_listed, "project")} in all.
         ${review ? ` Stages marked “may not all be built” count ${figureValue(review)} of their homes and floor space (${esc(review.label.toLowerCase())}, ${review.yours ? "your figure" : "a starting figure"}).` : ""}</p>
       ${lists.length ? `<p class="fine">The city's lists used: ${lists.map(([name, d]) => `${esc(name)} (updated ${esc(day(d) || d)})`).join("; ")}.</p>` : ""}`;
@@ -800,15 +849,17 @@ export async function render(main, route, alive) {
       <div class="fc-traffic">
         <div class="card"><h3>${esc(where)}${isNum(hw.miles_away) ? `, ${num(hw.miles_away, 2)} ${plural(hw.miles_away, "mile", "miles", 2)} away` : ""}</h3>
           <div class="fc-chart" data-chart="highway"></div>
-          <div class="legend fc-legend">${key("band", "Low to high")}${key("line", "Expected")}${key("focus", "Next five years")}</div>
-          <h4 class="fc-sub">The site's own trips</h4>
+          <div class="legend fc-legend">${key("band", "Low to high")}${key("line", "Expected")}${key("focus", "Next five years")}</div></div>
+        <div class="card"><h3>The site's own trips</h3>
           <div class="fc-chart" data-chart="trips"></div>
           <div class="legend fc-legend">${key("bar site", "Trips a day the site adds as its land is taken up")}</div>
         </div>
-        <div>${yearTable(["Year", "Vehicles a day<small>expected, then low to high</small>", "The site's trips a day"],
-          rows.map((r) => ({ year: r.year, cells: [cellRange(r.highway), num(r.site_trips)] })))}
-          <p class="fine">Today's count is Caltrans' latest (${isNum(hw.today) ? num(hw.today) + " vehicles a day" : NONE}), both directions together. It grows with the homes around it; trips from the site follow its own take-up below.</p>
-          ${restsOn("traffic")}</div>
+      </div>
+      <div class="fc-folds">
+        ${folded("traffic-years", "Show the year-by-year figures", yearTable(["Year", "Vehicles a day<small>expected, then low to high</small>", "The site's trips a day"],
+          rows.map((r) => ({ year: r.year, cells: [cellRange(r.highway), num(r.site_trips)] }))))}
+        ${folded("traffic-how", "How this was worked out", `<p class="fine">Today's count is Caltrans' latest (${isNum(hw.today) ? num(hw.today) + " vehicles a day" : NONE}), both directions together. It grows with the homes around it; trips from the site follow how fast its own land is taken up.</p>
+          ${restsOn("traffic")}`)}
       </div>`;
   }
 
@@ -859,9 +910,9 @@ export async function render(main, route, alive) {
           return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b>${e.class ? ` (${esc(e.class)})` : ""}, about ${num(e.trips)} ${plural(e.trips, "trip")} a day. <b>${esc(SIGNAL_WORDS[kind])}.</b> ${esc(e.text || "")}</span></li>`;
         }).join("")}</ul>` : missing("Where the entrances go: not covered yet.")}
         ${isNum(T.signals_to_study) ? `<p>${Number(T.signals_to_study) ? `<b>${num(T.signals_to_study)}</b> new ${Number(T.signals_to_study) === 1 ? "signal is" : "signals are"} worth studying at the entrances.` : "No new signal is likely to be needed at the entrances."}</p>` : ""}
-        <h3 class="fc-gap">Traffic signals today, nearest first</h3>
-        ${signals.length ? plainTable(["Where", "Miles away"], signals.slice().sort((a, b) => a.miles_away - b.miles_away).map((s) => [`${esc(s.street)} and ${esc(s.cross_street)}`, num(s.miles_away, 2)]), [1]) : missing("Traffic signals nearby: not covered yet.")}
-        <p class="fine">The entrances come from the site plan and the trip rates under each parcel's Plan page, which are starting figures. This is not a traffic study.</p></div>`;
+        <p class="fine">The entrances come from the site plan and the trip rates under each parcel's Plan page, which are starting figures. This is not a traffic study.</p>
+        ${folded("signals", `Show the traffic signals today, nearest first${signals.length ? ` (${num(signals.length)})` : ""}`,
+          signals.length ? plainTable(["Where", "Miles away"], signals.slice().sort((a, b) => a.miles_away - b.miles_away).map((s) => [`${esc(s.street)} and ${esc(s.cross_street)}`, num(s.miles_away, 2)]), [1]) : missing("Traffic signals nearby: not covered yet."))}</div>`;
   }
 
   // ---------------------------------------------------------------- the site's own land
@@ -906,46 +957,32 @@ export async function render(main, route, alive) {
     const steps = (G.steps || []).map((st) => `<article class="card fc-step"><p class="kicker dark">${esc(st.label)}</p><h3>${esc(st.title)}</h3><ul class="plain">${(st.lines || []).map((l) => `<li>${esc(l)}</li>`).join("")}</ul></article>`).join("");
     box.innerHTML = head + `
       <p class="fc-intro">${esc(G.basis || "")} The site wins a share of each year's new need of its kind (homes, shop space, work space), once its first land is ready.${isNum(G.acres) ? ` ${num(G.acres, 1)} ${plural(G.acres, "acre", "acres", 1)} in the plan` : ""}${isNum(G.trips_at_build_out) ? `, about ${num(G.trips_at_build_out)} ${plural(G.trips_at_build_out, "trip")} a day once everything is built` : ""}.</p>
-      <div class="fc-landgrid">
-        <div class="card"><div class="fc-chart" data-chart="land"></div><ul class="fc-uses">${legend}</ul></div>
-        <div>${table}</div>
+      <div class="card fc-land-card"><div class="fc-chart" data-chart="land"></div><ul class="fc-uses">${legend}</ul></div>
+      <div class="fc-folds">
+        ${folded("land-years", "Show the year-by-year figures", table)}
+        ${steps ? folded("land-steps", "Show the steps the land is offered in", `<div class="fc-steps">${steps}</div>`) : ""}
+        ${folded("land-after", "After ten years, and what is not forecast", `<div class="fc-after">
+          <div><h3>After ten years</h3>${(G.after || []).length ? `<ul class="plain">${G.after.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : "<p>All of the land is taken up within the ten years at this pace.</p>"}</div>
+          <div>${notForecast || "<h3>Not forecast</h3><p>Every use on this site has a forecast.</p>"}</div></div>`)}
+        ${folded("land-how", "How this was worked out", restsOn("programme"))}
       </div>
-      ${steps ? `<div class="fc-steps">${steps}</div>` : ""}
-      <div class="card fc-after">
-        <div><h3>After ten years</h3>${(G.after || []).length ? `<ul class="plain">${G.after.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : "<p>All of the land is taken up within the ten years at this pace.</p>"}</div>
-        <div>${notForecast || "<h3>Not forecast</h3><p>Every use on this site has a forecast.</p>"}${restsOn("programme")}${planLinks}</div>
-      </div>`;
+      ${planLinks}`;
   }
 
-  // ---------------------------------------------------------------- jump links (sticky at the top of the page)
+  // ---------------------------------------------------------------- going to a part of the page
 
-  function jumpNav() {
-    return `<nav class="fc-jump" aria-label="Parts of this page">${JUMPS.map(([id, words]) =>
-      `<button type="button" data-goto="${id}">${esc(words)}</button>`).join("")}</nav>`;
+  // a jump to a part (or a box inside it): its chapter opens first, then it is brought into view
+  function goTo(id, focusBox) {
+    const target = el.querySelector("#" + CSS.escape(id));
+    if (!target) return;
+    const part = book.partOf(target);
+    if (part && part !== book.current()) book.open(part);
+    target.scrollIntoView({ behavior: motionOn() ? "smooth" : "auto", block: "start" });
+    const box = focusBox ? target.querySelector("input") : null;
+    if (box) box.focus({ preventScroll: true });
   }
-  // the highlighted jump link follows the part of the page in view: the Summary at the top of the page, the last part at its end
-  let spying = 0;
-  function spyJumps() {
-    spying = 0;
-    const nav = el.querySelector(".fc-jump");
-    if (!nav || !alive()) return;
-    // a part counts as in view once its top has passed just under the links (where a jump link lands it)
-    const first = el.querySelector("#" + JUMPS[0][0]);
-    const line = Math.max(nav.getBoundingClientRect().bottom + 24, (first ? parseFloat(getComputedStyle(first).scrollMarginTop) || 0 : 0) + 60);
-    let current = JUMPS[0][0];
-    JUMPS.forEach(([id]) => { const s = el.querySelector("#" + id); if (s && s.getBoundingClientRect().top <= line) current = id; });
-    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) current = JUMPS[JUMPS.length - 1][0];
-    nav.querySelectorAll("button").forEach((b) => {
-      const on = b.dataset.goto === current;
-      b.classList.toggle("key", on);
-      if (on) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
-    });
-  }
-  const spySoon = () => { if (!spying) spying = requestAnimationFrame(spyJumps); };
-  window.addEventListener("scroll", spySoon, true);
-  window.addEventListener("resize", spySoon);
-  alive.onLeave(() => { window.removeEventListener("scroll", spySoon, true); window.removeEventListener("resize", spySoon); });
   // redraw something without moving what the person is reading: the first section at the top of the screen stays put
+  // (sections of the other chapters are not on screen, so they are passed over)
   function keepScreen(fn) {
     const top = [...el.querySelectorAll(".fc > section, .fc > .fc-top")].find((s) => s.getBoundingClientRect().bottom > 60);
     const before = top ? top.getBoundingClientRect().top : 0;
@@ -954,7 +991,6 @@ export async function render(main, route, alive) {
       const shift = top.getBoundingClientRect().top - before;
       if (Math.abs(shift) > 1) window.scrollBy(0, shift);
     }
-    spySoon();
   }
 
   // ---------------------------------------------------------------- site plan (from the forecast: where each use sits)
@@ -1053,10 +1089,10 @@ export async function render(main, route, alive) {
         `<span class="swatch" style="background:${phase.colour}"></span>${esc(phase.year ? String(phase.year) : phase.words)}`, filled || '<span class="muted">with the rest</span>'];
     });
     box.innerHTML = `<div class="card fc-plan-card">
-        ${why ? `<h3>Why it is laid out this way</h3>${why}` : ""}
-        <h3 class="fc-gap">The pieces</h3>
+        <h3>The pieces</h3>
         ${plainTable(["Use", "Acres", "First offered", "All taken up"], rows, [1])}
         <p class="fine">“First offered” is the first year the forecast takes up any of that use (expected line, your figures if you changed them). The pieces are a first sketch cut from the assessor's outlines: not lot lines and not a site plan the city has seen.</p>
+        ${why ? folded("plan-why", "Why it is laid out this way", why) : ""}
       </div>`;
   }
 
@@ -1144,7 +1180,7 @@ export async function render(main, route, alive) {
     return missing(`${what}: not covered yet.${says ? " " + says : ""}`);
   }
   function drawOutlook() {
-    drawEconomy(); drawWeather(); drawHazards(); drawNearby(); drawResident(); drawTodo();
+    drawEconomy(); drawHousing(); drawWeather(); drawHazards(); drawNearby(); drawResident(); drawTodo();
   }
 
   // ---- the city's economy, year by year
@@ -1209,7 +1245,9 @@ export async function render(main, route, alive) {
       given(r.unemployment_pct, num(r.unemployment_pct, 1) + "%") + (isNum(r.labour_force) ? `<small>of ${num(r.labour_force)}</small>` : ""),
       given(r.mortgage_pct, num(r.mortgage_pct, 2) + "%" + (partialLoan(r) ? `<small>${esc(r.mortgage_weeks)} of 52 weeks</small>` : "")), given(r.prices_change_pct, num(r.prices_change_pct, 1) + "%")]);
     box.innerHTML = `<h2 id="fcEconomyTitle">${title}</h2>
-      <p class="fc-intro">${esc(place)} as a whole, as measured by the state and federal agencies below. A year not yet complete is marked.</p>
+      <p class="fc-intro">${esc(place)} as a whole, as measured by state and federal agencies. A year not yet complete is marked.</p>
+      <div class="card fc-says"><h3>What it says</h3>${(E.facts || []).length ? `<ul class="plain">${E.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : missing("Nothing to say yet.")}
+        ${(E.did_not_answer || []).length ? `<p class="fine fc-no">${esc(stateSentences(E.did_not_answer, outlook.answered || {}, (p) => (OUTLOOK_WORDS[p] || [p])[0]))}</p>` : ""}</div>
       <div class="fc-eco-charts">
         <div class="card"><h3>People and homes</h3><div class="fc-chart" data-chart="eco-people"></div><div class="legend fc-legend">${key("line", "People")}${key("line alt", "Homes")}</div></div>
         <div class="card"><h3>Homes permitted</h3><div class="fc-chart" data-chart="eco-permits"></div><div class="legend fc-legend">${key("bar", "Homes permitted")}${key("bar partial", "Year not complete (months marked)")}</div></div>
@@ -1217,12 +1255,10 @@ export async function render(main, route, alive) {
           ${!ahead.length && E.sales_ahead_note ? `<p class="fine fc-ahead-note"><b>Years ahead:</b> ${esc(E.sales_ahead_note)}</p>` : ""}</div>
         <div class="card"><h3>Unemployment and home loans</h3><div class="fc-chart" data-chart="eco-rates"></div><div class="legend fc-legend">${key("line jobless", "Unemployment")}${key("line loan", "30-year home-loan rate")}${rows.some(partialLoan) ? key("dot-partial", "Year not complete (weeks marked)") : ""}</div></div>
       </div>
-      <div class="fc-eco-bottom">
-        <div class="card"><h3>What it says</h3>${(E.facts || []).length ? `<ul class="plain">${E.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : missing("Nothing to say yet.")}
-          ${E.sales_ahead_basis ? `<p class="fine"><b>Sales ahead:</b> ${esc(E.sales_ahead_basis)}</p>` : ""}
-          ${(E.did_not_answer || []).length ? `<p class="fine fc-no">${esc(stateSentences(E.did_not_answer, outlook.answered || {}, (p) => (OUTLOOK_WORDS[p] || [p])[0]))}</p>` : ""}</div>
-        <div class="fc-eco-table">${plainTable(["Year", "People<small>and homes</small>", "Homes permitted", "Shop and restaurant sales", "Sales a household", "Unemployment<small>of those working or looking</small>", "Home-loan rate<small>30-year, average</small>", "Prices rose"], tableRows, [1, 2, 3, 4, 5, 6, 7])}
-          <p class="fine">Sources: ${(E.sources || []).map((s) => `${esc(s.source || (OUTLOOK_WORDS[s.name] || [s.name])[0])}${s.answered ? "" : " (did not answer)"}`).join("; ")}.</p></div>
+      <div class="fc-folds">
+        ${folded("eco-years", "Show the year-by-year figures", `<div class="fc-eco-table">${plainTable(["Year", "People<small>and homes</small>", "Homes permitted", "Shop and restaurant sales", "Sales a household", "Unemployment<small>of those working or looking</small>", "Home-loan rate<small>30-year, average</small>", "Prices rose"], tableRows, [1, 2, 3, 4, 5, 6, 7])}</div>`)}
+        ${folded("eco-how", "How this was worked out", `${E.sales_ahead_basis ? `<p class="fine"><b>Sales ahead:</b> ${esc(E.sales_ahead_basis)}</p>` : ""}
+          <p class="fine">Sources: ${(E.sources || []).map((s) => `${esc(s.source || (OUTLOOK_WORDS[s.name] || [s.name])[0])}${s.answered ? "" : " (did not answer)"}`).join("; ")}.</p>`)}
       </div>`;
   }
 
@@ -1267,6 +1303,7 @@ export async function render(main, route, alive) {
     };
     const stat = (label, big, small = "") => `<div class="stat"><span class="label">${label}</span><b>${big}</b>${small ? `<span>${small}</span>` : ""}</div>`;
     box.innerHTML = `<h2 id="fcWeatherTitle">${title}</h2>
+      ${(C.facts || []).length ? `<div class="card fc-says"><h3>What it says</h3><ul class="plain">${C.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : ""}
       <section class="stats fc-wx-stats" aria-label="A typical year">
         ${stat("Typical year", isNum(t.mean_f) ? num(t.mean_f, 1) + " °F" : NONE, "average of day and night")}
         ${stat("Rain", isNum(t.rain_in) ? num(t.rain_in, 1) + " in" : NONE, "in a typical year")}
@@ -1280,12 +1317,12 @@ export async function render(main, route, alive) {
           <div class="fc-chart" data-chart="wx-rain"></div><div class="legend fc-legend">${key("bar rain", "Rain")}</div></div>
         <div class="card"><h3>The yearly average since ${esc(years.length ? years[0].year : trend.from_year || "")}</h3><div class="fc-chart" data-chart="wx-years"></div>
           <div class="legend fc-legend">${key("line thin", "Each year")}${slope !== null ? key("line trend", "Straight-line trend") + key("line trend ahead", `Trend carried on to ${endYear}`) : ""}${key("now", "This year")}</div>
-          ${ahead && ahead.basis ? `<p class="fine">${esc(ahead.basis)}${isNum(ahead.mean_f_change) ? ` About ${ahead.mean_f_change > 0 ? "+" : ""}${num(ahead.mean_f_change, 1)} °F by ${esc(ahead.year)}.` : ""} This is where the past trend points, not a climate forecast.</p>` : ""}
-          <h3 class="fc-gap">By decade</h3>
-          ${plainTable(["Years", "Average", "Summer high", "Rain a year"], (C.by_decade || []).map((d) => [esc(d.years), given(d.mean_f, num(d.mean_f, 1) + " °F"), given(d.summer_high_f, num(d.summer_high_f, 1) + " °F"), given(d.rain_in, num(d.rain_in, 2) + " in")]), [1, 2, 3])}</div>
+          ${ahead && ahead.basis ? `<p class="fine">${esc(ahead.basis)}${isNum(ahead.mean_f_change) ? ` About ${ahead.mean_f_change > 0 ? "+" : ""}${num(ahead.mean_f_change, 1)} °F by ${esc(ahead.year)}.` : ""} This is where the past trend points, not a climate forecast.</p>` : ""}</div>
       </div>
-      <div class="card fc-wx-facts"><h3>What it says</h3>${(C.facts || []).length ? `<ul class="plain">${C.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
-        ${C.note ? `<p class="fine">${esc(C.note)}</p>` : ""}<p class="fine">${esc(C.source || "")}</p></div>`;
+      <div class="fc-folds">
+        ${folded("wx-decades", "Show the figures by decade", plainTable(["Years", "Average", "Summer high", "Rain a year"], (C.by_decade || []).map((d) => [esc(d.years), given(d.mean_f, num(d.mean_f, 1) + " °F"), given(d.summer_high_f, num(d.summer_high_f, 1) + " °F"), given(d.rain_in, num(d.rain_in, 2) + " in")]), [1, 2, 3]))}
+        ${folded("wx-how", "How this was worked out", `${C.note ? `<p class="fine">${esc(C.note)}</p>` : ""}<p class="fine">${esc(C.source || "")}</p>`)}
+      </div>`;
   }
 
   // ---- hazards and limits on building
@@ -1298,16 +1335,22 @@ export async function render(main, route, alive) {
     const order = { work: 0, note: 1, clear: 2 };
     const found = (H.findings || []).slice().sort((a, b) => (order[a.level] ?? 3) - (order[b.level] ?? 3));
     const count = (lv) => found.filter((f) => f.level === lv).length;
+    const card = (f) => {
+      const lv = LEVELS[f.level] || { words: f.level, mark: "?" };
+      return `<article class="card fc-haz ${esc(f.level)}"><div class="fc-haz-top"><h3>${esc(f.topic)}</h3><span class="fc-level ${esc(f.level)}"><b aria-hidden="true">${lv.mark}</b>${esc(lv.words)}</span></div>
+        <p>${esc(f.text)}</p><p class="fine">${esc(f.source || "")}</p></article>`;
+    };
+    // what adds work or is worth knowing leads; the clear findings and the gaps are there on request
+    const lead = found.filter((f) => f.level !== "clear"), clear = found.filter((f) => f.level === "clear");
+    const gaps = `<ul class="plain">${(H.not_covered || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+      ${(H.did_not_answer || []).length ? `<h3 class="fc-gap">Did not answer just now</h3><ul class="plain">${H.did_not_answer.map((n) => `<li>${esc(String(n).replace(/_/g, " "))}</li>`).join("")}</ul>` : ""}`;
     box.innerHTML = `<h2 id="fcHazardsTitle">${title}</h2>
       <p class="fc-intro"><b>${num(count("work"))}</b> ${count("work") === 1 ? "finding adds" : "findings add"} work (a study, a permit or a cost), <b>${num(count("note"))}</b> to know about, <b>${num(count("clear"))}</b> clear.${H.evacuation_zone ? ` Evacuation zone: <b>${esc(H.evacuation_zone)}</b>.` : ""}</p>
-      <div class="fc-haz-grid">${found.map((f) => {
-        const lv = LEVELS[f.level] || { words: f.level, mark: "?" };
-        return `<article class="card fc-haz ${esc(f.level)}"><div class="fc-haz-top"><h3>${esc(f.topic)}</h3><span class="fc-level ${esc(f.level)}"><b aria-hidden="true">${lv.mark}</b>${esc(lv.words)}</span></div>
-          <p>${esc(f.text)}</p><p class="fine">${esc(f.source || "")}</p></article>`;
-      }).join("")}
-        <article class="card fc-haz-gaps"><h3>Not covered yet</h3><ul class="plain">${(H.not_covered || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
-          ${(H.did_not_answer || []).length ? `<h3 class="fc-gap">Did not answer just now</h3><ul class="plain">${H.did_not_answer.map((n) => `<li>${esc(String(n).replace(/_/g, " "))}</li>`).join("")}</ul>` : ""}
-          <p class="fine">Maps say where to look; the studies under “What needs to be done” settle it on the ground.</p></article>
+      ${lead.length ? `<div class="fc-haz-grid">${lead.map(card).join("")}</div>` : ""}
+      <p class="fine">Maps say where to look; the studies under “What needs to be done” settle it on the ground.</p>
+      <div class="fc-folds">
+        ${clear.length ? folded("haz-clear", `Show the ${clear.length === 1 ? "clear finding" : num(clear.length) + " clear findings"}`, `<div class="fc-haz-grid">${clear.map(card).join("")}</div>`) : ""}
+        ${folded("haz-gaps", (H.did_not_answer || []).length ? "Not covered yet, and what did not answer" : "Not covered yet", gaps)}
       </div>`;
   }
 
@@ -1358,9 +1401,9 @@ export async function render(main, route, alive) {
     summary.innerHTML = `${nearest.length ? `<h3 class="fc-gap">The nearest of each kind</h3><div class="fc-nearest">${nearest.map((p) => `<div>${placePin(p.kind, true)}<span><span class="label">Nearest ${esc(placeKind(p.kind).one)}</span><b>${esc(p.name)}</b><span class="muted">${num(p.miles_away, 2)} ${plural(p.miles_away, "mile", "miles", 2)}</span></span></div>`).join("")}</div>` : ""}
       ${(N.not_covered || []).length ? `<p class="fine"><b>Not covered yet:</b> ${esc(N.not_covered.join("; "))}.</p>` : ""}
       ${(N.did_not_answer || []).length ? `<p class="fine fc-no">Did not answer just now: ${esc(N.did_not_answer.join(", "))}.</p>` : ""}`;
-    text.innerHTML = `<h3>Everything found, by kind</h3>
-      ${rows.length ? plainTable(["Kind", "Place", "Miles away"], rows, [2]) : missing("No places found nearby.")}
-      <p class="fine">Straight-line miles from the middle of the site. Sources: ${esc([...new Set(places.map((p) => p.source).filter(Boolean))].join("; "))}.</p>`;
+    text.innerHTML = `<div class="fc-folds">${folded("near-all", `Show everything found, by kind${rows.length ? ` (${num(rows.length)})` : ""}`,
+      `${rows.length ? plainTable(["Kind", "Place", "Miles away"], rows, [2]) : missing("No places found nearby.")}
+      <p class="fine">Straight-line miles from the middle of the site. Sources: ${esc([...new Set(places.map((p) => p.source).filter(Boolean))].join("; "))}.</p>`)}</div>`;
   }
 
   // ---- who lives nearby
@@ -1385,27 +1428,66 @@ export async function render(main, route, alive) {
     };
     box.innerHTML = `<h2 id="fcResidentTitle">${title}</h2>
       <p class="fc-intro">The typical figures of the census tracts within ${esc(mi(data.market_miles))} of the site, census survey ${esc(R.survey || "")}.</p>
+      ${(R.facts || []).length ? `<div class="card fc-says"><h3>What it says</h3><ul class="plain">${R.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : ""}
       <section class="stats fc-res-stats" aria-label="The typical resident nearby">
         ${stat("Typical age", isNum(t.median_age) ? num(t.median_age, 1) : NONE, "years, half older and half younger")}
         ${stat("Household", isNum(t.household_size) ? num(t.household_size, 2) : NONE, "people in a typical household")}
         ${stat("Home value", usd(t.home_value_usd), "typical, as owners report it")}
         ${stat("Rent", usd(t.rent_usd), "typical, a month")}
-        ${stat("Under 18", pct(t.under_18_pct))}
-        ${stat("65 or older", pct(t.over_65_pct))}
-        ${stat("College degree", pct(t.bachelors_pct), "of adults")}
-        ${stat("Drive alone to work", pct(t.drive_alone_pct))}
-        ${stat("Work from home", pct(t.work_from_home_pct))}
-        ${stat("An hour or more to work", pct(t.long_commute_pct), "of workers")}
-        ${stat("Spanish at home", pct(t.spanish_at_home_pct))}
       </section>
-      <div class="two fc-res">
-        <div class="card"><h3>Then and now</h3>
+      <div class="fc-folds">
+        ${folded("res-more", "Show more about who lives nearby", `<section class="stats fc-res-stats" aria-label="More about the people nearby">
+          ${stat("Under 18", pct(t.under_18_pct))}
+          ${stat("65 or older", pct(t.over_65_pct))}
+          ${stat("College degree", pct(t.bachelors_pct), "of adults")}
+          ${stat("Drive alone to work", pct(t.drive_alone_pct))}
+          ${stat("Work from home", pct(t.work_from_home_pct))}
+          ${stat("An hour or more to work", pct(t.long_commute_pct), "of workers")}
+          ${stat("Spanish at home", pct(t.spanish_at_home_pct))}
+        </section>`)}
+        ${folded("res-then", "Show then and now: home values and rents", `<div class="fc-res">
           ${plainTable(["", `Survey ${esc(then.years || "earlier")}`, `Survey ${esc(R.survey || "now")}`, "A year"], [
             ["Typical home value", usd(then.home_value_usd), usd(t.home_value_usd), yearly(then.home_value_usd, t.home_value_usd, R.home_value_rise_pct_a_year)],
             ["Typical rent a month", usd(then.rent_usd), usd(t.rent_usd), yearly(then.rent_usd, t.rent_usd)]], [1, 2, 3])}
-          <p class="fine">${isNum(then.tracts_matched) ? `The earlier figures come from the ${num(then.tracts_matched)} ${plural(then.tracts_matched, "tract")} that match between the two surveys. ` : ""}Survey dollars, not adjusted for inflation.</p></div>
-        <div class="card"><h3>What it says</h3>${(R.facts || []).length ? `<ul class="plain">${R.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
-          <p class="fine">${esc(R.source || "")}${(R.tracts || []).length ? `; ${num(R.tracts.length)} census tracts` : ""}.</p></div>
+          <p class="fine">${isNum(then.tracts_matched) ? `The earlier figures come from the ${num(then.tracts_matched)} ${plural(then.tracts_matched, "tract")} that match between the two surveys. ` : ""}Survey dollars, not adjusted for inflation.</p></div>`)}
+        ${folded("res-how", "How this was worked out", `<p class="fine">${esc(R.source || "")}${(R.tracts || []).length ? `; ${num(R.tracts.length)} census tracts` : ""}.</p>`)}
+      </div>`;
+  }
+
+  // ---- the homes the state requires the city to plan for, and this site's homes beside what is left
+  function drawHousing() {
+    const box = el.querySelector("#fcHousing"), title = "The city's state housing target";
+    const wait = outlookWait("fcHousingTitle", title);
+    if (wait) { box.innerHTML = wait; return; }
+    const H = outlook.housing || {};
+    if (!H.available) { box.innerHTML = `<h2 id="fcHousingTitle">${title}</h2>` + outlookMissing("The city's state housing target", ["housing"]); return; }
+    const stat = (label, big, small = "") => `<div class="stat"><span class="label">${label}</span><b>${big}</b>${small ? `<span>${small}</span>` : ""}</div>`;
+    const n = (v) => (isNum(v) ? num(v) : NONE);
+    const site = H.site, lower = H.lower || {};
+    const bar = (l) => {
+      const share = isNum(l.target) && Number(l.target) > 0 && isNum(l.permitted) ? 100 * Number(l.permitted) / Number(l.target) : null;
+      return `<div class="fc-goal"><span>${esc(l.label)}</span><i aria-hidden="true"><b style="width:${share === null ? 0 : Math.min(100, share).toFixed(1)}%"></b></i>
+        <em>${n(l.permitted)} of ${n(l.target)}${share === null ? "" : ` <small>${num(share, share < 10 ? 1 : 0)}%</small>`}</em></div>`;
+    };
+    const years = H.by_year || [];
+    box.innerHTML = `<h2 id="fcHousingTitle">${title}</h2>
+      <p class="fc-intro">The state gives every California city a number of homes to plan for, split by the income they are meant for, and the city reports its building permits toward it each year.${isNum(H.from_year) && isNum(H.to_year) ? ` This count runs from ${esc(H.from_year)} to ${esc(H.to_year)}.` : ""}</p>
+      <section class="stats fc-res-stats fc-goal-stats" aria-label="The housing target in figures">
+        ${stat("Homes to plan for", n(H.target), isNum(H.to_year) ? `by ${esc(H.to_year)}` : "")}
+        ${stat("Permitted so far", n(H.permitted), isNum(H.share_pct) ? `${num(H.share_pct, 1)}% of the target${isNum(H.through_year) ? `, through ${esc(H.through_year)}` : ""}` : "")}
+        ${stat("Still to come", n(H.left), isNum(lower.left) ? `${num(lower.left)} of them for very low, low and moderate incomes` : "")}
+        ${stat("In this site's plan", site ? n(site.homes) : "0", site ? `${plural(site.homes, "home")}${isNum(site.pct_of_left) ? `, ${num(site.pct_of_left, 1)}% of what is still to come` : ""}` : "no homes in this plan")}
+      </section>
+      <div class="card fc-goals"><h3>Permits so far, beside the target for each income level</h3>
+        ${(H.levels || []).map(bar).join("")}
+        <p class="fine">The whole track is the target; the dark part is the permits the state has counted. A level past its target shows a full track.</p></div>
+      ${(H.facts || []).length ? `<div class="card fc-says"><h3>What it says</h3><ul class="plain">${H.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : ""}
+      <div class="fc-folds">
+        ${years.length ? folded("house-years", "Show the permits reported each year", plainTable(["Year", "Very low", "Low", "Moderate", "Above moderate", "All"],
+          years.map((r) => [esc(r.year), n(r.very_low), n(r.low), n(r.moderate), n(r.above_moderate), n(r.total)]), [1, 2, 3, 4, 5])) : ""}
+        ${folded("house-how", "How this was worked out", `<p class="fine">${esc(H.source || "")}${H.as_of ? `; ${esc(H.as_of)}` : ""}.</p>
+          ${(H.notes || []).length ? `<ul class="plain fine">${H.notes.map((t) => `<li>${esc(cap(t))}.</li>`).join("")}</ul>` : ""}
+          <p class="fine">The site's homes are the ones in its plan. This page does not say which income level they would count toward.</p>`)}
       </div>`;
   }
 
@@ -1426,18 +1508,21 @@ export async function render(main, route, alive) {
     const groups = TODO_KINDS.map(([k, words, help]) => ({ k, words, help, list: steps.filter((s) => s.kind === k) }))
       .concat([{ k: "other", words: "Other steps", help: "", list: steps.filter((s) => !TODO_KINDS.some(([k]) => k === s.kind)) }]).filter((g) => g.list.length);
     box.innerHTML = `<h2 id="fcTodoTitle">${title}</h2>
-      <p class="fc-intro">In order, year by year: who to see, which studies, which checks, and when each part of the land is offered. Each step says why it is on the list.</p>
+      <p class="fc-intro">In order, year by year: who to see, which studies, which checks, and when each part of the land is offered. Open a step to read why it is on the list and who does it.</p>
       <div class="card fc-todo">
-        <div class="fc-tl-row fc-tl-head" aria-hidden="true"><div>Step, why and who</div><div class="fc-tl-years" style="${cols}">${years.map((y) => `<span>${y}</span>`).join("")}</div></div>
+        <div class="fc-tl-row fc-tl-head" aria-hidden="true"><div>Step</div><div class="fc-tl-years" style="${cols}">${years.map((y) => `<span>${y}</span>`).join("")}</div></div>
         ${groups.map((g) => `
           <h3 class="fc-tl-kind"><span class="fc-tl-dot k-${g.k}" aria-hidden="true"></span>${esc(g.words)} <span class="muted">${num(g.list.length)} ${g.list.length === 1 ? "step" : "steps"}${g.help ? ", " + esc(g.help) : ""}</span></h3>
-          <ol class="fc-tl-list">${g.list.map((s) => {
-            const span = s.from_year === s.to_year ? String(s.from_year) : `${s.from_year} to ${s.to_year}`;
+          <ol class="fc-tl-list">${g.list.map((s, i) => {
+            const span = s.from_year === s.to_year ? String(s.from_year) : `${s.from_year} to ${s.to_year}`, k = `step-${g.k}-${i}`;
             return `
-            <li class="fc-tl-row">
-              <div class="fc-tl-text"><span class="fc-tl-when k-${g.k}">${esc(span)}</span>${what(s)}<p>${esc(s.why || "")}</p><p class="fc-tl-who"><span>Who:</span> ${esc(s.who || NONE)}</p></div>
-              <div class="fc-tl-bar" style="${cols}" aria-hidden="true"><span class="fc-tl-span k-${g.k}" style="grid-column:${s.from_year - y0 + 1} / ${s.to_year - y0 + 2}" title="${esc(span)}"></span></div>
-            </li>`;
+            <li><details class="fc-tl-step" data-fold="${k}"${folds.has(k) ? " open" : ""}>
+              <summary class="fc-tl-row">
+                <div class="fc-tl-text"><span class="fc-tl-when k-${g.k}">${esc(span)}</span>${what(s)}</div>
+                <div class="fc-tl-bar" style="${cols}" aria-hidden="true"><span class="fc-tl-span k-${g.k}" style="grid-column:${s.from_year - y0 + 1} / ${s.to_year - y0 + 2}" title="${esc(span)}"></span></div>
+              </summary>
+              <div class="fc-tl-more"><p>${esc(s.why || "")}</p><p class="fc-tl-who"><span>Who:</span> ${esc(s.who || NONE)}</p></div>
+            </details></li>`;
           }).join("")}</ol>`).join("")}
       </div>
       ${T.note ? `<div class="notice warn fc-todo-note"><p><b>A starting list, not the city's list.</b> ${esc(T.note)}</p></div>` : ""}`;
@@ -1487,10 +1572,9 @@ export async function render(main, route, alive) {
     const says = stateSentences(Object.keys(answered), answered, (p) => PART_WORDS[p] || p);
     el.querySelector("#fcSources").innerHTML = `
       <div class="card"><h2>What answered</h2>
-        ${plainTable(["Source", "What it gives", "Answered"], (data.sources || []).map((s) => [esc(s.name), esc(s.what), s.answered ? "Yes" : '<b class="fc-no">No</b>']))}
-        ${says ? `<p class="fc-again">${esc(says)} <button type="button" class="btn small" data-ask-again>Ask again</button></p>` : ""}
-        <h3 class="fc-gap">The wider picture</h3>
-        ${outlookSources()}
+        ${says ? `<p class="fc-again">${esc(says)} <button type="button" class="btn small" data-ask-again>Ask again</button></p>` : `<p>${num((data.sources || []).filter((s) => s.answered).length)} of ${num((data.sources || []).length)} sources of the forecast answered.</p>`}
+        ${folded("sources-forecast", "Show the forecast's sources", plainTable(["Source", "What it gives", "Answered"], (data.sources || []).map((s) => [esc(s.name), esc(s.what), s.answered ? "Yes" : '<b class="fc-no">No</b>'])))}
+        ${folded("sources-wider", "Show the wider picture's sources", outlookSources())}
       </div>
       <div class="card fc-limits"><h2>Limits of this forecast</h2>
         <ul class="plain">${(data.limits || []).map((l) => `<li>${esc(l)}</li>`).join("")}
@@ -1538,16 +1622,8 @@ export async function render(main, route, alive) {
   function onClick(e) {
     const b = e.target.closest ? e.target.closest("button") : null;
     if (!b || !el.contains(b)) return;
-    if (b.dataset.jump) {
-      const target = el.querySelector("#" + b.dataset.jump);
-      if (target) { target.scrollIntoView({ behavior: "smooth", block: "start" }); const box = target.querySelector("input"); if (box) box.focus({ preventScroll: true }); }
-      return;
-    }
-    if (b.dataset.goto) {
-      const target = el.querySelector("#" + b.dataset.goto);
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
+    if (b.dataset.jump) { goTo(b.dataset.jump, true); return; }
+    if (b.dataset.goto) { goTo(b.dataset.goto, false); return; }
     if (b.dataset.planview) {
       planView = b.dataset.planview;
       drawSitePlan();

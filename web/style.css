@@ -378,3 +378,72 @@ table.cmp-table{min-width:1280px}
   .near-aside{grid-template-columns:minmax(0,1fr)}
 }
 .size-warn{color:#a05a00!important;white-space:normal}
+
+/* ==== Added: calm pages (web/js/calm.js): chapters one at a time, disclosures, the motion switch, small movements ==== */
+/* chapters: only the open one is on screen; print shows every one */
+@media screen{.calm-off{display:none!important}}
+.calm-all .calm-off{display:block!important}
+.calm-tabs{position:sticky;top:0;z-index:900;display:flex;align-items:center;justify-content:space-between;gap:8px 16px;margin:0 0 20px;
+  background:var(--paper);box-shadow:0 1px 0 var(--line)}
+.calm-tab-row{display:flex;flex-wrap:wrap;gap:2px;min-width:0}
+.calm-tab-row button{display:inline-flex;align-items:baseline;gap:7px;border:0;border-bottom:3px solid transparent;background:none;color:var(--muted);
+  font:600 14.5px/1.2 "Segoe UI",system-ui,sans-serif;padding:12px 14px 10px;cursor:pointer;white-space:nowrap;border-radius:8px 8px 0 0;transition:color .15s,background .15s}
+.calm-tab-row button small{font-size:11.5px;font-weight:700;color:#a09a88;font-variant-numeric:tabular-nums}
+.calm-tab-row button:hover{color:var(--ink);background:#fff8}
+.calm-tab-row button.on{color:var(--green);border-bottom-color:var(--gold);background:#fff}
+.calm-tab-row button.on small{color:var(--gold-deep)}
+.calm-tab-row button:focus-visible{outline-offset:-3px}
+/* the motion switch (as on the presentation, smaller) */
+.calm-switch{flex:none;display:inline-flex;align-items:center;gap:8px;border:0;background:none;color:var(--muted);font:600 13px/1 "Segoe UI",system-ui,sans-serif;padding:6px 4px;cursor:pointer;white-space:nowrap}
+.calm-switch i{position:relative;width:34px;height:20px;border-radius:10px;background:#b9b29f;transition:background .2s}
+.calm-switch i::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .2s}
+.calm-switch[aria-checked="true"] i{background:var(--green)}
+.calm-switch[aria-checked="true"] i::after{transform:translateX(14px)}
+.calm-switch:hover{color:var(--ink)}
+/* previous / next at the foot of a chapter, naming the neighbour */
+.calm-pager{display:flex;justify-content:space-between;gap:14px;margin:8px 0 0;padding-top:18px;border-top:1px solid var(--line)}
+.calm-pager button{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:48%;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:12px 18px;cursor:pointer;
+  font:600 17px/1.25 Georgia,serif;color:var(--green);text-align:left;box-shadow:var(--shadow);transition:border-color .15s,background .15s}
+.calm-pager button span{font:650 11.5px/1 "Segoe UI",system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-deep)}
+.calm-pager .calm-next{margin-left:auto;text-align:right;align-items:flex-end}
+.calm-pager .calm-prev span::before{content:"\2190  "}
+.calm-pager .calm-next span::after{content:"  \2192"}
+.calm-pager button:hover{border-color:var(--green);background:var(--green-soft)}
+@media(max-width:820px){
+  .calm-tabs{flex-wrap:nowrap}
+  .calm-tab-row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;scroll-behavior:smooth}
+  .calm-tab-row::-webkit-scrollbar{display:none}
+  .calm-tab-row button{padding:11px 11px 9px;font-size:14px}
+  .calm-switch span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .calm-pager button{font-size:15.5px;padding:10px 13px}
+}
+/* disclosures: a quiet line the reader opens; native <details>, so it works with the keyboard and without scripts */
+.calm-fold{margin:12px 0 0;border-top:1px solid var(--line-soft)}
+.calm-fold>summary{display:flex;align-items:center;gap:9px;list-style:none;cursor:pointer;padding:10px 2px 6px;color:var(--green);font:600 14px/1.35 "Segoe UI",system-ui,sans-serif;width:fit-content;max-width:100%}
+.calm-fold>summary::-webkit-details-marker{display:none}
+.calm-fold>summary::before{content:"";flex:none;width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .18s;margin:0 2px 0 1px}
+.calm-fold[open]>summary::before{transform:rotate(45deg) translate(-2px,-1px)}
+.calm-fold>summary:hover{text-decoration:underline}
+.calm-fold>summary:focus-visible{outline:3px solid var(--gold);outline-offset:2px;border-radius:4px}
+.calm-fold-body{padding:6px 0 4px}
+.calm-fold-body>:first-child{margin-top:0}
+.calm-fold-body>:last-child{margin-bottom:0}
+.calm-fold[open]>.calm-fold-body{animation:calm-open .2s ease-out}
+/* the small movements: a chapter rises in, a chart draws in once from left to right */
+.calm-enter{animation:calm-rise .22s ease-out both}
+@keyframes calm-rise{from{opacity:0;transform:translateY(8px)}}
+@keyframes calm-open{from{opacity:0;transform:translateY(-3px)}}
+.calm-wait .calm-data{clip-path:inset(0 100% 0 0)}
+.calm-draw .calm-data{animation:calm-wipe .9s cubic-bezier(.3,.6,.25,1) both}
+@keyframes calm-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@media print{
+  .calm-tabs,.calm-pager,.calm-switch{display:none!important}
+  .calm-off{display:block!important}
+  .calm-fold{border:0}
+  .calm-fold>summary{color:var(--ink);padding:8px 0 2px}
+  .calm-fold>summary::before{display:none}
+  .calm-fold::details-content{content-visibility:visible;display:contents}
+  .calm-fold>.calm-fold-body{display:block!important}
+  .calm-wait .calm-data,.calm-draw .calm-data{clip-path:none!important;animation:none!important}
+  .calm-enter{animation:none!important}
+}

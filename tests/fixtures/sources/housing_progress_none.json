@@ -1,0 +1,25 @@
+{
+ "help": "https://publish.data.ca.gov/api/3/action/help_show?name=datastore_search",
+ "success": true,
+ "result": {
+  "filters": {
+   "Jurisdiction": [
+    "ATLANTIS"
+   ]
+  },
+  "include_next_page": false,
+  "include_total": true,
+  "limit": 20,
+  "records_format": "objects",
+  "resource_id": "1e80a9cf-724c-432d-8374-e9708a6a92dc",
+  "filterops": {
+   "op": "in",
+   "field": "Jurisdiction",
+   "value": [
+    "ATLANTIS"
+   ]
+  },
+  "records": [],
+  "total": 0
+ }
+}

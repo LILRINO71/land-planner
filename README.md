@@ -151,11 +151,27 @@ source (`landplanner/sources/`, turned into findings by `landplanner/outlook.py`
 - **Weather** since 1985 and where its trend points; **hazards and limits on building** (flood, fire, faults, soft
   ground, wetlands, protected habitat), each marked clear, know about it, or adds work.
 - **What is close by** (parks, fire, police, hospitals, colleges, transit) and **who lives nearby**.
+- **The city's state housing target**: the homes the state requires the city to plan for in this eight-year count,
+  by income level, the building permits the state has counted toward it, and this site's homes beside what is
+  still to come (California Department of Housing and Community Development, on data.ca.gov; any California
+  city). It does not say which income level the site's homes count toward: that is agreed with the city.
 - **What needs to be done**: the steps with the city, the studies, the checks and when each part is offered, by
   year. A starting checklist drawn from the facts by simple rules; the city decides what it requires.
 
 **Present to the city** (the button at the top of the Forecast page) shows all of it as full-screen slides for a
-projector: arrow keys or a click to move, `F` for full screen, and Ctrl+P prints one slide per page as a handout.
+projector: arrow keys or a click to move, `F` for full screen, and Ctrl+P prints one slide per page.
+
+**One-page summary** (beside it) puts the site on a single Letter page to leave with each person in the room: the
+plan drawn on the land, its mix, the numbers around it, the housing target, what adds work, the first steps and
+the sources. It tightens itself to stay on one page.
+
+### One part at a time
+
+The Forecast and Plan pages show one part at a time, chosen from the tabs under the heading, with Previous and
+Next at the foot. Each part opens with what it found, its few key numbers and its chart or map; the year-by-year
+tables and the working are one click away ("Show ..."). Nothing was removed: printing shows every part with
+everything open. The small movements (a part easing in, a chart drawing once) can be turned off with the Motion
+switch, which the presentation shares.
 
 ## What it cannot tell you yet
 
@@ -190,4 +206,5 @@ owner, his engineer and the city's planners.
 7. The ten-year forecast for one parcel or several as one site. *(done)*
 8. The wider picture: the city's economy, weather, hazards, what is close by, residents, the steps to take. *(done)*
 9. Present to the city: the same facts as full-screen slides that print one per page. *(done)*
-10. Next: real quotes from the owner; the zone-by-zone table of allowed uses; a second city.
+10. One part at a time on the Forecast and Plan pages; the city's state housing target; the one-page summary. *(done)*
+11. Next: real quotes from the owner; the zone-by-zone table of allowed uses; a second city.

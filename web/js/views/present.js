@@ -10,7 +10,8 @@ import { mountTerrain } from "../terrain3d.js";
 import { NONE, esc, has, num, plural, cap, icon } from "../util.js";
 
 const DW = 1920, DH = 1080;
-const MOTION_KEY = "landplanner.present.motion";
+// one motion switch for the whole app ("landplanner.motion"); the older key is still read, so a choice made before is kept
+const MOTION_KEY = "landplanner.motion", OLD_MOTION_KEY = "landplanner.present.motion";
 // the park's colour is the Plan page's own (the forecast lists only the uses that are sold)
 const PARK = { id: "park", label: "Parks, open space and drainage", short: "Parks", colour: "#3f9d68" };
 const KINDS = {
@@ -265,7 +266,7 @@ export async function render(main, route, alive) {
     return "The 3D view is not available for this site: the parcels do not form one block, so no single plan is drawn on the ground.";
   }
   let motion = true;
-  try { motion = localStorage.getItem(MOTION_KEY) !== "off"; } catch (e) { /* private window: keep the default */ }
+  try { motion = (localStorage.getItem(MOTION_KEY) || localStorage.getItem(OLD_MOTION_KEY)) !== "off"; } catch (e) { /* private window: keep the default */ }
   let flow = false, cur = 0, order = [], scaleNow = 1;
   const recs = new Map();
   const wantSlide = (/[?&]slide=([\w-]+)/.exec(location.hash) || [])[1] || "";
@@ -284,6 +285,7 @@ export async function render(main, route, alive) {
           <button type="button" class="pr-tool pr-switch" data-motion role="switch" aria-checked="${motion}"><i aria-hidden="true"></i><span>Motion ${motion ? "on" : "off"}</span></button>
           <button type="button" class="pr-tool pr-word" data-full aria-keyshortcuts="F">Full screen</button>
           <button type="button" class="pr-tool pr-word" data-print>Print</button>
+          <a class="pr-tool pr-word" href="${esc(backHref.replace("#/forecast/", "#/handout/"))}" title="The whole site on one printed page, to leave with the people in the room">One page</a>
         </div>
       </footer>
     </div></div></div>`;
@@ -611,6 +613,33 @@ export async function render(main, route, alive) {
         });
       }])),
     });
+
+    // ---- 7b. the homes the state requires the city to plan for (only when the state's figures answered)
+    if (O && (O.housing || {}).available) {
+      const G = O.housing, lower = G.lower || {}, mine = G.site;
+      list.push({
+        id: "housing-target", title: "The city's housing target", key: outlookKey(),
+        html() {
+          const h = isNum(G.left) && isNum(G.to_year) ? `${esc(O.city_name || F.city_name)} still has ${big(G.left)} homes to permit by ${esc(G.to_year)}`
+            : `${esc(O.city_name || F.city_name)}'s state housing target`;
+          const row = (l, k) => {
+            const share = isNum(l.target) && Number(l.target) > 0 && isNum(l.permitted) ? 100 * Number(l.permitted) / Number(l.target) : null;
+            return `<div class="pr-hbar here" data-rise style="--k:${k}"><span>${esc(l.label)}</span><i><b class="pr-growx" style="width:${share === null ? 0 : Math.min(100, share).toFixed(1)}%"></b></i>
+              <em>${isNum(l.permitted) ? big(l.permitted) : NONE} of ${isNum(l.target) ? num(l.target) : NONE}</em></div>`;
+          };
+          const figs = [];
+          if (isNum(G.target)) figs.push(fig(big(G.target), "homes the state requires the city to plan for", isNum(G.from_year) && isNum(G.to_year) ? `${esc(G.from_year)} to ${esc(G.to_year)}` : ""));
+          if (isNum(lower.left)) figs.push(fig(big(lower.left), "still to come for very low, low and moderate incomes",
+            isNum(lower.a_year_needed) && isNum(lower.a_year_now) ? `about ${num(lower.a_year_needed)} a year needed; about ${num(lower.a_year_now)} a year reported` : ""));
+          if (mine) figs.push(fig(big(mine.homes), `${plural(mine.homes, "home")} in this site's plan`, isNum(mine.pct_of_left) ? `${num(mine.pct_of_left, 1)}% of what is still to come` : ""));
+          return `${head(h, esc((G.facts || [])[0] || ""))}<div class="pr-body pr-housebody">
+            <div><h3 class="pr-sub" data-rise>Permits so far, beside the target for each income level</h3>
+              <div class="pr-hbars">${(G.levels || []).map(row).join("")}</div></div>
+            <div class="pr-housefigs">${figs.join("")}</div></div>
+            <p class="pr-note pr-foot-note" data-rise>Which income level this site's homes count toward depends on what they rent or sell for, which is agreed with the city. ${esc(G.source || "")}${G.as_of ? `; ${esc(G.as_of)}` : ""}.</p>`;
+        },
+      });
+    }
 
     // ---- 8. the plan
     list.push({
@@ -1046,6 +1075,7 @@ export async function render(main, route, alive) {
       ((O.hazards || {}).findings || []).forEach((f) => add(f.source, f.topic));
       ((O.nearby || {}).places || []).forEach((p) => add(p.source, "Places close by"));
       if ((O.resident || {}).available) add(O.resident.source, "The typical resident");
+      if ((O.housing || {}).available) add(O.housing.source, "The city's state housing target");
       ["climate", "hazards", "nearby", "resident"].forEach((b) => ((O[b] || {}).did_not_answer || []).forEach((s) => add(String(s), "", false)));
     }
     return { answered, missed };

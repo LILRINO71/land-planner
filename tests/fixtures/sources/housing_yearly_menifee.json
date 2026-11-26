@@ -1,0 +1,89 @@
+{
+ "help": "https://publish.data.ca.gov/api/3/action/help_show?name=datastore_search_sql",
+ "success": true,
+ "result": {
+  "sql": "SELECT \"YEAR\" AS year, MIN(\"CNTY_NAME\") AS county, COUNT(*) AS projects, SUM(\"BP_ACUTELY_LOW_INCOME_DR\") AS \"BP_ACUTELY_LOW_INCOME_DR\", SUM(\"BP_ACUTELY_LOW_INCOME_NDR\") AS \"BP_ACUTELY_LOW_INCOME_NDR\", SUM(\"BP_EXTREMELY_LOW_INCOME_DR\") AS \"BP_EXTREMELY_LOW_INCOME_DR\", SUM(\"BP_EXTREMELY_LOW_INCOME_NDR\") AS \"BP_EXTREMELY_LOW_INCOME_NDR\", SUM(\"BP_VLOW_INCOME_DR\") AS \"BP_VLOW_INCOME_DR\", SUM(\"BP_VLOW_INCOME_NDR\") AS \"BP_VLOW_INCOME_NDR\", SUM(\"BP_LOW_INCOME_DR\") AS \"BP_LOW_INCOME_DR\", SUM(\"BP_LOW_INCOME_NDR\") AS \"BP_LOW_INCOME_NDR\", SUM(\"BP_MOD_INCOME_DR\") AS \"BP_MOD_INCOME_DR\", SUM(\"BP_MOD_INCOME_NDR\") AS \"BP_MOD_INCOME_NDR\", SUM(\"BP_ABOVE_MOD_INCOME\") AS \"BP_ABOVE_MOD_INCOME\" FROM \"fe505d9b-8c36-42ba-ba30-08bc4f34e022\" WHERE \"JURIS_NAME\" = 'MENIFEE' AND \"YEAR\" >= 2021 GROUP BY \"YEAR\" ORDER BY \"YEAR\"",
+  "records": [
+   {
+    "year": 2021,
+    "county": "Riverside",
+    "projects": 2059,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 0,
+    "BP_VLOW_INCOME_NDR": 0,
+    "BP_LOW_INCOME_DR": 0,
+    "BP_LOW_INCOME_NDR": 12,
+    "BP_MOD_INCOME_DR": 0,
+    "BP_MOD_INCOME_NDR": 8,
+    "BP_ABOVE_MOD_INCOME": 1206
+   },
+   {
+    "year": 2022,
+    "county": "Riverside",
+    "projects": 1720,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 0,
+    "BP_VLOW_INCOME_NDR": 4,
+    "BP_LOW_INCOME_DR": 0,
+    "BP_LOW_INCOME_NDR": 4,
+    "BP_MOD_INCOME_DR": 0,
+    "BP_MOD_INCOME_NDR": 5,
+    "BP_ABOVE_MOD_INCOME": 892
+   },
+   {
+    "year": 2023,
+    "county": "Riverside",
+    "projects": 1620,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 0,
+    "BP_VLOW_INCOME_NDR": 0,
+    "BP_LOW_INCOME_DR": 0,
+    "BP_LOW_INCOME_NDR": 0,
+    "BP_MOD_INCOME_DR": 0,
+    "BP_MOD_INCOME_NDR": 14,
+    "BP_ABOVE_MOD_INCOME": 1575
+   },
+   {
+    "year": 2024,
+    "county": "Riverside",
+    "projects": 1255,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 0,
+    "BP_VLOW_INCOME_NDR": 2,
+    "BP_LOW_INCOME_DR": 0,
+    "BP_LOW_INCOME_NDR": 6,
+    "BP_MOD_INCOME_DR": 0,
+    "BP_MOD_INCOME_NDR": 10,
+    "BP_ABOVE_MOD_INCOME": 617
+   },
+   {
+    "year": 2025,
+    "county": "Riverside",
+    "projects": 1182,
+    "BP_ACUTELY_LOW_INCOME_DR": 0,
+    "BP_ACUTELY_LOW_INCOME_NDR": 0,
+    "BP_EXTREMELY_LOW_INCOME_DR": 0,
+    "BP_EXTREMELY_LOW_INCOME_NDR": 0,
+    "BP_VLOW_INCOME_DR": 0,
+    "BP_VLOW_INCOME_NDR": 3,
+    "BP_LOW_INCOME_DR": 0,
+    "BP_LOW_INCOME_NDR": 11,
+    "BP_MOD_INCOME_DR": 0,
+    "BP_MOD_INCOME_NDR": 8,
+    "BP_ABOVE_MOD_INCOME": 736
+   }
+  ]
+ }
+}

@@ -153,6 +153,9 @@ class Menifee(CityAdapter):
             return E.mortgage_rates()
         if part == "prices":
             return E.prices_by_year(year - 9)
+        if part == "housing":
+            from ..sources import housing as H
+            return H.housing_target(p["name"], p["county"])
         return None
 
     def outlook_part(self, part, parcel, tracts=None):
