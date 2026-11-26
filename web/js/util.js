@@ -11,7 +11,13 @@ export function num(v, digits = 0) {
   if (!has(v) || isNaN(Number(v))) return NONE;
   return Number(v).toLocaleString("en-US", { maximumFractionDigits: digits });
 }
-export function acres(v) { return has(v) ? num(v, 2) + " acres" : "size " + NONE; }
+// The word for a count: plural(1, "acre") is "acre", plural(2, "acre") is "acres", plural(1, "person", "people") is "person".
+// `digits` is how many decimals the number is shown with, so 1.004 shown as "1" is "1 acre".
+export function plural(n, one, many = one + "s", digits = 0) {
+  const shown = Number(String(num(n, digits)).replace(/,/g, ""));
+  return shown === 1 ? one : many;
+}
+export function acres(v) { return has(v) ? num(v, 2) + " " + plural(v, "acre", "acres", 2) : "size " + NONE; }
 export function money(v) { return has(v) && !isNaN(Number(v)) ? "$" + num(v) : NONE; }
 export function cap(s) { s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
 // "SCOTT ROAD" as a place name: "Scott Road"

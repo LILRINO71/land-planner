@@ -3,7 +3,7 @@
 // Under the cards, "Compare my lands" puts the saved lands side by side (two or more; one shows its own row).
 import { saved, compareLands } from "../api.js";
 import { forecastLink, FORECAST_ICON } from "./land.js";
-import { NONE, esc, has, num, money, dateOnly, icon, loading, problem, toast, shapeSvg, apnText } from "../util.js";
+import { NONE, esc, has, num, plural, money, dateOnly, icon, loading, problem, toast, shapeSvg, apnText } from "../util.js";
 
 // The columns of the compare table. `from` is where a value is read: "land" = the row itself, "plan" = the plan
 // shown (today's zoning or your own plan, or the best use). Money columns marked `best` get a "highest" tag on the
@@ -97,7 +97,7 @@ export async function render(el, params, alive) {
     if (!uses.length) return NONE;
     const words = uses.map((u) => `${u.label || u.short} ${num(u.share_pct, 1)}%`).join(", ");
     let html = `<div class="cmp-bar" role="img" aria-label="${esc("Mix of uses: " + words)}">${uses.map((u) =>
-      `<span style="flex:${Math.max(Number(u.acres) || 0, 0.05)} 1 0;background:${colourOf(u.colour)}" title="${esc((u.label || u.short) + ": " + num(u.share_pct, 1) + "% of the land, " + num(u.acres, 1) + " acres")}"></span>`).join("")}</div>
+      `<span style="flex:${Math.max(Number(u.acres) || 0, 0.05)} 1 0;background:${colourOf(u.colour)}" title="${esc((u.label || u.short) + ": " + num(u.share_pct, 1) + "% of the land, " + num(u.acres, 1) + " " + plural(u.acres, "acre", "acres", 1))}"></span>`).join("")}</div>
       <ul class="cmp-mix">${uses.map((u) => `<li><i style="background:${colourOf(u.colour)}"></i>${esc(u.short || u.label)} ${num(u.share_pct, 1)}%</li>`).join("")}</ul>`;
     if ((h.needs_zoning_change || []).length) {
       html += `<p class="cmp-change"><span class="cmp-tag warn">needs a zoning change</span> <span>for ${esc(h.needs_zoning_change.join(", ").toLowerCase())}</span></p>`;
@@ -226,7 +226,7 @@ export async function render(el, params, alive) {
           <a class="mine-shape" href="${link}" aria-label="Open ${esc(apnText(p) || x.apn)}">${shapeSvg(p.rings, 104)}</a>
           <div class="mine-body">
             <p class="kicker">${esc(x.city_name)}</p>
-            <h2><a href="${link}">${p.acres != null ? num(p.acres, 2) + " acres" : "Parcel"}</a></h2>
+            <h2><a href="${link}">${p.acres != null ? num(p.acres, 2) + " " + plural(p.acres, "acre", "acres", 2) : "Parcel"}</a></h2>
             <p class="muted">Parcel ${esc(apnText(p) || x.apn)}${p.address ? " · " + esc(p.address) : ""}</p>
             <p><b>${esc(p.zoning || "No zoning listed")}</b>${p.zoning_name && p.zoning_name !== p.zoning ? " · " + esc(p.zoning_name) : ""}</p>
             <p class="fine">Saved ${esc(dateOnly(x.saved_at))} · ${p.looks_vacant ? "no buildings on the assessor's records" : "buildings on the assessor's records"}</p>

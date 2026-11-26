@@ -287,6 +287,26 @@ a.stat:hover{border-color:#b9c9bf}
   .map,.map.tall{height:360px}
   .view3d canvas{height:340px}
 }
+/* a phone: each parcel in the list is a small card, so nothing runs off the side and every action can be reached */
+@media(max-width:600px){
+  table.lands,table.lands tbody{display:block;width:100%}
+  table.lands thead{display:block;border-bottom:1px solid var(--line);background:#faf8f2}
+  table.lands thead tr{display:flex;flex-wrap:wrap}
+  table.lands thead th{position:static;display:block;box-shadow:none}
+  table.lands thead th:last-child{display:none}
+  table.lands thead th.wide-only{display:none}
+  .sort{padding:10px 11px}
+  table.lands tbody tr{display:block;padding:10px 14px 12px;border-bottom:1px solid var(--line-soft)}
+  table.lands tbody tr:last-child{border-bottom:0}
+  table.lands td,table.lands td.num,td.actions{display:block;width:auto;padding:2px 0;text-align:left;white-space:normal;border:0}
+  table.lands td.wide-only{display:none}
+  table.lands td:nth-child(3) b{white-space:normal}
+  table.lands td[data-label]::before{content:attr(data-label);display:inline-block;min-width:76px;margin-right:8px;font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  table.lands td small{margin-left:0}
+  table.lands td.actions{padding-top:8px}
+  table.lands .btn.save{padding:8px 12px}
+  table.lands .btn.save span{position:static;width:auto;height:auto;overflow:visible;clip-path:none;white-space:nowrap}
+}
 @media print{.side,.controls,.head-actions,.tabs{display:none}.app{display:block}}
 
 /* ==== Added: Compare my lands (cmp-), What is being built nearby (near-) ==== */

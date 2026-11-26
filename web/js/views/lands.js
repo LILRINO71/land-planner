@@ -4,7 +4,7 @@
 // every parcel in view, whatever its size.
 import { api, city as getCity, cities, saved } from "../api.js";
 import { createMap, ll, legend, kindColour, fillStrength } from "../maps.js";
-import { esc, has, num, money, when, icon, loading, problem, toast, debounce, apnText } from "../util.js";
+import { esc, has, num, plural, money, when, icon, loading, problem, toast, debounce, apnText } from "../util.js";
 
 const remembered = {};   // the filters last used in each city, kept while the app is open
 const fresh = () => ({ min: "", max: "", zoning: "", vacant: false, q: "", sort: "acres", dir: "desc" });
@@ -34,7 +34,7 @@ export async function render(el, params, alive) {
     <header class="page-head">
       <p class="kicker">${esc(c.name)}, ${esc(c.region)}</p>
       <h1>Lands in ${esc(c.name)}</h1>
-      <p class="lead" id="floorLine">The list starts at ${num(standard)} acres. To see smaller ones, lower the smallest size, or zoom in on the map, where every parcel shows, whatever its size.</p>
+      <p class="lead" id="floorLine">The list starts at ${num(standard)} ${plural(standard, "acre")}. To see smaller ones, lower the smallest size, or zoom in on the map, where every parcel shows, whatever its size.</p>
       ${all.length > 1 ? `<label class="field inline"><span>City</span><select id="cityPick">${all.map((x) => `<option value="${esc(x.id)}"${x.id === c.id ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>` : ""}
     </header>
     <form class="filters card" id="filters" autocomplete="off">
@@ -132,10 +132,10 @@ export async function render(el, params, alive) {
     const where = p.address || (p.subdivision ? "Map " + p.subdivision : "");
     return `<tr data-apn="${esc(p.apn)}"${p.apn === selected ? ' class="selected"' : ""}>
       <td><a class="apn" href="#/land/${esc(c.id)}/${esc(p.apn)}">${esc(apnText(p))}</a>${where ? `<small>${esc(where)}</small>` : ""}</td>
-      <td class="num">${num(p.acres, 2)}${has(p.outline_acres) ? `<small class="size-warn" title="The city's record and the outline on the map do not agree. Check the size with the county assessor.">outline measures ${num(p.outline_acres, 1)}</small>` : ""}</td>
-      <td><span class="swatch" style="background:${kindColour(c.zoning_kinds, p.zoning_kind)}"></span><b>${esc(p.zoning || "None listed")}</b>${p.zoning_name && p.zoning_name !== p.zoning ? `<small>${esc(p.zoning_name)}</small>` : ""}</td>
-      <td>${p.looks_vacant ? "None on record" : "Yes"}</td>
-      <td class="num wide-only">${has(p.assessed_land_usd) ? money(p.assessed_land_usd) : '<span class="missing">not covered yet</span>'}</td>
+      <td class="num" data-label="Acres">${num(p.acres, 2)}${has(p.outline_acres) ? `<small class="size-warn" title="The city's record and the outline on the map do not agree. Check the size with the county assessor.">outline measures ${num(p.outline_acres, 1)}</small>` : ""}</td>
+      <td data-label="Zoning"><span class="swatch" style="background:${kindColour(c.zoning_kinds, p.zoning_kind)}"></span><b>${esc(p.zoning || "None listed")}</b>${p.zoning_name && p.zoning_name !== p.zoning ? `<small>${esc(p.zoning_name)}</small>` : ""}</td>
+      <td data-label="Buildings">${p.looks_vacant ? "None on record" : "Yes"}</td>
+      <td class="num wide-only" data-label="Land value">${has(p.assessed_land_usd) ? money(p.assessed_land_usd) : '<span class="missing">not covered yet</span>'}</td>
       <td class="actions">${saveButton(p.apn)}</td></tr>`;
   }
   function acresWords(n) { return `${num(n, 2)} ${Number(n) === 1 ? "acre" : "acres"}`; }
@@ -161,14 +161,14 @@ export async function render(el, params, alive) {
     if (data.direct) {
       const p = data.direct;
       notice.innerHTML = `<div class="notice">
-        <p><b>${esc(apnText(p))}</b> is ${num(p.acres, 2)} acres, zoned ${esc(p.zoning || "none listed")}. It is smaller than the ${acresWords(from)} this list starts at, so it is shown here on its own.</p>
+        <p><b>${esc(apnText(p))}</b> is ${num(p.acres, 2)} ${plural(p.acres, "acre", "acres", 2)}, zoned ${esc(p.zoning || "none listed")}. It is smaller than the ${acresWords(from)} this list starts at, so it is shown here on its own.</p>
         <p class="row"><a class="btn small primary" href="#/land/${esc(c.id)}/${esc(p.apn)}">Open this parcel</a> ${saveButton(p.apn)}</p></div>`;
     } else if (data.direct_missing) {
       notice.innerHTML = `<div class="notice warn"><p>No parcel in ${esc(c.name)} has the number <b>${esc(f.q.trim())}</b>. Check the digits; a parcel number has nine, for example 372-100-001.</p></div>`;
     }
     if (!data.count) {
       list.innerHTML = data.direct || data.direct_missing ? "" :
-        `<div class="state"><p>No ${esc(base)} match these filters.</p><button type="button" class="btn" data-clear>Clear filters</button></div>`;
+        `<div class="state"><p>${filtering() ? `No ${esc(base)} match these filters.` : `No ${esc(base)} are listed.`}</p>${filtering() ? '<button type="button" class="btn" data-clear>Clear filters</button>' : ""}</div>`;
       const clear = list.querySelector("[data-clear]");
       if (clear) clear.addEventListener("click", clearAll);
       return;
@@ -225,7 +225,7 @@ export async function render(el, params, alive) {
     return { color: aerial ? "#ffffff" : "#33443b", opacity: aerial ? 0.75 : 0.5, weight: 0.8,
       fillColor: kindColour(c.zoning_kinds, p.zoning_kind), fillOpacity: aerial ? 0.16 : 0.25 };
   }
-  function tip(p) { return `${esc(apnText(p))} · ${num(p.acres, 2)} acres · ${esc(p.zoning || "no zoning listed")}`; }
+  function tip(p) { return `${esc(apnText(p))} · ${num(p.acres, 2)} ${plural(p.acres, "acre", "acres", 2)} · ${esc(p.zoning || "no zoning listed")}`; }
   function drawMap() {
     if (!data || !shapes) return;
     drawn.clearLayers();
@@ -274,7 +274,7 @@ export async function render(el, params, alive) {
       smallPolygons[p.apn].setStyle(smallStyle(p, true));
     }
     picked.hidden = false;
-    picked.innerHTML = `<div><b>${esc(apnText(p))}</b><span>${num(p.acres, 2)} acres · ${esc(p.zoning || "no zoning listed")}${p.zoning_name && p.zoning_name !== p.zoning ? " · " + esc(p.zoning_name) : ""}${polygons[p.apn] ? "" : " · not in the list"}</span></div>
+    picked.innerHTML = `<div><b>${esc(apnText(p))}</b><span>${num(p.acres, 2)} ${plural(p.acres, "acre", "acres", 2)} · ${esc(p.zoning || "no zoning listed")}${p.zoning_name && p.zoning_name !== p.zoning ? " · " + esc(p.zoning_name) : ""}${polygons[p.apn] ? "" : " · not in the list"}</span></div>
       <div class="picked-actions"><a class="btn small primary" href="#/land/${esc(c.id)}/${esc(p.apn)}">Open ${icon("arrow")}</a>${saveButton(p.apn)}</div>`;
   }
   loadShapes();
@@ -338,13 +338,14 @@ export async function render(el, params, alive) {
       `<optgroup label="By zone">${o.zones.map((z) => `<option value="zone:${esc(z.code)}">${esc(z.code)}${z.name && z.name !== z.code ? " – " + esc(z.name) : ""} (${z.count})</option>`).join("")}</optgroup>`;
     select.value = f.zoning;
   }
+  function filtering() { return !!(f.q.trim() || f.min || f.max || f.zoning || f.vacant); }
   function chips() {
     form.querySelectorAll("[data-min]").forEach((b) => {
       const on = f.min !== "" && Number(f.min) === Number(b.dataset.min);
       b.classList.toggle("on", on);
       b.setAttribute("aria-pressed", String(on));
     });
-    el.querySelector("#clearAll").hidden = !(f.q.trim() || f.min || f.max || f.zoning || f.vacant);
+    el.querySelector("#clearAll").hidden = !filtering();
   }
   function read() {
     f.q = form.elements.q.value; f.min = form.elements.min.value; f.max = form.elements.max.value;

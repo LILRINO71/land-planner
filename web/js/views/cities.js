@@ -1,6 +1,6 @@
 // Cities: one card per city with a live count of its large parcels.
 import { api, cities } from "../api.js";
-import { esc, num, when, icon, loading, problem } from "../util.js";
+import { esc, num, plural, when, icon, loading, problem } from "../util.js";
 import { createMap, ll, kindColour, legend } from "../maps.js";
 
 export async function render(el, params, alive) {
@@ -38,7 +38,7 @@ export async function render(el, params, alive) {
     <article class="card city" data-city="${esc(c.id)}">
       <div class="city-top">
         <div><h2>${esc(c.name)}</h2><p class="muted">${esc(c.region)}</p></div>
-        <span class="chip">${icon("pin")} ${num(c.large_acres)} acres and up</span>
+        <span class="chip">${icon("pin")} ${num(c.large_acres)} ${plural(c.large_acres, "acre")} and up</span>
       </div>
       <div class="city-body">
         <div class="city-facts">
@@ -76,7 +76,7 @@ async function preview(card, c, alive) {
       kinds.add(p.zoning_kind);
       const colour = kindColour(c.zoning_kinds, p.zoning_kind);
       const shape = L.polygon(ll(rings), { color: colour, weight: 1.5, fillColor: colour, fillOpacity: 0.4 })
-        .bindTooltip(`${esc(p.apn_formatted || p.apn)} · ${num(p.acres, 2)} acres · ${esc(p.zoning || "no zoning listed")}`, { sticky: true })
+        .bindTooltip(`${esc(p.apn_formatted || p.apn)} · ${num(p.acres, 2)} ${plural(p.acres, "acre", "acres", 2)} · ${esc(p.zoning || "no zoning listed")}`, { sticky: true })
         .on("click", () => { location.hash = `#/land/${c.id}/${p.apn}`; })
         .addTo(view.map);
       bounds.extend(shape.getBounds());
@@ -94,10 +94,10 @@ async function count(box, c, alive, fresh) {
     const s = await api.summary(c.id, fresh);
     if (!alive()) return;
     box.innerHTML = `
-      <p class="big"><b>${num(s.large_parcels)}</b><span>parcels of ${num(c.large_acres)} acres or more</span></p>
+      <p class="big"><b>${num(s.large_parcels)}</b><span>parcels of ${num(c.large_acres)} ${plural(c.large_acres, "acre")} or more</span></p>
       <ul class="facts-line">
         <li><b>${num(s.look_vacant)}</b> with no buildings on the assessor's records</li>
-        <li>Largest: <b>${num(s.largest_acres, 2)} acres</b></li>
+        <li>Largest: <b>${num(s.largest_acres, 2)} ${plural(s.largest_acres, "acre", "acres", 2)}</b></li>
         <li><b>${num(s.total_acres)}</b> acres in all</li>
       </ul>
       <p class="fine">${s.stale ? "The city's map service did not answer just now. Showing the count from " + esc(when(s.fetched)) + "."

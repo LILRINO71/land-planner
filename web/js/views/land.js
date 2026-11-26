@@ -5,7 +5,7 @@ import { land as getLand, city as getCity, saved } from "../api.js";
 import { createMap, ll, legend, kindColour, fillStrength } from "../maps.js";
 import { mountTerrain } from "../terrain3d.js";
 import { plan } from "./plan.js";
-import { NONE, esc, has, show, num, money, cap, placeName, when, table, icon, loading, problem, missing, toast, apnText } from "../util.js";
+import { NONE, esc, has, show, num, plural, money, cap, placeName, when, table, icon, loading, problem, missing, toast, apnText } from "../util.js";
 
 export const PAGES = [
   ["overview", "Overview"], ["zoning", "Zoning"], ["surroundings", "Surroundings"],
@@ -50,7 +50,7 @@ export async function render(el, params, alive) {
       <p class="kicker"><a href="#/lands/${esc(c.id)}">${esc(c.name)}, ${esc(c.region)}</a></p>
       <div class="head-row">
         <div>
-          <h1>${has(P.acres) ? num(P.acres, 2) + " acres" : "Parcel " + esc(number)}</h1>
+          <h1>${has(P.acres) ? num(P.acres, 2) + " " + plural(P.acres, "acre", "acres", 2) : "Parcel " + esc(number)}</h1>
           <p class="lead">Parcel ${esc(number)} · ${P.address ? esc(P.address) : "no street address listed"}</p>
         </div>
         <div class="head-actions"><span id="saveSlot"></span>
@@ -136,7 +136,7 @@ function siteMap(box, ctx, { neighbours = false, stations = false, base = "aeria
       const kind = n.zoning_kind || "other", colour = kindColour(c.zoning_kinds, kind);
       shown.add(kind);
       const shape = L.polygon(ll(n.rings), neighbourStyle(colour))
-        .bindTooltip(`${esc(n.zoning)}${n.zoning_name && n.zoning_name !== n.zoning ? " · " + esc(n.zoning_name) : ""}${has(n.acres) ? " · " + num(n.acres, 2) + " acres" : ""}`, { sticky: true })
+        .bindTooltip(`${esc(n.zoning)}${n.zoning_name && n.zoning_name !== n.zoning ? " · " + esc(n.zoning_name) : ""}${has(n.acres) ? " · " + num(n.acres, 2) + " " + plural(n.acres, "acre", "acres", 2) : ""}`, { sticky: true })
         .addTo(view.map);
       around.push([shape, colour]);
     });
@@ -327,7 +327,7 @@ function surroundings(box, ctx) {
     `<span class="swatch" style="background:${kindColour(c.zoning_kinds, r.zoning_kind)}"></span>${esc(r.zoning)}`, esc(r.zoning_name || r.zoning),
     num(r.acres, 1), num(r.parcels), r.share_pct + "%"]);
   if (rest > 0.5) rows.push(["Other", "Smaller zoning groups", num(rest, 1), "–", "–"]);
-  t.innerHTML = `<p>Parcels within <b>${num(A.within_miles, 1)} mile</b> of the centre add up to <b>${num(A.total_acres)} acres</b>. By zoning:</p>` +
+  t.innerHTML = `<p>Parcels within <b>${num(A.within_miles, 1)} ${plural(A.within_miles, "mile", "miles", 1)}</b> of the centre add up to <b>${num(A.total_acres)} ${plural(A.total_acres, "acre")}</b>. By zoning:</p>` +
     table(["Code", "Meaning", "Acres", "Parcels", "Share"], rows) +
     `<p class="fine">Includes this parcel. A parcel the circle only touches is counted whole. Roads and other land outside parcels are not counted. ${sourceNote(ctx, "surroundings")}.</p>`;
 }
@@ -401,13 +401,13 @@ function nearby(section, legendBox, view, ctx) {
     if (count.mixed) bits.push(`<b>${count.mixed}</b> mixed use`);
     if (count.other) bits.push(`<b>${count.other}</b> of another kind`);
     const counts = list.length
-      ? `<p class="near-counts">Within ${num(radius, 1)} miles of this parcel the city lists <b>${num(list.length)}</b> ${list.length === 1 ? "project" : "projects"}: ${bits.join(", ")}.</p>`
-      : `<p class="near-counts">The city's lists show no projects within ${num(radius, 1)} miles of this parcel.</p>`;
+      ? `<p class="near-counts">Within ${num(radius, 1)} ${plural(radius, "mile", "miles", 1)} of this parcel the city lists <b>${num(list.length)}</b> ${list.length === 1 ? "project" : "projects"}: ${bits.join(", ")}.</p>`
+      : `<p class="near-counts">The city's lists show no projects within ${num(radius, 1)} ${plural(radius, "mile", "miles", 1)} of this parcel.</p>`;
     const shown = showAll ? list : list.slice(0, NEAR_FIRST);
     const stated = (p) => {
       const s = p.stated || {}, given = [];
-      if (has(s.homes)) given.push(num(s.homes) + " homes");
-      if (has(s.acres)) given.push(num(s.acres, 2) + " acres");
+      if (has(s.homes)) given.push(num(s.homes) + " " + plural(s.homes, "home", "homes"));
+      if (has(s.acres)) given.push(num(s.acres, 2) + " " + plural(s.acres, "acre", "acres", 2));
       if (has(s.building_sq_ft)) given.push(num(s.building_sq_ft) + " sq ft of buildings");
       return given.length ? `<small>The list gives: ${esc(given.join(", "))}</small>` : "";
     };
@@ -442,11 +442,11 @@ function nearby(section, legendBox, view, ctx) {
     const S = m.parts.schools;
     let html = '<div class="card"><h2>Schools nearby</h2>';
     if (!S) html += absent(m, "schools", "Schools nearby");
-    else if (!(S.schools || []).length) html += `<p>No schools on the city's list within ${num(S.within_miles, 1)} miles of this parcel.</p>`;
+    else if (!(S.schools || []).length) html += `<p>No schools on the city's list within ${num(S.within_miles, 1)} ${plural(S.within_miles, "mile", "miles", 1)} of this parcel.</p>`;
     else {
       const list = S.schools.slice().sort((a, b) => Number(a.miles_away) - Number(b.miles_away)).slice(0, 4);
       html += table(["School", "Grades", "Kind", "Miles away"], list.map((x) => [esc(x.name || NONE), x.grades ? esc(x.grades) : NONE, x.kind ? esc(x.kind) : NONE, miles(x.miles_away)])) +
-        `<p class="fine">The nearest ${list.length === 1 ? "school" : num(list.length) + " schools"}, in a straight line from the parcel's centre. ${esc(S.source || c.sources.schools || "City schools list")}. Which school a home is assigned to is set by the school district and is not covered here.</p>`;
+        `<p class="fine">The nearest ${list.length === 1 ? "school" : num(list.length) + " " + plural(list.length, "school", "schools")}, in a straight line from the parcel's centre. ${esc(S.source || c.sources.schools || "City schools list")}. Which school a home is assigned to is set by the school district and is not covered here.</p>`;
     }
     return html + "</div>";
   }
@@ -476,7 +476,7 @@ function nearby(section, legendBox, view, ctx) {
         const marker = L.marker([Number(p.lat), Number(p.lon)], {
           icon: L.divIcon({ className: "near-icon", html: pin(p.kind, false), iconSize: [26, 26], iconAnchor: [13, 13] }),
           keyboard: true, riseOnHover: true,
-        }).bindTooltip(`<b>${esc(p.title || "Project")}</b><br>${esc(p.kind || "Kind not listed")} · ${esc(p.status || "status not listed")}<br>${esc(miles(p.miles_away))} miles away`, { direction: "top", offset: [0, -10] })
+        }).bindTooltip(`<b>${esc(p.title || "Project")}</b><br>${esc(p.kind || "Kind not listed")} · ${esc(p.status || "status not listed")}<br>${esc(miles(p.miles_away))} ${plural(miles(p.miles_away), "mile")} away`, { direction: "top", offset: [0, -10] })
           .addTo(view.map);
         const node = marker.getElement();
         if (node) {
@@ -489,7 +489,7 @@ function nearby(section, legendBox, view, ctx) {
       (S.signals || []).filter((s) => (!s.status || String(s.status).toLowerCase() === "existing") && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).forEach((s) => {
         signals++;
         L.circleMarker([Number(s.lat), Number(s.lon)], { radius: 5, color: "#1d2a24", weight: 2, fillColor: "#fff", fillOpacity: 1 })
-          .bindTooltip(`Traffic signal: ${esc(s.street || "street not listed")}${s.cross_street ? " at " + esc(s.cross_street) : ""} · ${esc(miles(s.miles_away))} miles away`).addTo(view.map);
+          .bindTooltip(`Traffic signal: ${esc(s.street || "street not listed")}${s.cross_street ? " at " + esc(s.cross_street) : ""} · ${esc(miles(s.miles_away))} ${plural(miles(s.miles_away), "mile")} away`).addTo(view.map);
       });
     }
     const keys = [...kinds].map((id) => PROJECT_KINDS[id]).filter(Boolean).map((k) => `<span>${pin(k.word, true)}${esc(k.word)} project</span>`);
@@ -566,7 +566,7 @@ function traffic(box, ctx) {
     return;
   }
   if (!near) {
-    box.innerHTML = `<section><h2>Traffic on the nearest state highways</h2><p>No state highway count point within ${num(t.within_miles)} miles of this parcel.</p>
+    box.innerHTML = `<section><h2>Traffic on the nearest state highways</h2><p>No state highway count point within ${num(t.within_miles)} ${plural(t.within_miles, "mile")} of this parcel.</p>
       <p class="missing">Traffic on city streets: not covered yet.</p></section>`;
     return;
   }
@@ -581,7 +581,7 @@ function traffic(box, ctx) {
     <section>
       <h2>Count points near the parcel</h2>
       <div class="map-frame"><div class="map tall" id="trafficMap"></div></div>
-      <p class="fine">Gold outline: this parcel. Dark dots: Caltrans count points within ${num(t.within_miles)} miles (point at one to read it).</p>
+      <p class="fine">Gold outline: this parcel. Dark dots: Caltrans count points within ${num(t.within_miles)} ${plural(t.within_miles, "mile")} (point at one to read it).</p>
     </section>
     <section>
       <h2>The counts</h2>

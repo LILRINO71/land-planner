@@ -5,7 +5,7 @@ import { createMap, ll } from "../maps.js";
 import { ApiError } from "../api.js";
 import { mountTerrain } from "../terrain3d.js";
 import { balance, readCostSheet, applyCostSheet, costSheet, money as readNumber } from "../planmath.js";
-import { NONE, esc, has, num, cap, table, icon, loading, problem, missing, toast, debounce } from "../util.js";
+import { NONE, esc, has, num, plural, cap, table, icon, loading, problem, missing, toast, debounce } from "../util.js";
 
 // ---------------------------------------------------------------- talking to the server (as api.js does)
 
@@ -64,9 +64,9 @@ function listWords(items) {
 }
 function amountWords(u) {
   if (!u.acres) return "none in this mix";
-  if (u.id === "homes") return `${num(u.homes)} houses, about ${num(u.people)} people`;
-  if (u.id === "apartments") return `${num(u.homes)} apartments, about ${num(u.people)} people`;
-  if (has(u.sq_ft)) return `${num(u.sq_ft)} sq ft of floor space, about ${num(u.jobs)} jobs`;
+  if (u.id === "homes") return `${num(u.homes)} ${plural(u.homes, "house")}, about ${num(u.people)} ${plural(u.people, "person", "people")}`;
+  if (u.id === "apartments") return `${num(u.homes)} ${plural(u.homes, "apartment")}, about ${num(u.people)} ${plural(u.people, "person", "people")}`;
+  if (has(u.sq_ft)) return `${num(u.sq_ft)} sq ft of floor space, about ${num(u.jobs)} ${plural(u.jobs, "job")}`;
   if (u.id === "park") return "parks, open space and drainage basins";
   return "";
 }
@@ -75,8 +75,8 @@ function fitChip(u) {
 }
 function effect(e) {
   const n = Number(e) || 0;
-  if (n > 0) return `<span class="plan-eff plus" aria-label="adds ${n} points">+${n}</span>`;
-  if (n < 0) return `<span class="plan-eff minus" aria-label="takes away ${-n} points">−${-n}</span>`;
+  if (n > 0) return `<span class="plan-eff plus" aria-label="adds ${n} ${plural(n, "point")}">+${n}</span>`;
+  if (n < 0) return `<span class="plan-eff minus" aria-label="takes away ${-n} ${plural(-n, "point")}">−${-n}</span>`;
   return '<span class="plan-eff zero" aria-label="no points either way">0</span>';
 }
 
@@ -272,11 +272,11 @@ export function plan(box, ctx) {
     let sentence;
     if (nothing()) {
       sentence = data.nothing_to_build && !data.edited && settings.mode === "zoning"
-        ? `Under today's zoning there is nothing to build on these ${ac(data.acres)} acres: all of it stays parks and open space.`
-        : `This mix has no buildings: all ${ac(data.acres)} acres are parks and open space.`;
+        ? `Under today's zoning there is nothing to build on these ${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)}: all of it stays parks and open space.`
+        : `This mix has no buildings: all ${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)} are parks and open space.`;
     } else {
       const words = parts.map((u, i) => `${ac(u.acres)}${i ? "" : " acres"} of ${LOW[u.id] || esc(u.label).toLowerCase()}`);
-      sentence = `${data.edited ? "Your mix" : "Suggested"} for these ${ac(data.acres)} acres: ${listWords(words)}.`;
+      sentence = `${data.edited ? "Your mix" : "Suggested"} for these ${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)}: ${listWords(words)}.`;
     }
     box.querySelector("#planHeadline").innerHTML = `<p class="kicker dark">${settings.mode === "best" ? "Best use for the location, today's zoning left aside" : "Following today's zoning"}${data.facts && data.facts.zoning ? " · zoned " + esc(data.facts.zoning) + (data.facts.zoning_name && data.facts.zoning_name !== data.facts.zoning ? " (" + esc(data.facts.zoning_name) + ")" : "") : ""}</p>
       <h2 class="plan-sentence">${sentence}</h2>`;
@@ -311,7 +311,7 @@ export function plan(box, ctx) {
     const houses = (data.uses.find((u) => u.id === "homes") || {}).homes || 0, flats = (data.uses.find((u) => u.id === "apartments") || {}).homes || 0;
     const stat = (label, big, small) => `<div class="stat"><span class="label">${label}</span><b>${big}</b><span>${small}</span></div>`;
     box.querySelector("#planStats").innerHTML = [
-      stat("Homes", num(e.homes), `${num(houses)} houses and ${num(flats)} apartments`),
+      stat("Homes", num(e.homes), `${num(houses)} ${plural(houses, "house")} and ${num(flats)} ${plural(flats, "apartment")}`),
       stat("Floor space", has(e.floor_space_sq_ft) ? num(e.floor_space_sq_ft) + " sq ft" : NONE, "for shops, offices and the business park"),
       stat("Jobs", num(e.jobs), "in the shops, offices and business park, by rule of thumb"),
       stat("Trips a day", num(t.per_day), `about ${num(t.peak_hour)} in the busiest hour`),
@@ -343,7 +343,7 @@ export function plan(box, ctx) {
       d.pieces.forEach((p) => {
         const u = names[p.use] || { label: p.use, short: p.use };
         L.polygon(ll([p.ring]), { color: "#fff", weight: 2, opacity: 0.95, fillColor: colours[p.use], fillOpacity: 0.5 })
-          .bindTooltip(`${esc(u.label)}: ${ac(p.acres)} acres`, { sticky: true }).addTo(layers);
+          .bindTooltip(`${esc(u.label)}: ${ac(p.acres)} ${plural(p.acres, "acre", "acres", 1)}`, { sticky: true }).addTo(layers);
         if (p.label_at) {
           L.marker([p.label_at[1], p.label_at[0]], {
             icon: L.divIcon({ className: "plan-label", iconSize: [0, 0], html: `<span><b>${esc(u.short)}</b> ${ac(p.acres)} ac</span>` }),
@@ -375,7 +375,7 @@ export function plan(box, ctx) {
       L.marker([e.lat, e.lon], {
         icon: L.divIcon({ className: "plan-pin", iconSize: [26, 26], iconAnchor: [13, 13], html: `<span class="plan-ent plan-ent-${kind}">${SIGNAL_MARK[kind]}</span>` }),
         title: `Entrance onto ${e.street}: ${SIGNAL_WORDS[kind]}`, alt: `Entrance onto ${e.street}`,
-      }).bindTooltip(`<b>Entrance onto ${esc(e.street)}</b> (${esc(e.class)}): about ${num(e.trips)} trips a day. ${esc(e.text)}`).addTo(layers);
+      }).bindTooltip(`<b>Entrance onto ${esc(e.street)}</b> (${esc(e.class)}): about ${num(e.trips)} ${plural(e.trips, "trip")} a day. ${esc(e.text)}`).addTo(layers);
     });
     if (!fitted && mapView) { mapView.fit(site.getBounds().pad(0.25)); fitted = true; }
 
@@ -399,7 +399,7 @@ export function plan(box, ctx) {
     el.innerHTML = `<div class="card soft plan-laid"><h3>Why it is laid out this way</h3>
       <ul class="plain">${(d.why || []).map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
       ${d.note ? `<p>${esc(d.note)}</p>` : ""}
-      ${gap ? `<p class="notice warn">The outline on the map covers about <b>${ac(d.drawn_acres)} acres</b>, but the parcel record says <b>${ac(data.acres)} acres</b>. The plan's numbers use the record; the drawing can only use the outline. Check the parcel's real boundary.</p>` : ""}
+      ${gap ? `<p class="notice warn">The outline on the map covers about <b>${ac(d.drawn_acres)} ${plural(d.drawn_acres, "acre", "acres", 1)}</b>, but the parcel record says <b>${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)}</b>. The plan's numbers use the record; the drawing can only use the outline. Check the parcel's real boundary.</p>` : ""}
       <p class="fine">The pieces are a first sketch of where each use could go, cut from the assessor's outline. They are not lot lines and not a site plan.</p></div>`;
   }
 
@@ -445,7 +445,7 @@ export function plan(box, ctx) {
     const same = rows.length === data.uses.length && data.uses.every((u, i) => rows[i].dataset.use === u.id);
     if (!same) {
       el.innerHTML = `<h2 id="mixTitle">The mix</h2>
-        <p class="fine plan-mix-help">Move a slider or type acres. The other uses give up or take the difference in proportion, so the total stays ${ac(data.acres)} acres.</p>
+        <p class="fine plan-mix-help">Move a slider or type acres. The other uses give up or take the difference in proportion, so the total stays ${ac(data.acres)} ${plural(data.acres, "acre", "acres", 1)}.</p>
         <div class="plan-rows">${data.uses.map((u) => `
           <div class="plan-row" data-use="${esc(u.id)}">
             <div class="plan-row-top"><span class="swatch" style="background:${colourOf(u.colour)}"></span><label for="planAc-${esc(u.id)}"><b>${esc(u.label)}</b></label><span class="plan-fit-slot"></span></div>
@@ -460,9 +460,22 @@ export function plan(box, ctx) {
         <div id="planNotes"></div>`;
     }
     updateMix(true);
-    const notes = data.notes || [];
-    el.querySelector("#planNotes").innerHTML = notes.length ? `<ul class="plain plan-notes">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "";
     el.querySelector("#planSuggested").hidden = !settings.acres;
+  }
+  // the server's notes; one of them says shops were cut to a size, which stops being the owner's number once they change the shops
+  function drawNotes() {
+    const slot = box.querySelector("#planNotes");
+    if (!slot) return;
+    const shops = data.uses.find((u) => u.id === "retail");
+    const text = (n) => {
+      const cut = /Cut to ([\d,]+(?:\.\d+)?) acres/.exec(n);
+      if (!cut || !shops) return n;
+      const mine = Number(mixAcres[shops.id]);
+      if (!isFinite(mine) || Math.abs(mine - Number(cut[1].replace(/,/g, ""))) < 0.05) return n;
+      return n.replace(cut[0], `The suggestion cut this to ${cut[1]} acres`) + ` Your mix has ${ac(mine)} ${plural(mine, "acre", "acres", 1)} of shops.`;
+    };
+    const notes = data.notes || [];
+    slot.innerHTML = notes.length ? `<ul class="plain plan-notes">${notes.map((n) => `<li>${esc(text(n))}</li>`).join("")}</ul>` : "";
   }
   // put the current acres in the rows; the box or slider the person is using is left alone
   function updateMix(fromAnswer) {
@@ -483,11 +496,12 @@ export function plan(box, ctx) {
       } else if (Math.abs(a - u.acres) >= 0.05) row.querySelector(".plan-what").textContent = "working it out…";
       const lo = left.get(u.id);
       const sugg = lo ? `Left out of the suggestion (score ${num(lo.score)}). You can raise it.`
-        : Math.abs(a - (u.suggested_acres || 0)) >= 0.05 ? `Suggested: ${ac(u.suggested_acres)} acres` : "";
+        : Math.abs(a - (u.suggested_acres || 0)) >= 0.05 ? `Suggested: ${ac(u.suggested_acres)} ${plural(u.suggested_acres, "acre", "acres", 1)}` : "";
       row.querySelector(".plan-sugg").textContent = sugg;
     });
+    drawNotes();
     const sum = Object.values(mixAcres).reduce((t, v) => t + v, 0);
-    el.querySelector("#planTotal").textContent = `Total: ${ac(sum)} of ${ac(total)} acres`;
+    el.querySelector("#planTotal").textContent = `Total: ${ac(sum)} of ${ac(total)} ${plural(total, "acre", "acres", 1)}`;
   }
   function setAcres(use, value) {
     mixAcres = balance(mixAcres, use, value, Number(data.acres) || 0, data.uses.map((u) => u.id), "park");
@@ -509,7 +523,7 @@ export function plan(box, ctx) {
       <p class="plan-lead">Each use gets a score out of 100 from the facts of this land. Each fact adds or takes away points; the source of each fact is in the small tag.${settings.mode === "best" ? " In Best use the zoning is left out of the score, so the zoning line counts 0." : ""}</p>
       <div class="plan-cards">${kept.map((u) => `
         <article class="card plan-why">
-          <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)} <span class="plan-acres">${ac(u.acres)} acres</span></h3>
+          <h3><span class="swatch" style="background:${colourOf(u.colour)}"></span>${esc(u.label)} <span class="plan-acres">${ac(u.acres)} ${plural(u.acres, "acre", "acres", 1)}</span></h3>
           ${bar(u)} ${fitChip(u)}
           ${u.reasons.length ? reasons(u) : ""}
         </article>`).join("")}
@@ -558,13 +572,13 @@ export function plan(box, ctx) {
     const names = Object.fromEntries(data.uses.map((u) => [u.id, u]));
     const uses = Object.keys(t.by_use || {}), most = Math.max(1, ...uses.map((u) => t.by_use[u]));
     el.innerHTML = `<h2>Traffic</h2><div class="card">
-      <p>About <b>${num(t.per_day)} trips a day</b> in and out, and about <b>${num(t.peak_hour)}</b> in the busiest hour.</p>
+      <p>About <b>${num(t.per_day)} ${plural(t.per_day, "trip")} a day</b> in and out, and about <b>${num(t.peak_hour)}</b> in the busiest hour.</p>
       ${uses.length ? table(["Use", "Trips a day", ""], uses.map((u) => [esc((names[u] || {}).label || u), num(t.by_use[u]),
         `<span class="plan-tbar" aria-hidden="true"><i style="width:${(100 * t.by_use[u] / most).toFixed(1)}%;background:${colourOf((names[u] || {}).colour)}"></i></span>`])) : ""}
       <h3 class="plan-sub">Entrances</h3>
       ${(t.entrances || []).length ? `<ul class="plan-ents">${t.entrances.map((e) => {
         const kind = SIGNAL_MARK[e.signal] ? e.signal : "none";
-        return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b> (${esc(e.class)}), about ${num(e.trips)} trips a day. <b>${SIGNAL_WORDS[kind]}.</b> ${esc(e.text)}</span></li>`;
+        return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b> (${esc(e.class)}), about ${num(e.trips)} ${plural(e.trips, "trip")} a day. <b>${SIGNAL_WORDS[kind]}.</b> ${esc(e.text)}</span></li>`;
       }).join("")}</ul>` : missing("Where the entrances go: not covered yet (see the note below).")}
       <h3 class="plan-sub">Traffic signals today, nearest first</h3>
       ${(t.existing_signals || []).length ? table(["Where", "Miles away"], t.existing_signals.map((s) => [`${esc(s.street)} and ${esc(s.cross_street)}`, num(s.miles_away, 2)])) : missing("Traffic signals nearby: not covered yet.")}
@@ -577,10 +591,10 @@ export function plan(box, ctx) {
     el.innerHTML = `<h2>The market around it</h2><div class="card">
       <h3 class="plan-sub">People and homes nearby <span class="plan-tag measured">2020 Census</span></h3>
       ${m.people ? table(["Within", "People", "Homes"], m.people.map((r) => [`${num(r.miles)} mile${Number(r.miles) === 1 ? "" : "s"}`, num(r.people), num(r.homes)])) : missing("The census count of people nearby: not covered yet.")}
-      <h3 class="plan-sub">Already on the city's lists within ${num(pl.within_miles, 1)} miles <span class="plan-tag measured">City project lists</span></h3>
+      <h3 class="plan-sub">Already on the city's lists within ${num(pl.within_miles, 1)} ${plural(pl.within_miles, "mile", "miles", 1)} <span class="plan-tag measured">City project lists</span></h3>
       ${has(pl.projects) ? `<dl class="facts">
         <dt>Projects</dt><dd>${num(pl.projects)}</dd>
-        <dt>Housing projects</dt><dd>${num(pl.housing_projects)}, with ${num(pl.homes_stated)} homes stated</dd>
+        <dt>Housing projects</dt><dd>${num(pl.housing_projects)}, with ${num(pl.homes_stated)} ${plural(pl.homes_stated, "home")} stated</dd>
         <dt>Shops and offices projects</dt><dd>${num(pl.commercial_projects)}</dd>
         <dt>Industrial projects</dt><dd>${num(pl.industrial_projects)}</dd>
         <dt>Building space stated</dt><dd>${num(pl.building_sq_ft_stated)} sq ft (shops, offices and industry)</dd></dl>` : missing()}

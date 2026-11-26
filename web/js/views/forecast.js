@@ -7,7 +7,7 @@ import { api } from "../api.js";
 import { PAGES, FORECAST_ICON } from "./land.js";
 import { money as readNumber } from "../planmath.js";
 import { mountTerrain } from "../terrain3d.js";
-import { NONE, esc, has, num, cap, icon, loading, problem, missing, debounce, dateOnly, when } from "../util.js";
+import { NONE, esc, has, num, plural, cap, icon, loading, problem, missing, debounce, dateOnly, when } from "../util.js";
 
 // ---------------------------------------------------------------- words and numbers
 
@@ -432,11 +432,11 @@ export async function render(main, route, alive) {
       const words = p.zoning ? p.zoning + (p.zoning_name && p.zoning_name !== p.zoning ? ` (${p.zoning_name})` : "") : "no zoning listed";
       if (!zones.includes(words)) zones.push(words);
     });
-    const parcelLinks = parcels.map((p) => `<a href="#/land/${esc(data.city)}/${esc(p.apn)}">${esc(p.apn_formatted || p.apn)}</a>${isNum(p.acres) ? ` <span class="muted">(${num(p.acres, 2)} acres)</span>` : ""}`);
+    const parcelLinks = parcels.map((p) => `<a href="#/land/${esc(data.city)}/${esc(p.apn)}">${esc(p.apn_formatted || p.apn)}</a>${isNum(p.acres) ? ` <span class="muted">(${num(p.acres, 2)} ${plural(p.acres, "acre", "acres", 2)})</span>` : ""}`);
     let together = "";
     if (!single) {
       together = `<p class="fc-together">These ${parcels.length} parcels are forecast <b>as one site</b>: the people, homes, shops, jobs and traffic around the point between them, and the land of all of them together.` +
-        (site.together ? (isNum(site.spread_miles) ? ` They lie together, within about ${num(site.spread_miles, 2)} miles of each other.` : " They lie together.")
+        (site.together ? (isNum(site.spread_miles) ? ` They lie together, within about ${num(site.spread_miles, 2)} ${plural(site.spread_miles, "mile", "miles", 2)} of each other.` : " They lie together.")
           : " <b>They are not next to each other</b>, so the forecast fits each one less well than a forecast of its own.") + "</p>";
     }
     const tabs = single ? `<nav class="tabs" aria-label="This land's pages">${PAGES.map(([id, label]) =>
@@ -445,7 +445,7 @@ export async function render(main, route, alive) {
       <p class="kicker"><a href="#/lands/${esc(data.city)}">${esc(data.city_name || data.city)}</a> · Forecast, ${esc(now())} to ${esc(now() + 10)}</p>
       <div class="head-row">
         <div>
-          <h1>${isNum(site.acres) ? num(site.acres, 2) + " acres" : "This site"}${single ? "" : `, ${parcels.length} parcels as one site`}</h1>
+          <h1>${isNum(site.acres) ? num(site.acres, 2) + " " + plural(site.acres, "acre", "acres", 2) : "This site"}${single ? "" : `, ${parcels.length} parcels as one site`}</h1>
           <p class="lead">${single ? "Parcel" : "Parcels"} ${parcelLinks.join(", ")} · zoned ${esc(listWords(zones))}</p>
         </div>
         <div class="head-actions">
@@ -500,7 +500,7 @@ export async function render(main, route, alive) {
       return;
     }
     const r = ring.rates_pct || {};
-    const intro = `<p class="fc-intro">Within ${esc(mi(ring.miles))} of the site the Census counted ${countedLine || NONE}${isNum(ring.people_per_home) ? `, about ${num(ring.people_per_home, 2)} people a home` : ""}. ` +
+    const intro = `<p class="fc-intro">Within ${esc(mi(ring.miles))} of the site the Census counted ${countedLine || NONE}${isNum(ring.people_per_home) ? `, about ${num(ring.people_per_home, 2)} ${plural(ring.people_per_home, "person", "people", 2)} a home` : ""}. ` +
       (ring.one_reading ? `Only one reading of growth answered (${num(r.expected, 2)}% a year), so the low and high lines are the same as the expected line.`
         : `The expected line grows homes by <b>${num(r.expected, 2)}% a year</b>, the middle reading; the band runs from the lowest reading (${num(r.low, 2)}%) to the highest (${num(r.high, 2)}%).`) + "</p>";
     const rows = ring.rows || [];
@@ -519,8 +519,8 @@ export async function render(main, route, alive) {
           dots(s, fwd.map((x) => [x.year, x.people.expected]), "fc-dot") + nowLine(s, now()) +
           cYears.map((y) => `<circle class="fc-counted" cx="${s.x(y).toFixed(1)}" cy="${s.y(counted[y].people).toFixed(1)}" r="5.5"/>` +
             `<text class="fc-pt-lab" x="${s.x(y).toFixed(1)}" y="${(s.y(counted[y].people) - 10).toFixed(1)}" text-anchor="middle">${num(counted[y].people)}</text>`).join(""),
-        hover: rows.map((x) => ({ x: x.year, text: `${x.year}: about ${num(x.people.expected)} people expected (${range(x.people)})` }))
-          .concat(cYears.map((y) => ({ x: y, text: `${y}: ${num(counted[y].people)} people counted by the Census` }))),
+        hover: rows.map((x) => ({ x: x.year, text: `${x.year}: about ${num(x.people.expected)} ${plural(x.people.expected, "person", "people")} expected (${range(x.people)})` }))
+          .concat(cYears.map((y) => ({ x: y, text: `${y}: ${num(counted[y].people)} ${plural(counted[y].people, "person", "people")} counted by the Census` }))),
       });
     };
     const readings = (ring.readings || []).map((g) => {
@@ -532,8 +532,8 @@ export async function render(main, route, alive) {
         (g.whole_city ? ' <span class="fc-tag city">whole city</span>' : "");
       return [`<b>${esc(g.label)}</b> ${tag}<small>${esc(g.source || NONE)}</small>${used.length ? `<small><b>Used for the ${esc(listWords(used))}</b></small>` : ""}`,
         `${num(g.rate_pct, 2)}% a year`,
-        g.from ? `${num(g.from.homes)} homes<small>in ${esc(g.from.year)}</small>` : NONE,
-        g.to ? `${num(g.to.homes)} homes<small>in ${esc(g.to.year)}</small>` : NONE];
+        g.from ? `${num(g.from.homes)} ${plural(g.from.homes, "home")}<small>in ${esc(g.from.year)}</small>` : NONE,
+        g.to ? `${num(g.to.homes)} ${plural(g.to.homes, "home")}<small>in ${esc(g.to.year)}</small>` : NONE];
     });
     box.innerHTML = head + intro + `
       <div class="fc-people">
@@ -603,7 +603,7 @@ export async function render(main, route, alive) {
       if (!p.outline || !p.outline.coordinates) return;
       const shape = ll(p.outline.type === "MultiPolygon" ? p.outline.coordinates.flat() : p.outline.coordinates);
       L.polygon(shape, { color: "#1d2a24", weight: 6, fill: false, interactive: false }).addTo(m);
-      const g = L.polygon(shape, { color: "#f2b632", weight: 3, fillColor: "#f2b632", fillOpacity: 0.25 }).bindTooltip(`Parcel ${esc(p.apn_formatted || p.apn)}${isNum(p.acres) ? ", " + num(p.acres, 2) + " acres" : ""}`, { sticky: true }).addTo(m);
+      const g = L.polygon(shape, { color: "#f2b632", weight: 3, fillColor: "#f2b632", fillOpacity: 0.25 }).bindTooltip(`Parcel ${esc(p.apn_formatted || p.apn)}${isNum(p.acres) ? ", " + num(p.acres, 2) + " " + plural(p.acres, "acre", "acres", 2) : ""}`, { sticky: true }).addTo(m);
       if (!bounds) bounds = g.getBounds();
     });
     const scale = incomeBands();
@@ -611,7 +611,7 @@ export async function render(main, route, alive) {
       (inc.tracts || []).forEach((t) => {
         if (!isNum(t.lat) || !isNum(t.lon)) return;
         L.circleMarker([Number(t.lat), Number(t.lon)], { radius: 8, color: "#1d2a24", weight: 1.5, fillColor: scale.colourOf(t.income), fillOpacity: 0.95 })
-          .bindTooltip(`<b>${esc(t.name)}</b><br>Typical household income $${num(t.income)} a year<br>${num(t.households)} households · ${num(t.miles_away, 2)} miles ${esc(t.direction || "")}`).addTo(m);
+          .bindTooltip(`<b>${esc(t.name)}</b><br>Typical household income $${num(t.income)} a year<br>${num(t.households)} ${plural(t.households, "household")} · ${num(t.miles_away, 2)} ${plural(t.miles_away, "mile", "miles", 2)} ${esc(t.direction || "")}`).addTo(m);
       });
     }
     if (bounds) mapView.fit(bounds.pad(0.04));
@@ -630,7 +630,7 @@ export async function render(main, route, alive) {
     const dirs = inc.by_direction || [], far = (data.rings || []).map((r) => r.miles).filter(isNum);
     textBox.innerHTML = `<div class="card fc-income-card">
       <p class="fc-summary">${esc(inc.summary || "")}</p>
-      ${dirs.length ? `<div class="fc-dirs">${dirs.map((d) => `<div><span class="label">${esc(cap(d.direction))}</span><b>$${num(d.income)}</b><span>${num(d.households)} households in ${num(d.tracts)} tracts</span></div>`).join("")}</div>
+      ${dirs.length ? `<div class="fc-dirs">${dirs.map((d) => `<div><span class="label">${esc(cap(d.direction))}</span><b>$${num(d.income)}</b><span>${num(d.households)} ${plural(d.households, "household")} in ${num(d.tracts)} ${plural(d.tracts, "tract")}</span></div>`).join("")}</div>
         <p class="fine">By direction: the households' typical income in the tracts on that side${far.length ? `, within ${esc(mi(Math.max(...far)))}` : ""}. A tract to the north-east counts toward both north and east.</p>` : ""}
       <dl class="facts">
         <dt>Typical household income within ${esc(mi(data.market_miles))}</dt><dd>${amount(inc.typical, "$")} a year</dd>
@@ -744,15 +744,16 @@ export async function render(main, route, alive) {
     const head = `<h3>Already on the city's lists, by stage</h3>`;
     if (!pipe.available) return head + notCovered("The city's project lists", "projects");
     const review = (data.figures || []).find((f) => f.id === "built_review_pct");
-    const rows = (data.stages || []).map((st) => {
+    // a stage with no project counted in it has nothing to show, so it is left out
+    const rows = (data.stages || []).filter((st) => { const c = counted.find((x) => x.label === st.label); return c && Number(c.projects) > 0; }).map((st) => {
       const c = counted.find((x) => x.label === st.label);
       return { cls: st.uncertain ? "fc-unsure" : "", cells: [
         `<b>${esc(st.label)}</b>${st.uncertain ? ' <span class="fc-tag unsure">may not all be built</span>' : ""}`,
-        `${esc(st.from_year)} to ${esc(st.to_year)}`, c ? num(c.projects) : "none", c ? num(c.homes) : "", c ? num(c.shops_sq_ft) : "", c ? num(c.work_sq_ft) : ""] };
+        `${esc(st.from_year)} to ${esc(st.to_year)}`, num(c.projects), num(c.homes), num(c.shops_sq_ft), num(c.work_sq_ft)] };
     });
     const lists = Object.entries(pipe.lists_updated || {});
-    return head + plainTable(["Stage", "Likely to open", "Projects", "Homes", "Shop space (sq ft)", "Work space (sq ft)"], rows, [2, 3, 4, 5]) +
-      `<p class="fine">Counted: <b>${num(pipe.projects_counted)}</b> projects within ${esc(mi(data.market_miles))} that state a number of homes or a building size.${isNum(pipe.projects_without_sizes) && pipe.projects_without_sizes ? ` ${num(pipe.projects_without_sizes)} more within that distance state neither, so they are left out.` : ""}${Number(pipe.projects_other_kinds) > 0 ? ` ${num(pipe.projects_other_kinds)} are not homes, shops or work space, so they are not counted.` : ""}${Number(pipe.projects_dropped) > 0 ? ` ${num(pipe.projects_dropped)} were withdrawn, denied, expired or cancelled, so they are not counted as coming.` : ""} The lists hold ${num(pipe.projects_listed)} projects in all.
+    return head + (rows.length ? plainTable(["Stage", "Likely to open", "Projects", "Homes", "Shop space (sq ft)", "Work space (sq ft)"], rows, [2, 3, 4, 5]) : missing("No project on the city's lists is counted in any stage yet.")) +
+      `<p class="fine">Counted: <b>${num(pipe.projects_counted)}</b> projects within ${esc(mi(data.market_miles))} that state a number of homes or a building size.${isNum(pipe.projects_without_sizes) && pipe.projects_without_sizes ? ` ${num(pipe.projects_without_sizes)} more within that distance state neither, so they are left out.` : ""}${Number(pipe.projects_other_kinds) > 0 ? ` ${num(pipe.projects_other_kinds)} are not homes, shops or work space, so they are not counted.` : ""}${Number(pipe.projects_dropped) > 0 ? ` ${num(pipe.projects_dropped)} were withdrawn, denied, expired or cancelled, so they are not counted as coming.` : ""} The lists hold ${num(pipe.projects_listed)} ${plural(pipe.projects_listed, "project")} in all.
         ${review ? ` Stages marked “may not all be built” count ${figureValue(review)} of their homes and floor space (${esc(review.label.toLowerCase())}, ${review.yours ? "your figure" : "a starting figure"}).` : ""}</p>
       ${lists.length ? `<p class="fine">The city's lists used: ${lists.map(([name, d]) => `${esc(name)} (updated ${esc(day(d) || d)})`).join("; ")}.</p>` : ""}`;
   }
@@ -781,12 +782,12 @@ export async function render(main, route, alive) {
       width: w, height: 190, xMin: Math.min(...xs), xMax: Math.max(...xs), values: rows.map((r) => r.site_trips), zero: true, unit: "The site's own trips a day",
       label: `Chart of the trips a day the site itself adds, by year, as its land is taken up.`,
       draw: (s) => bars(s, rows.map((r) => [r.year, r.site_trips]), "fc-bar site"),
-      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: about ${num(r.site_trips)} trips a day from the site` })),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: about ${num(r.site_trips)} ${plural(r.site_trips, "trip")} a day from the site` })),
     });
     box.innerHTML = head + `
       <p class="fc-summary">${esc(T.summary || "")}</p>
       <div class="fc-traffic">
-        <div class="card"><h3>${esc(where)}${isNum(hw.miles_away) ? `, ${num(hw.miles_away, 2)} miles away` : ""}</h3>
+        <div class="card"><h3>${esc(where)}${isNum(hw.miles_away) ? `, ${num(hw.miles_away, 2)} ${plural(hw.miles_away, "mile", "miles", 2)} away` : ""}</h3>
           <div class="fc-chart" data-chart="highway"></div>
           <div class="legend fc-legend">${key("band", "Low to high")}${key("line", "Expected")}${key("focus", "Next five years")}</div>
           <h4 class="fc-sub">The site's own trips</h4>
@@ -820,7 +821,7 @@ export async function render(main, route, alive) {
     });
     signals.forEach((s) => {
       L.circleMarker([Number(s.lat), Number(s.lon)], { radius: 6, color: "#fff", weight: 2, fillColor: "#1d2a24", fillOpacity: 1 })
-        .bindTooltip(`Traffic signal today at ${esc(s.street)} and ${esc(s.cross_street)}, ${num(s.miles_away, 2)} miles away`).addTo(roadLayers);
+        .bindTooltip(`Traffic signal today at ${esc(s.street)} and ${esc(s.cross_street)}, ${num(s.miles_away, 2)} ${plural(s.miles_away, "mile", "miles", 2)} away`).addTo(roadLayers);
       grow([Number(s.lat), Number(s.lon)]);
     });
     entrances.forEach((e) => {
@@ -828,7 +829,7 @@ export async function render(main, route, alive) {
       L.marker([Number(e.lat), Number(e.lon)], {
         icon: L.divIcon({ className: "plan-pin", iconSize: [26, 26], iconAnchor: [13, 13], html: `<span class="plan-ent plan-ent-${kind}">${SIGNAL_MARK[kind]}</span>` }),
         title: `Entrance onto ${e.street}: ${SIGNAL_WORDS[kind]}`, alt: `Entrance onto ${e.street}`,
-      }).bindTooltip(`<b>Entrance onto ${esc(e.street)}</b> (${esc(e.class || "")}): about ${num(e.trips)} trips a day. ${esc(e.text || "")}`).addTo(roadLayers);
+      }).bindTooltip(`<b>Entrance onto ${esc(e.street)}</b> (${esc(e.class || "")}): about ${num(e.trips)} ${plural(e.trips, "trip")} a day. ${esc(e.text || "")}`).addTo(roadLayers);
       grow([Number(e.lat), Number(e.lon)]);
     });
     if (bounds && !roadFitted) { roadMap.fit(bounds.pad(0.12)); roadFitted = true; }
@@ -844,7 +845,7 @@ export async function render(main, route, alive) {
     box.innerHTML = `<div class="card"><h3>The site's entrances</h3>
         ${entrances.length ? `<ul class="plan-ents fc-ents">${entrances.map((e) => {
           const kind = SIGNAL_MARK[e.signal] ? e.signal : "unknown";
-          return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b>${e.class ? ` (${esc(e.class)})` : ""}, about ${num(e.trips)} trips a day. <b>${esc(SIGNAL_WORDS[kind])}.</b> ${esc(e.text || "")}</span></li>`;
+          return `<li><b class="plan-ent plan-ent-${kind} small" aria-hidden="true">${SIGNAL_MARK[kind]}</b><span><b>${esc(e.street)}</b>${e.class ? ` (${esc(e.class)})` : ""}, about ${num(e.trips)} ${plural(e.trips, "trip")} a day. <b>${esc(SIGNAL_WORDS[kind])}.</b> ${esc(e.text || "")}</span></li>`;
         }).join("")}</ul>` : missing("Where the entrances go: not covered yet.")}
         ${isNum(T.signals_to_study) ? `<p>${Number(T.signals_to_study) ? `<b>${num(T.signals_to_study)}</b> new ${Number(T.signals_to_study) === 1 ? "signal is" : "signals are"} worth studying at the entrances.` : "No new signal is likely to be needed at the entrances."}</p>` : ""}
         <h3 class="fc-gap">Traffic signals today, nearest first</h3>
@@ -860,7 +861,7 @@ export async function render(main, route, alive) {
     const planLinks = `<p class="fc-links">${parcels.map((p) => `<a class="btn small" href="#/land/${esc(data.city)}/${esc(p.apn)}/plan">${icon("plan")} Plan page of ${esc(p.apn_formatted || p.apn)}</a>`).join("")}</p>`;
     const head = `<h2 id="fcLandTitle">This site's land, year by year</h2>`;
     const notForecast = (G.not_forecast || []).length ? `<h3>Not forecast</h3><ul class="plain">${G.not_forecast.map((n) =>
-      `<li><b>${esc(n.label)}</b>${isNum(n.acres) ? ` (${num(n.acres, 1)} acres)` : ""}: ${esc(n.why || NONE)}</li>`).join("")}</ul>` : "";
+      `<li><b>${esc(n.label)}</b>${isNum(n.acres) ? ` (${num(n.acres, 1)} ${plural(n.acres, "acre", "acres", 1)})` : ""}: ${esc(n.why || NONE)}</li>`).join("")}</ul>` : "";
     if (!G.available) {
       box.innerHTML = head + (G.basis ? `<p class="fc-intro">${esc(G.basis)}</p>` : "") + notCovered("How fast this site's land is taken up", "homes") +
         (notForecast ? `<div class="card">${notForecast}</div>` : "") + planLinks;
@@ -888,12 +889,12 @@ export async function render(main, route, alive) {
       return ` (${hi}; ${lo})`;
     };
     const when = (u) => (u.filled_in ? `all taken up by about ${u.filled_in}` : u.filled_later_in ? `filled around ${u.filled_later_in} at this pace` : u.never_at_this_pace ? "not filled at this pace" : "") + spans(u);
-    const legend = uses.map((u) => `<li><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b>: ${num(u.acres, 1)} acres (${num(u.amount)} ${esc(u.unit)}). ${num(u.acres_by_year_5, 1)} acres by ${now() + 5}, ${num(u.acres_by_year_10, 1)} by ${now() + 10} (${num(u.pct_by_year_10)}%)${when(u) ? "; " + esc(when(u)) : ""}.</span></li>`).join("");
+    const legend = uses.map((u) => `<li><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b>: ${num(u.acres, 1)} ${plural(u.acres, "acre", "acres", 1)} (${num(u.amount)} ${esc(u.unit)}). ${num(u.acres_by_year_5, 1)} ${plural(u.acres_by_year_5, "acre", "acres", 1)} by ${now() + 5}, ${num(u.acres_by_year_10, 1)} by ${now() + 10} (${num(u.pct_by_year_10)}%)${when(u) ? "; " + esc(when(u)) : ""}.</span></li>`).join("");
     const table = yearTable(["Year"].concat(uses.map((u) => `${esc(u.short || u.label)} (acres)`)),
       years.map((y) => ({ year: y, cells: uses.map((u) => { const r = (u.by_year || []).find((x) => x.year === y); return r ? `${num(r.acres_so_far, 1)}<small>${num(r.so_far)} ${esc(u.unit)}</small>` : NONE; }) })), "fc-compact");
     const steps = (G.steps || []).map((st) => `<article class="card fc-step"><p class="kicker dark">${esc(st.label)}</p><h3>${esc(st.title)}</h3><ul class="plain">${(st.lines || []).map((l) => `<li>${esc(l)}</li>`).join("")}</ul></article>`).join("");
     box.innerHTML = head + `
-      <p class="fc-intro">${esc(G.basis || "")} The site wins a share of each year's new need of its kind (homes, shop space, work space), once its first land is ready.${isNum(G.acres) ? ` ${num(G.acres, 1)} acres in the plan` : ""}${isNum(G.trips_at_build_out) ? `, about ${num(G.trips_at_build_out)} trips a day once everything is built` : ""}.</p>
+      <p class="fc-intro">${esc(G.basis || "")} The site wins a share of each year's new need of its kind (homes, shop space, work space), once its first land is ready.${isNum(G.acres) ? ` ${num(G.acres, 1)} ${plural(G.acres, "acre", "acres", 1)} in the plan` : ""}${isNum(G.trips_at_build_out) ? `, about ${num(G.trips_at_build_out)} ${plural(G.trips_at_build_out, "trip")} a day once everything is built` : ""}.</p>
       <div class="fc-landgrid">
         <div class="card"><div class="fc-chart" data-chart="land"></div><ul class="fc-uses">${legend}</ul></div>
         <div>${table}</div>
@@ -968,7 +969,7 @@ export async function render(main, route, alive) {
       const fill = planView === "when" ? phase.colour : info.colour;
       if (planView === "when") shades.set(phase.key, phase);
       L.polygon(ll([p.ring]), { color: "#fff", weight: 2, opacity: 0.95, fillColor: fill, fillOpacity: planView === "when" ? 0.78 : 0.55 })
-        .bindTooltip(`${esc(info.label)}: ${num(p.acres, 1)} acres${planView === "when" ? " · " + esc(phase.words.toLowerCase()) : ""}`, { sticky: true }).addTo(planLayers);
+        .bindTooltip(`${esc(info.label)}: ${num(p.acres, 1)} ${plural(p.acres, "acre", "acres", 1)}${planView === "when" ? " · " + esc(phase.words.toLowerCase()) : ""}`, { sticky: true }).addTo(planLayers);
       if (p.label_at) {
         L.marker([p.label_at[1], p.label_at[0]], {
           icon: L.divIcon({ className: "plan-label", iconSize: [0, 0], html: `<span><b>${esc(info.short)}</b> ${planView === "when" ? esc(phase.year ? "from " + phase.year : phase.key === "never" ? "after ten years" : phase.key === "with" ? "with the rest" : "not forecast") : num(p.acres, 1) + " ac"}</span>` }),
@@ -1133,7 +1134,7 @@ export async function render(main, route, alive) {
       label: `Chart of people and homes in ${place} by year. The table gives the same figures.`,
       draw: (s) => line(s, rows.map((r) => [r.year, r.people])) + dots(s, rows.map((r) => [r.year, r.people])) +
         line(s, rows.map((r) => [r.year, r.homes]), "fc-line alt") + dots(s, rows.map((r) => [r.year, r.homes]), "fc-dot alt"),
-      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${isNum(r.people) ? num(r.people) + " people" : "people not given"}, ${isNum(r.homes) ? num(r.homes) + " homes" : "homes not given"}` })),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${isNum(r.people) ? num(r.people) + " " + plural(r.people, "person", "people") : "people not given"}, ${isNum(r.homes) ? num(r.homes) + " " + plural(r.homes, "home", "homes") : "homes not given"}` })),
     });
     charts["eco-permits"] = (w) => chart({
       width: w, height: 210, xMin, xMax, values: rows.map((r) => r.homes_permitted), zero: true, unit: "Homes permitted a year",
@@ -1141,7 +1142,7 @@ export async function render(main, route, alive) {
       draw: (s) => bars(s, rows.filter((r) => !partialPermits(r)).map((r) => [r.year, r.homes_permitted])) +
         bars(s, rows.filter(partialPermits).map((r) => [r.year, r.homes_permitted]), "fc-bar partial") +
         rows.filter((r) => partialPermits(r) && isNum(r.homes_permitted)).map((r) => `<text class="fc-pt-lab small" x="${s.x(r.year).toFixed(1)}" y="${(s.y(r.homes_permitted) - 5).toFixed(1)}" text-anchor="middle">${esc(r.permit_months)} mo</text>`).join(""),
-      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${isNum(r.homes_permitted) ? num(r.homes_permitted) + " homes permitted" : "not given"}${partialPermits(r) ? ` (${r.permit_months} months reported)` : ""}` })),
+      hover: rows.map((r) => ({ x: r.year, text: `${r.year}: ${isNum(r.homes_permitted) ? num(r.homes_permitted) + " " + plural(r.homes_permitted, "home", "homes") + " permitted" : "not given"}${partialPermits(r) ? ` (${r.permit_months} ${plural(r.permit_months, "month")} reported)` : ""}` })),
     });
     const aheadX = ahead.map((a) => a.year);
     charts["eco-sales"] = (w) => {
@@ -1168,8 +1169,8 @@ export async function render(main, route, alive) {
     });
     const tableRows = rows.map((r) => [
       `<b>${esc(r.year)}</b>${r.year === outlook.year ? "<small>this year, so far</small>" : ""}`,
-      given(r.people, num(r.people)) + (isNum(r.homes) ? `<small>${num(r.homes)} homes</small>` : ""),
-      given(r.homes_permitted, num(r.homes_permitted) + (partialPermits(r) ? `<small>${esc(r.permit_months)} months</small>` : "")),
+      given(r.people, num(r.people)) + (isNum(r.homes) ? `<small>${num(r.homes)} ${plural(r.homes, "home")}</small>` : ""),
+      given(r.homes_permitted, num(r.homes_permitted) + (partialPermits(r) ? `<small>${esc(r.permit_months)} ${plural(r.permit_months, "month")}</small>` : "")),
       given(r.shop_sales_usd, millions(r.shop_sales_usd) + (partialSales(r) ? `<small>${esc(r.sales_quarters)} of 4 quarters</small>` : "")),
       given(r.sales_per_home_usd, "$" + num(r.sales_per_home_usd)),
       given(r.unemployment_pct, num(r.unemployment_pct, 1) + "%") + (isNum(r.labour_force) ? `<small>of ${num(r.labour_force)}</small>` : ""),
@@ -1202,11 +1203,11 @@ export async function render(main, route, alive) {
     const months = C.months || [], years = (C.by_year || []).filter((y) => isNum(y.mean_f)), t = C.typical_year || {}, trend = C.trend || {}, ahead = C.ahead;
     charts["wx-temp"] = (w) => chart({
       width: w, height: 220, xMin: 1, xMax: months.length || 12, xLabel: (v) => (months[v - 1] || {}).month || v,
-      values: months.flatMap((m) => [m.high_f, m.low_f]), zero: false, unit: "Degrees F, a typical month",
+      values: months.flatMap((m) => [m.high_f, m.low_f]), zero: false, unit: "°F, a typical month",
       label: "Chart of each month's typical high, average and low temperature. The table under the facts gives the decades.",
       draw: (s) => line(s, months.map((m, i) => [i + 1, m.high_f]), "fc-line hot") + dots(s, months.map((m, i) => [i + 1, m.high_f]), "fc-dot hot") +
         line(s, months.map((m, i) => [i + 1, m.mean_f]), "fc-line") + line(s, months.map((m, i) => [i + 1, m.low_f]), "fc-line cold") + dots(s, months.map((m, i) => [i + 1, m.low_f]), "fc-dot cold"),
-      hover: months.map((m, i) => ({ x: i + 1, text: `${m.month}: high ${num(m.high_f, 1)}, average ${num(m.mean_f, 1)}, low ${num(m.low_f, 1)} degrees F; ${num(m.rain_in, 2)} in of rain` })),
+      hover: months.map((m, i) => ({ x: i + 1, text: `${m.month}: high ${num(m.high_f, 1)}, average ${num(m.mean_f, 1)}, low ${num(m.low_f, 1)} °F; ${num(m.rain_in, 2)} in of rain` })),
     });
     charts["wx-rain"] = (w) => chart({
       width: w, height: 150, xMin: 1, xMax: months.length || 12, xLabel: (v) => (months[v - 1] || {}).month || v,
@@ -1224,11 +1225,11 @@ export async function render(main, route, alive) {
       const first = years[0].year, last = years[years.length - 1].year;
       const vals = years.map((y) => y.mean_f).concat(slope !== null ? [at(first), at(endYear)] : []);
       return chart({
-        width: w, height: 240, xMin: first, xMax: endYear, values: vals, zero: false, unit: "Yearly average, degrees F",
+        width: w, height: 240, xMin: first, xMax: endYear, values: vals, zero: false, unit: "Yearly average, °F",
         label: `Chart of the yearly average temperature from ${first} to ${last}${slope !== null ? `, with its straight-line trend carried on to ${endYear}` : ""}.`,
         draw: (s) => line(s, years.map((y) => [y.year, y.mean_f]), "fc-line thin") + dots(s, years.map((y) => [y.year, y.mean_f]), "fc-dot small") +
           (slope !== null ? line(s, [[first, at(first)], [last, at(last)]], "fc-line trend") + line(s, [[last, at(last)], [endYear, at(endYear)]], "fc-line trend ahead") : "") + nowLine(s, now()),
-        hover: years.map((y) => ({ x: y.year, text: `${y.year}: average ${num(y.mean_f, 1)} degrees F, ${num(y.rain_in, 1)} in of rain` })),
+        hover: years.map((y) => ({ x: y.year, text: `${y.year}: average ${num(y.mean_f, 1)} °F, ${num(y.rain_in, 1)} in of rain` })),
       });
     };
     const stat = (label, big, small = "") => `<div class="stat"><span class="label">${label}</span><b>${big}</b>${small ? `<span>${small}</span>` : ""}</div>`;
@@ -1246,7 +1247,7 @@ export async function render(main, route, alive) {
           <div class="fc-chart" data-chart="wx-rain"></div><div class="legend fc-legend">${key("bar rain", "Rain")}</div></div>
         <div class="card"><h3>The yearly average since ${esc(years.length ? years[0].year : trend.from_year || "")}</h3><div class="fc-chart" data-chart="wx-years"></div>
           <div class="legend fc-legend">${key("line thin", "Each year")}${slope !== null ? key("line trend", "Straight-line trend") + key("line trend ahead", `Trend carried on to ${endYear}`) : ""}${key("now", "This year")}</div>
-          ${ahead && ahead.basis ? `<p class="fine">${esc(ahead.basis)}${isNum(ahead.mean_f_change) ? ` About ${ahead.mean_f_change > 0 ? "+" : ""}${num(ahead.mean_f_change, 1)} degrees F by ${esc(ahead.year)}.` : ""} This is where the past trend points, not a climate forecast.</p>` : ""}
+          ${ahead && ahead.basis ? `<p class="fine">${esc(ahead.basis)}${isNum(ahead.mean_f_change) ? ` About ${ahead.mean_f_change > 0 ? "+" : ""}${num(ahead.mean_f_change, 1)} °F by ${esc(ahead.year)}.` : ""} This is where the past trend points, not a climate forecast.</p>` : ""}
           <h3 class="fc-gap">By decade</h3>
           ${plainTable(["Years", "Average", "Summer high", "Rain a year"], (C.by_decade || []).map((d) => [esc(d.years), given(d.mean_f, num(d.mean_f, 1) + " °F"), given(d.summer_high_f, num(d.summer_high_f, 1) + " °F"), given(d.rain_in, num(d.rain_in, 2) + " in")]), [1, 2, 3])}</div>
       </div>
@@ -1306,7 +1307,7 @@ export async function render(main, route, alive) {
     places.forEach((p) => {
       const k = placeKind(p.kind);
       L.marker([Number(p.lat), Number(p.lon)], { icon: L.divIcon({ className: "fc-pin-icon", html: placePin(p.kind), iconSize: [24, 24], iconAnchor: [12, 12] }), keyboard: false, title: `${k.words}: ${p.name}` })
-        .bindTooltip(`<b>${esc(p.name)}</b><br>${esc(k.words)} · ${num(p.miles_away, 2)} miles${p.detail ? "<br>" + esc(p.detail) : ""}`).addTo(nearLayers);
+        .bindTooltip(`<b>${esc(p.name)}</b><br>${esc(k.words)} · ${num(p.miles_away, 2)} ${plural(p.miles_away, "mile", "miles", 2)}${p.detail ? "<br>" + esc(p.detail) : ""}`).addTo(nearLayers);
       bounds = bounds ? bounds.extend([Number(p.lat), Number(p.lon)]) : L.latLngBounds([[Number(p.lat), Number(p.lon)], [Number(p.lat), Number(p.lon)]]);
     });
     if (bounds && !nearFitted) { nearMap.fit(bounds.pad(0.15)); if (places.length || (outlook && !(N && N.available))) nearFitted = true; }
@@ -1321,7 +1322,7 @@ export async function render(main, route, alive) {
     const nearest = Object.values(N.nearest || {}).sort((a, b) => Number(a.miles_away) - Number(b.miles_away));
     const rows = places.slice().sort((a, b) => (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) || (Number(a.miles_away) - Number(b.miles_away)))
       .map((p) => [`<span class="fc-kind">${placePin(p.kind, true)}${esc(placeKind(p.kind).words)}</span>`, `<b>${esc(p.name)}</b>${p.detail ? `<small>${esc(p.detail)}</small>` : ""}`, num(p.miles_away, 2)]);
-    summary.innerHTML = `${nearest.length ? `<h3 class="fc-gap">The nearest of each kind</h3><div class="fc-nearest">${nearest.map((p) => `<div>${placePin(p.kind, true)}<span><span class="label">Nearest ${esc(placeKind(p.kind).one)}</span><b>${esc(p.name)}</b><span class="muted">${num(p.miles_away, 2)} miles</span></span></div>`).join("")}</div>` : ""}
+    summary.innerHTML = `${nearest.length ? `<h3 class="fc-gap">The nearest of each kind</h3><div class="fc-nearest">${nearest.map((p) => `<div>${placePin(p.kind, true)}<span><span class="label">Nearest ${esc(placeKind(p.kind).one)}</span><b>${esc(p.name)}</b><span class="muted">${num(p.miles_away, 2)} ${plural(p.miles_away, "mile", "miles", 2)}</span></span></div>`).join("")}</div>` : ""}
       ${(N.not_covered || []).length ? `<p class="fine"><b>Not covered yet:</b> ${esc(N.not_covered.join("; "))}.</p>` : ""}
       ${(N.did_not_answer || []).length ? `<p class="fine fc-no">Did not answer just now: ${esc(N.did_not_answer.join(", "))}.</p>` : ""}`;
     text.innerHTML = `<h3>Everything found, by kind</h3>
@@ -1340,6 +1341,15 @@ export async function render(main, route, alive) {
     const pct = (v) => (isNum(v) ? num(v, 1) + "%" : NONE);
     const stat = (label, big, small = "") => `<div class="stat"><span class="label">${label}</span><b>${big}</b>${small ? `<span>${small}</span>` : ""}</div>`;
     const usd = (v) => (isNum(v) ? "$" + num(v) : NONE);
+    // the middle of a survey's years ("2019-2023" is 2021); the rate a year is the steady yearly change from the earlier value to the later one
+    const middle = (text) => { const y = String(text || "").match(/\d{4}/g); return y ? (Number(y[0]) + Number(y[y.length - 1])) / 2 : null; };
+    const yearly = (was, now, given) => {
+      if (isNum(given)) return `about ${num(given, 1)}%`;
+      const gap = middle(R.survey) - middle(then.years);
+      if (!isNum(was) || !isNum(now) || Number(was) <= 0 || Number(now) <= 0) return `<span title="Not worked out: one of the two figures is not covered yet.">–</span>`;
+      if (!isFinite(gap) || gap <= 0) return `<span title="Not worked out: the years of the two surveys are not both known, so the years between them are not known.">–</span>`;
+      return `about ${num((Math.pow(Number(now) / Number(was), 1 / gap) - 1) * 100, 1)}%`;
+    };
     box.innerHTML = `<h2 id="fcResidentTitle">${title}</h2>
       <p class="fc-intro">The typical figures of the census tracts within ${esc(mi(data.market_miles))} of the site, census survey ${esc(R.survey || "")}.</p>
       <section class="stats fc-res-stats" aria-label="The typical resident nearby">
@@ -1358,9 +1368,9 @@ export async function render(main, route, alive) {
       <div class="two fc-res">
         <div class="card"><h3>Then and now</h3>
           ${plainTable(["", `Survey ${esc(then.years || "earlier")}`, `Survey ${esc(R.survey || "now")}`, "A year"], [
-            ["Typical home value", usd(then.home_value_usd), usd(t.home_value_usd), isNum(R.home_value_rise_pct_a_year) ? `about ${num(R.home_value_rise_pct_a_year, 1)}%` : ""],
-            ["Typical rent a month", usd(then.rent_usd), usd(t.rent_usd), ""]], [1, 2, 3])}
-          <p class="fine">${isNum(then.tracts_matched) ? `The earlier figures come from the ${num(then.tracts_matched)} tracts that match between the two surveys. ` : ""}Survey dollars, not adjusted for inflation.</p></div>
+            ["Typical home value", usd(then.home_value_usd), usd(t.home_value_usd), yearly(then.home_value_usd, t.home_value_usd, R.home_value_rise_pct_a_year)],
+            ["Typical rent a month", usd(then.rent_usd), usd(t.rent_usd), yearly(then.rent_usd, t.rent_usd)]], [1, 2, 3])}
+          <p class="fine">${isNum(then.tracts_matched) ? `The earlier figures come from the ${num(then.tracts_matched)} ${plural(then.tracts_matched, "tract")} that match between the two surveys. ` : ""}Survey dollars, not adjusted for inflation.</p></div>
         <div class="card"><h3>What it says</h3>${(R.facts || []).length ? `<ul class="plain">${R.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
           <p class="fine">${esc(R.source || "")}${(R.tracts || []).length ? `; ${num(R.tracts.length)} census tracts` : ""}.</p></div>
       </div>`;

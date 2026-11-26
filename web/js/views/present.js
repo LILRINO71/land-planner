@@ -7,7 +7,7 @@
 import { api } from "../api.js";
 import { createMap, ll } from "../maps.js";
 import { mountTerrain } from "../terrain3d.js";
-import { NONE, esc, has, num, cap, icon } from "../util.js";
+import { NONE, esc, has, num, plural, cap, icon } from "../util.js";
 
 const DW = 1920, DH = 1080;
 const MOTION_KEY = "landplanner.present.motion";
@@ -234,6 +234,12 @@ export async function render(main, route, alive) {
     F = await api.forecast(cityId, apns);
   } catch (e) {
     if (!alive()) return;
+    // a parcel that does not exist will not appear by asking again; anything else might
+    if (e.status === 404 || e.status === 400) {
+      main.innerHTML = `<div class="pr-root pr-waiting"><div class="pr-wait-box" role="alert"><p>${esc(e.message)}</p>
+        <p><a class="btn" href="#/lands/${encodeURIComponent(cityId)}">Back to the lands</a></p></div></div>`;
+      return;
+    }
     main.innerHTML = `<div class="pr-root pr-waiting"><div class="pr-wait-box" role="alert"><p>${esc(e.message)}</p>
       <p><button class="btn" type="button" data-again>Try again</button> <a class="btn" href="${esc(backHref)}">Back to the forecast</a></p></div></div>`;
     main.querySelector("[data-again]").addEventListener("click", () => render(main, route, alive));
@@ -298,7 +304,7 @@ export async function render(main, route, alive) {
   const lastRow = (rows) => (rows || [])[(rows || []).length - 1];
   const rowAt = (rows, y) => (rows || []).find((r) => r.year === y);
   const headlineItem = (start) => (F.headline || []).find((h) => String(h.label || "").startsWith(start));
-  const siteName = `${isNum(site.acres) ? num(site.acres, 2) + " acres" : "The site"} in ${F.city_name || cityId}`;
+  const siteName = `${isNum(site.acres) ? num(site.acres, 2) + " " + plural(site.acres, "acre", "acres", 2) : "The site"} in ${F.city_name || cityId}`;
 
   function siteBounds(L) {
     const pts = parcels.flatMap((p) => (outlineOf(p) || []).flat());
@@ -311,7 +317,7 @@ export async function render(main, route, alive) {
       if (!shape) return;
       L.polygon(shape, { color: "#1d2a24", weight: weight + 4, opacity: 0.7, fill: false, interactive: false }).addTo(m);
       out.push(L.polygon(shape, { color: "#f2b632", weight, fillColor: "#f2b632", fillOpacity: fill })
-        .bindTooltip(`Parcel ${esc(p.apn_formatted || p.apn)}${isNum(p.acres) ? ", " + num(p.acres, 2) + " acres" : ""}`, { sticky: true }).addTo(m));
+        .bindTooltip(`Parcel ${esc(p.apn_formatted || p.apn)}${isNum(p.acres) ? ", " + num(p.acres, 2) + " " + plural(p.acres, "acre", "acres", 2) : ""}`, { sticky: true }).addTo(m));
     });
     return out;
   }
@@ -450,7 +456,7 @@ export async function render(main, route, alive) {
         if (!R || !R.available) return head("The area is growing") + missing(`People within ${miles(market)}`);
         const now = rowAt(R.rows, F.year), end = lastRow(R.rows), mid = rowAt(R.rows, F.year + 5);
         const c = R.counted || {}, years = Object.keys(c).sort();
-        const h = `${big(now && now.people.expected)} people live within ${esc(miles(R.miles))}; about ${big(end && end.people.expected)} by ${esc(end ? end.year : "")}`;
+        const h = `${big(now && now.people.expected)} ${plural(now && now.people.expected, "person", "people")} live within ${esc(miles(R.miles))}; about ${big(end && end.people.expected)} by ${esc(end ? end.year : "")}`;
         const lead = years.length ? `Counted by the Census: ${years.map((y) => `${num(c[y].people)} in ${esc(y)}`).join(" and ")}. The forecast follows the middle of ${countWord((R.readings || []).length).toLowerCase()} readings: homes growing ${pct((R.rates_pct || {}).expected, 2)} a year, from ${pct((R.rates_pct || {}).low, 2)} on the low line to ${pct((R.rates_pct || {}).high, 2)} on the high one.` : "";
         return `${head(h, lead)}<div class="pr-body pr-chartbody">
           <div class="pr-visual"><div class="pr-chart" data-chart="growth"></div>
@@ -514,7 +520,7 @@ export async function render(main, route, alive) {
         (inc.tracts || []).slice().sort((a, b) => b.miles_away - a.miles_away).forEach((t) => {
           if (!isNum(t.lat) || !isNum(t.lon) || !ok) return;
           const d = L.circleMarker([t.lat, t.lon], { radius: 14, color: "#1d2a24", weight: 2, fillColor: colour(t.income), fillOpacity: 1 })
-            .bindTooltip(`<b>${esc(t.name)}</b><br>Typical household income $${num(t.income)} a year<br>${num(t.households)} households, ${esc(miles(t.miles_away))} ${esc(t.direction || "")}`).addTo(m);
+            .bindTooltip(`<b>${esc(t.name)}</b><br>Typical household income $${num(t.income)} a year<br>${num(t.households)} ${plural(t.households, "household")}, ${esc(miles(t.miles_away))} ${esc(t.direction || "")}`).addTo(m);
           items.push({ layer: d, style: { opacity: 1, fillOpacity: 1 } });
         });
         items.reverse();
@@ -561,7 +567,7 @@ export async function render(main, route, alive) {
         if (!E.available) return head("The city's economy") + missing("The city's economy by year");
         const rows = E.rows || [], withPeople = rows.filter((r) => isNum(r.people));
         const a = withPeople[0], b = lastRow(withPeople);
-        const h = a && b && a !== b ? `${esc(E.place || F.city_name)} grew from ${big(a.people)} people in ${a.year} to ${big(b.people)} in ${b.year}` : `The record of ${esc(E.place || F.city_name)} by year`;
+        const h = a && b && a !== b ? `${esc(E.place || F.city_name)} grew from ${big(a.people)} ${plural(a.people, "person", "people")} in ${a.year} to ${big(b.people)} in ${b.year}` : `The record of ${esc(E.place || F.city_name)} by year`;
         const tiles = economyTiles(E);
         const answered = (E.sources || []).filter((s) => s.answered).map((s) => esc(s.source));
         return `${head(h, esc((E.facts || [])[2] || ""))}<div class="pr-econ">${tiles.map((t) => `<div class="pr-econ-tile" data-rise>
@@ -579,7 +585,7 @@ export async function render(main, route, alive) {
         const H = F.homes || {}, perYear = headlineItem("New homes needed");
         const h = perYear && isNum(perYear.value) ? `About ${big(perYear.value)} new homes are needed each year within ${esc(miles(market))}` : "What the area needs";
         const said = [];
-        if (isNum(H.pipeline_covers_years)) said.push(`Homes already on the city's lists cover about ${num(H.pipeline_covers_years, 1)} years of that need.`);
+        if (isNum(H.pipeline_covers_years)) said.push(`Homes already on the city's lists cover about ${num(H.pipeline_covers_years, 1)} ${plural(H.pipeline_covers_years, "year", "years", 1)} of that need.`);
         needSpecs().slice(1).forEach((sp) => {
           if (!sp.ok || !isNum(sp.lists10) || !isNum(sp.need10.expected) || !(sp.need10.expected > 0)) return;
           said.push(sp.lists10 >= sp.need10.expected ? `${sp.title}: the lists already hold more than ten years of expected growth.`
@@ -611,10 +617,10 @@ export async function render(main, route, alive) {
       html() {
         const homes = uses.filter((u) => u.kind === "homes").reduce((t, u) => t + (Number(u.amount) || 0), 0);
         const feet = uses.filter((u) => u.kind !== "homes").reduce((t, u) => t + (Number(u.amount) || 0), 0);
-        const h = homes && feet ? `${big(homes)} homes and ${big(feet)}&nbsp;sq&nbsp;ft of shops and work space` : homes ? `Room for ${big(homes)} homes` : feet ? `${big(feet)}&nbsp;sq&nbsp;ft of shops and work space` : "The plan";
+        const h = homes && feet ? `${big(homes)} ${plural(homes, "home")} and ${big(feet)}&nbsp;sq&nbsp;ft of shops and work space` : homes ? `Room for ${big(homes)} ${plural(homes, "home")}` : feet ? `${big(feet)}&nbsp;sq&nbsp;ft of shops and work space` : "The plan";
         const parkAcres = pieces.filter((p) => p.use === "park").reduce((t, p) => t + (Number(p.acres) || 0), 0);
-        const rows = uses.map((u) => `<li data-rise><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b><small>${isNum(u.amount) ? num(u.amount) + " " + esc(u.unit || "") : NONE}</small></span><em>${num(u.acres, 1)} acres</em></li>`).join("") +
-          (parkAcres ? `<li data-rise><i style="background:${PARK.colour}"></i><span><b>${esc(PARK.label)}</b><small>built with the uses around them</small></span><em>${num(parkAcres, 1)} acres</em></li>` : "");
+        const rows = uses.map((u) => `<li data-rise><i style="background:${colourOf(u.colour)}"></i><span><b>${esc(u.label)}</b><small>${isNum(u.amount) ? num(u.amount) + " " + esc(u.unit || "") : NONE}</small></span><em>${num(u.acres, 1)} ${plural(u.acres, "acre", "acres", 1)}</em></li>`).join("") +
+          (parkAcres ? `<li data-rise><i style="background:${PARK.colour}"></i><span><b>${esc(PARK.label)}</b><small>built with the uses around them</small></span><em>${num(parkAcres, 1)} ${plural(parkAcres, "acre", "acres", 1)}</em></li>` : "");
         const why = [...new Set(drawings.flatMap((d) => d.why || []))];
         return `<div class="pr-mapleft pr-plan">
           <div class="pr-mapframe"><div class="pr-map" data-map></div>
@@ -633,7 +639,7 @@ export async function render(main, route, alive) {
         pieces.forEach((p) => {
           const u = useById[p.use] || { label: p.use, short: p.use, colour: "#9aa0a6" };
           const poly = L.polygon(ll([p.ring]), { color: "#ffffff", weight: 2.5, opacity: 1, fillColor: colourOf(u.colour), fillOpacity: 0.78 })
-            .bindTooltip(`${esc(u.label)}: ${num(p.acres, 1)} acres`, { sticky: true }).addTo(m);
+            .bindTooltip(`${esc(u.label)}: ${num(p.acres, 1)} ${plural(p.acres, "acre", "acres", 1)}`, { sticky: true }).addTo(m);
           items.push({ layer: poly, style: { opacity: 1, fillOpacity: 0.78 } });
           if (p.label_at) { const lab = label(L, [p.label_at[1], p.label_at[0]], `<b>${esc(u.short)}</b> ${num(p.acres, 1)} ac`, "use").addTo(m); items.push({ marker: lab }); }
         });
@@ -660,9 +666,14 @@ export async function render(main, route, alive) {
           const P = S.G.plan, inside = (S.G.surface || {}).inside || {};
           const h = isNum(inside.range_ft) ? `The plan on the real ground, ${big(inside.range_ft, 0)} ft from its lowest to its highest point` : "The plan on the land's real ground";
           const shown = (P.uses || []).filter((u) => Number(u.acres) > 0);
-          const what = (u) => (isNum(u.homes) && u.homes > 0 ? `${num(u.homes)} homes` : isNum(u.sq_ft) && u.sq_ft > 0 ? `${num(u.sq_ft)}&nbsp;sq&nbsp;ft` : u.id === "park" ? "built with the uses around them" : "");
+          const what = (u) => (isNum(u.homes) && u.homes > 0 ? `${num(u.homes)} ${plural(u.homes, "home")}` : isNum(u.sq_ft) && u.sq_ft > 0 ? `${num(u.sq_ft)}&nbsp;sq&nbsp;ft` : u.id === "park" ? "built with the uses around them" : "");
           // the ground route plans with the heights in hand, so its mix can differ a little from the plan slide
-          const differs = shown.some((u) => { const f = uses.find((x) => x.id === u.id); return !f || Math.abs(Number(f.acres) - Number(u.acres)) >= 0.1; });
+          // (compared as the slides print them, to a tenth of an acre; the plan slide's park is the sum of its park pieces)
+          const planAcres = (id) => id === "park" ? pieces.filter((p) => p.use === "park").reduce((t, p) => t + (Number(p.acres) || 0), 0)
+            : (uses.find((x) => x.id === id) || {}).acres;
+          const tenths = (v) => Math.round(Number(v) * 10);
+          const differs = shown.some((u) => !isNum(planAcres(u.id)) || tenths(planAcres(u.id)) !== tenths(u.acres)) ||
+            uses.some((f) => !shown.some((u) => u.id === f.id));
           return `${head(h)}<div class="pr-3dbody">
             <div class="pr-3d view3d" data-3d></div>
             <aside class="pr-3dkey pr-field">
@@ -693,7 +704,7 @@ export async function render(main, route, alive) {
         const first = Math.min(...uses.flatMap((u) => (u.by_year || []).filter((y) => Number(y.taken) > 0).map((y) => y.year)));
         const last = Math.max(...(F.years || [F.year]));
         const offered = uses.reduce((t, u) => t + (Number(u.acres_by_year_10) || 0), 0), forSale = uses.reduce((t, u) => t + (Number(u.acres) || 0), 0);
-        const h = isFinite(first) ? `Land goes to builders from ${first}; about ${big(offered, 1)} of ${num(forSale, 1)} acres by ${last}` : "When the land is offered";
+        const h = isFinite(first) ? `Land goes to builders from ${first}; about ${big(offered, 1)} of ${num(forSale, 1)} ${plural(forSale, "acre", "acres", 1)} by ${last}` : "When the land is offered";
         const periods = periodsOf();
         return `${head(h)}<div class="pr-body pr-whenbody">
           <div class="pr-visual pr-mapframe"><div class="pr-map" data-map></div>
@@ -727,7 +738,7 @@ export async function render(main, route, alive) {
             if (!ring) return;
             const unsold = i === periods.length, colour = unsold ? UNSOLD : periods[i].colour;
             const poly = L.polygon(ring, { color: "#ffffff", weight: 2, fillColor: colour, fillOpacity: unsold ? 0.7 : 0.88 })
-              .bindTooltip(`${esc(u.label)}: ${unsold ? "still unsold at the end of the ten years" : "offered " + esc(words[i])}, about ${num(shares[i] * u.acres, 1)} acres`, { sticky: true }).addTo(m);
+              .bindTooltip(`${esc(u.label)}: ${unsold ? "still unsold at the end of the ten years" : "offered " + esc(words[i])}, about ${num(shares[i] * u.acres, 1)} ${plural(shares[i] * u.acres, "acre", "acres", 1)}`, { sticky: true }).addTo(m);
             items.push({ layer: poly, style: { opacity: 1, fillOpacity: unsold ? 0.7 : 0.88 } });
           });
           if (p.label_at) { const lab = label(L, [p.label_at[1], p.label_at[0]], `<b>${esc(u.short)}</b>`, "use").addTo(m); items.push({ marker: lab }); }
@@ -822,12 +833,12 @@ export async function render(main, route, alive) {
         const C = O.climate || {};
         if (!C.available) return head("Weather") + missing("The weather record");
         const y = C.typical_year || {};
-        const h = `A typical year: ${big(y.mean_f, 0)} degrees F and ${big(y.rain_in, 1)} inches of rain`;
+        const h = `A typical year: ${big(y.mean_f, 0)} °F and ${big(y.rain_in, 1)} inches of rain`;
         return `${head(h, esc((C.facts || [])[1] || ""))}<div class="pr-body pr-chartbody">
           <div class="pr-visual pr-stack"><div class="pr-chart tall" data-chart="temps"></div><div class="pr-chart short" data-chart="rain"></div>
             <p class="pr-keys" data-rise>${key("band", "Hottest and coldest reading of the month, on average")}${key("line", "Average")}${key("bar", "Rain, inches", "background:#4f7fa6")}</p></div>
           <aside class="pr-aside">
-            ${(C.by_decade || []).length ? `<h3 class="pr-sub" data-rise>Ten years at a time</h3><table class="pr-table" data-rise><thead><tr><th>Years</th><th>Average</th><th>Summer high</th><th>Rain</th></tr></thead><tbody>${C.by_decade.map((d) => `<tr><td>${esc(d.years)}</td><td>${num(d.mean_f, 1)} F</td><td>${num(d.summer_high_f, 1)} F</td><td>${num(d.rain_in, 1)} in</td></tr>`).join("")}</tbody></table>` : ""}
+            ${(C.by_decade || []).length ? `<h3 class="pr-sub" data-rise>Ten years at a time</h3><table class="pr-table" data-rise><thead><tr><th>Years</th><th>Average</th><th>Summer high</th><th>Rain</th></tr></thead><tbody>${C.by_decade.map((d) => `<tr><td>${esc(d.years)}</td><td>${num(d.mean_f, 1)} °F</td><td>${num(d.summer_high_f, 1)} °F</td><td>${num(d.rain_in, 1)} in</td></tr>`).join("")}</tbody></table>` : ""}
             ${(C.facts || [])[2] ? `<p class="pr-body-text" data-rise>${esc(C.facts[2])}</p>` : ""}
             <p class="pr-note" data-rise>${esc(C.source || "")}. The grid is coarse: these describe the area, not this exact spot.</p>
           </aside></div>`;
@@ -836,7 +847,7 @@ export async function render(main, route, alive) {
         temps: (w, h, fs) => {
           const ms = S.O.climate.months || [], name = (i) => (ms[i - 1] || {}).month || "";
           return chart({
-            w, h, fs, x0: 1, x1: ms.length, values: ms.flatMap((m) => [m.low_f, m.high_f]), zero: false, unit: "degrees F", xRoom: 2.4, xLabel: name,
+            w, h, fs, x0: 1, x1: ms.length, values: ms.flatMap((m) => [m.low_f, m.high_f]), zero: false, unit: "°F", xRoom: 2.4, xLabel: name,
             label: "Chart of temperature by month: the average, and the hottest and coldest reading of each month on average.",
             draw: (s) => band(s, ms.map((m, i) => [i + 1, m.low_f, m.high_f]), "pr-band warm") + line(s, ms.map((m, i) => [i + 1, m.mean_f])) + dots(s, ms.map((m, i) => [i + 1, m.mean_f])),
           });
@@ -962,7 +973,7 @@ export async function render(main, route, alive) {
     const pm = lastOf((r) => r.homes_permitted);
     const short = rows.filter((r) => isNum(r.homes_permitted) && isNum(r.permit_months) && r.permit_months < 12);
     out.push({ id: "permits", title: "Homes permitted a year", value: pm ? big(pm.homes_permitted) : NONE, when: when(pm), chart: spark((r) => r.homes_permitted, "bars", "homes", 0, "green"),
-      note: short.length ? short.map((r) => `${r.year}: ${r.permit_months} months counted.`).join(" ") : "" });
+      note: short.length ? short.map((r) => `${r.year}: ${r.permit_months} ${plural(r.permit_months, "month")} counted.`).join(" ") : "" });
     const full = (r) => (isNum(r.shop_sales_usd) && r.sales_quarters === 4 ? r.shop_sales_usd / 1e6 : null);
     const sl = lastOf(full), part = rows.filter((r) => isNum(r.shop_sales_usd) && r.sales_quarters && r.sales_quarters < 4);
     out.push({ id: "sales", title: "Shop and restaurant sales", value: sl ? "$" + big(full(sl)) + " million" : NONE, when: when(sl), chart: spark(full, "bars", "$ millions a year", 0, "gold"),

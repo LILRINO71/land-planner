@@ -1,7 +1,7 @@
 // The frame of the app: the sidebar and which page is showing. Addresses look like
 //   #/cities   #/lands/menifee   #/my-lands   #/land/menifee/372100001/terrain
 import { cities, saved } from "./api.js";
-import { esc, num, icon, problem } from "./util.js";
+import { esc, num, plural, icon, problem } from "./util.js";
 import * as citiesView from "./views/cities.js";
 import * as landsView from "./views/lands.js";
 import * as myLandsView from "./views/mylands.js";
@@ -12,16 +12,31 @@ import * as presentView from "./views/present.js";
 const main = document.getElementById("main"), side = document.getElementById("side");
 let visit = 0, leaving = [], lastCity = null, openLand = null;
 
+const decode = (x) => { try { return decodeURIComponent(x); } catch (e) { return x; } };
+// A parcel number is digits; dashes, dots and spaces between them are allowed (372-100-001). Anything else, letters
+// included, is not a parcel number, and is kept as typed so the page can say so instead of quietly dropping it.
+const tidy = (x) => x.replace(/[\s.\-]/g, "");
+const isApn = (x) => /^\d+$/.test(x);
+function apnList(text) {
+  const given = text.split(/[+,\s]+/).filter(Boolean);
+  return { apns: given.map(tidy).filter(isApn), bad: given.filter((x) => !isApn(tidy(x))) };
+}
+
 function parse() {
-  const parts = location.hash.replace(/^#\/?/, "").split("?")[0].split("/").filter(Boolean).map(decodeURIComponent);
-  const [first, a, b, c] = parts;
+  const raw = location.hash.replace(/^#\/?/, "").split("?")[0].split("/").map(decode);
+  while (raw.length && raw[raw.length - 1] === "") raw.pop();   // a trailing slash is nothing
+  const [first, a] = raw;
   if (first === "lands") return { name: "lands", city: a || null };
   if (first === "my-lands") return { name: "my-lands" };
-  if (first === "land" && a && b) return { name: "land", city: a, apn: b.replace(/\D/g, ""), page: c || "overview" };
+  // #/land/menifee/372100001/zoning (an empty or lettered parcel number is kept in `bad`)
+  if (first === "land" && a) {
+    const given = raw[2] === undefined ? "" : raw[2], apn = tidy(given), page = raw[3] || "overview";
+    return isApn(apn) ? { name: "land", city: a, apn, page } : { name: "land", city: a, apn: "", page, bad: [given] };
+  }
   // #/forecast/menifee/360350024+360350017: one parcel, or several forecast as one site
-  if (first === "forecast" && a) return { name: "forecast", city: a, apns: (b || "").split(/[+,\s]+/).map((x) => x.replace(/\D/g, "")).filter(Boolean) };
+  if (first === "forecast" && a) { const l = apnList(raw[2] || ""); return { name: "forecast", city: a, apns: l.apns, bad: l.bad }; }
   // #/present/menifee/360350024+360350017: the same site as slides for the city (the sidebar is hidden)
-  if (first === "present" && a) return { name: "present", city: a, apns: (b || "").split(/[+,\s]+/).map((x) => x.replace(/\D/g, "")).filter(Boolean) };
+  if (first === "present" && a) { const l = apnList(raw[2] || ""); return { name: "present", city: a, apns: l.apns, bad: l.bad }; }
   return { name: "cities" };
 }
 
@@ -42,7 +57,7 @@ function drawSide(route) {
     const base = `#/land/${esc(openLand.city)}/${esc(openLand.apn)}`;
     const forecastOn = route.name === "forecast" && route.apns.length === 1 && route.apns[0] === openLand.apn && route.city === openLand.city;
     html += `<div class="side-land"><p class="side-title">${route.name === "land" || forecastOn ? "This land" : "Last opened"}</p>
-      <a class="side-parcel" href="${base}"><b>${esc(openLand.number || openLand.apn)}</b>${openLand.acres != null ? `<span>${num(openLand.acres, 2)} acres</span>` : ""}</a>
+      <a class="side-parcel" href="${base}"><b>${esc(openLand.number || openLand.apn)}</b>${openLand.acres != null ? `<span>${num(openLand.acres, 2)} ${plural(openLand.acres, "acre", "acres", 2)}</span>` : ""}</a>
       <nav aria-label="This land's pages">${landView.PAGES.map(([id, label]) => {
         const on = route.name === "land" && route.apn === openLand.apn && route.page === id;
         return `<a href="${base}/${id}" class="nav sub${on ? " on" : ""}"${on ? ' aria-current="page"' : ""}>${icon(id)}<span>${label}</span></a>`;
@@ -50,6 +65,17 @@ function drawSide(route) {
   }
   html += `<p class="side-foot">Real public records only. Outlines are not a survey, and zoning changes go through the city.</p>`;
   side.innerHTML = html;
+}
+
+// "37210000a is not a parcel number", with a way back to the Lands list
+function notAParcel(route) {
+  const typed = route.bad.filter(Boolean).map((x) => "“" + esc(x) + "”");
+  const words = !typed.length ? "This address does not have a parcel number in it."
+    : typed.length === 1 ? `${typed[0]} is not a parcel number.` : `${typed.join(", ")} are not parcel numbers.`;
+  main.innerHTML = `<header class="page-head"><h1>That is not a parcel number</h1></header>` +
+    `<div class="state problem" role="alert">${icon("alert")}<p>${words} A parcel number (APN) has 9 digits, for example 372-100-001.</p></div>` +
+    `<p><a class="btn" href="#/lands/${encodeURIComponent(route.city)}">Back to the lands</a></p>`;
+  main.focus({ preventScroll: true });
 }
 
 async function show() {
@@ -68,7 +94,11 @@ async function show() {
     return;
   }
   if (route.name === "lands") lastCity = route.city;
-  if (route.name === "land") {
+  if (route.name === "land" && route.bad && route.bad.length) {
+    // a parcel number with letters in it, or none at all: say so, and show the way back
+    lastCity = route.city;
+    if (!openLand || openLand.city !== route.city) openLand = null;
+  } else if (route.name === "land") {
     lastCity = route.city;
     if (!openLand || openLand.apn !== route.apn || openLand.city !== route.city) openLand = { city: route.city, apn: route.apn };
   }
@@ -79,6 +109,7 @@ async function show() {
   main.scrollTop = 0;
   window.scrollTo(0, 0);
   main.className = "main " + route.name;
+  if (route.bad && route.bad.length) { notAParcel(route); return; }
   const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView, present: presentView }[route.name];
   try {
     await view.render(main, route, alive);

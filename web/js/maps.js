@@ -13,6 +13,23 @@ const BASES = {
   streets: { label: "Street map" },
 };
 
+// Leaflet 1.9.4 can leave a redraw queued that its own bookkeeping has lost track of: an "update" event redraws at once
+// and forgets the queued one, the next change queues a second, and taking the map away cancels only the second. The
+// first then runs against a drawing surface that is gone ("reading 'clearRect'"). Every map in the app is made by
+// createMap below, so the one fix is here: a redraw done directly replaces the queued one, and a layer whose map has
+// been removed draws nothing.
+function mendCanvasRedraw(L) {
+  const proto = L.Canvas && L.Canvas.prototype;
+  if (!proto || proto._redrawMended) return;
+  const redraw = proto._redraw;
+  proto._redraw = function () {
+    if (this._redrawRequest) L.Util.cancelAnimFrame(this._redrawRequest);
+    if (!this._ctx) { this._redrawRequest = null; return; }
+    return redraw.call(this);
+  };
+  proto._redrawMended = true;
+}
+
 export const ll = (rings) => rings.map((r) => r.map((p) => [p[1], p[0]]));
 
 // How strongly zoning colours are filled in: lighter on the photo, so the ground can still be seen.
@@ -33,6 +50,7 @@ function backgroundLayer(L, name) {
 // Returns { map, fit(bounds), release(), destroy(), base(), onBase(fn), note(html) }.
 export function createMap(el, { base = "aerial", city = null, at = null } = {}) {
   const L = window.L;
+  mendCanvasRedraw(L);
   const map = L.map(el, { scrollWheelZoom: true, preferCanvas: true, zoomSnap: 0.25, maxZoom: DEEPEST });
   map.attributionControl.setPrefix(false);
   let layer = null, current = base;
