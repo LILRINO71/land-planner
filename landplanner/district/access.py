@@ -22,7 +22,7 @@ from pathlib import Path
 from . import Problem, SLUG, stamp
 from .jsonsafe import dumps
 from .schema import (AUDIENCE_DENY, AUDIENCES, ENTITIES, SENSITIVE_KEY_PHRASES, SENSITIVE_KEY_WORDS,
-                     SENSITIVE_WORDS, field_tags)
+                     SENSITIVE_WORDS, field_tags, row_tags)
 
 ROLES = ("administrator", "analyst", "consultant", "viewer_partner", "viewer_city")
 ROLE_AUDIENCE = {"administrator": "internal", "analyst": "internal", "consultant": "consultant",
@@ -44,6 +44,7 @@ PERMISSIONS = {
     "revisions.read": INTERNAL, "notes.resolve": INTERNAL, "gis.remove": INTERNAL,
     "notes.read": WORKERS, "notes.write": WORKERS, "documents.upload": WORKERS, "gis.upload": WORKERS,
     "documents.read": ALL, "gis.read": ALL,
+    "compute": ALL,                                                  # answers are filtered for the audience
     "export": ALL,                                                   # viewers only when the project allows it
 }
 EXPORT_SETTING = {"viewer_partner": "partner_export", "viewer_city": "city_export"}
@@ -512,7 +513,7 @@ def filter_content(content, audience):
     for name in ENTITIES:
         keep = []
         for r in ents.get(name, []):
-            if _record_denied(r, deny) or r.get("assumption") in removed:
+            if _record_denied(r, deny) or (row_tags(name, r) & deny) or r.get("assumption") in removed:
                 continue
             if name == "reconciliations" and ({r.get("total")} | set(r.get("parts") or [])) & removed:
                 continue

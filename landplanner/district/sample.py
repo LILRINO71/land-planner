@@ -277,12 +277,180 @@ MODULES = [
 ]
 
 
+# ---------------------------------------------------------------- inputs for the compute routes (invented, round)
+
+def _lu(id_, label, revenue_type, **more):
+    return {"id": id_, "label": label, "revenue_type": revenue_type, "provenance": "OWNERSHIP ASSUMPTION", **more}
+
+
+LAND_USES = [
+    _lu("res-sfd", "Single-family homes", "per_unit_sale", units_per_net_ac=8, sf_per_unit=2000, price_per_unit=600000,
+        sales_cost_pct=5, required_return_pct=15),
+    _lu("res-mf", "Apartments", "rent_per_unit_mo", units_per_net_ac=30, sf_per_unit=900, rent_per_unit_mo=2400,
+        vacancy_pct=5, opex_pct_of_income=35, cap_rate_pct=5, exit_cap_pct=5.5, required_return_pct=15),
+    _lu("ret-grocery", "Grocery", "rent_per_sf_yr", far=0.25, rent_per_sf_yr=24, vacancy_pct=5, opex_pct_of_income=5,
+        cap_rate_pct=6.5, required_return_pct=15),
+    _lu("ret-restaurant", "Restaurants", "rent_per_sf_yr", far=0.2, rent_per_sf_yr=48, vacancy_pct=5,
+        opex_pct_of_income=5, cap_rate_pct=6.5, required_return_pct=15),
+    _lu("ret-shops", "Shops", "rent_per_sf_yr", far=0.25, rent_per_sf_yr=40, vacancy_pct=5, opex_pct_of_income=5,
+        cap_rate_pct=6.5, required_return_pct=15),
+    _lu("ret-service", "Services", "rent_per_sf_yr", far=0.25, rent_per_sf_yr=32, vacancy_pct=5, opex_pct_of_income=5,
+        cap_rate_pct=6.5, required_return_pct=15),
+    _lu("hotel", "Hotel", "room_revenue", units_per_net_ac=40, sf_per_unit=600, adr=180, occupancy_pct=70,
+        other_income_pct=10, opex_pct_of_income=65, cap_rate_pct=8, required_return_pct=18),
+    _lu("office", "Creative office", "rent_per_sf_yr", far=0.3, rent_per_sf_yr=36, vacancy_pct=10,
+        opex_pct_of_income=10, cap_rate_pct=7, required_return_pct=15),
+]
+
+
+def _ci(use, item, basis, amount, category="hard"):
+    return {"id": f"ci-{use}-{item}", "use": use, "item": item, "basis": basis, "amount": amount, "category": category,
+            "provenance": "OWNERSHIP ASSUMPTION"}
+
+
+COST_ITEMS = [
+    _ci("res-sfd", "site_work", "per_net_ac", 150000), _ci("res-sfd", "building_shell", "per_building_sf", 150),
+    _ci("res-sfd", "permits_impact_fees", "per_unit", 30000, "soft"), _ci("res-sfd", "hard_contingency", "pct_of_hard", 5),
+    _ci("res-mf", "site_work", "per_net_ac", 200000), _ci("res-mf", "building_shell", "per_building_sf", 220),
+    _ci("res-mf", "permits_impact_fees", "per_unit", 25000, "soft"), _ci("res-mf", "hard_contingency", "pct_of_hard", 5),
+    _ci("hotel", "site_work", "per_net_ac", 300000), _ci("hotel", "building_shell", "per_building_sf", 250),
+    _ci("hotel", "ff_and_e", "per_unit", 20000), _ci("hotel", "hard_contingency", "pct_of_hard", 5),
+    _ci("office", "site_work", "per_net_ac", 250000), _ci("office", "building_shell", "per_building_sf", 260),
+] + [c for u in ("ret-grocery", "ret-restaurant", "ret-shops", "ret-service") for c in (
+    _ci(u, "site_work", "per_net_ac", 250000), _ci(u, "building_shell", "per_building_sf", 200),
+    _ci(u, "interiors_finishes", "per_building_sf", 50), _ci(u, "hard_contingency", "pct_of_hard", 5))] + [
+    # each parcel's cost basis (the economic cost floor of its price); an empty amount is a cost not known yet
+    {"id": "pc-PA-1-land", "parcel": "PA-1", "item": "land_basis", "label": "Land basis", "category": "land",
+     "basis": "lump_sum", "amount": 4000000},
+    {"id": "pc-PA-1-entitle", "parcel": "PA-1", "item": "entitlements", "label": "Entitlements", "category": "soft",
+     "basis": "lump_sum", "amount": 1000000},
+    {"id": "pc-PA-2-land", "parcel": "PA-2", "item": "land_basis", "label": "Land basis", "category": "land",
+     "basis": "lump_sum", "amount": 8000000},
+    {"id": "pc-PA-2-offsite", "parcel": "PA-2", "item": "offsite_share", "label": "Share of off-site work",
+     "category": "hard", "basis": "lump_sum"},
+    {"id": "pc-PA-3-land", "parcel": "PA-3", "item": "land_basis", "label": "Land basis", "category": "land",
+     "basis": "lump_sum", "amount": 4000000},
+    {"id": "pc-PA-4-land", "parcel": "PA-4", "item": "land_basis", "label": "Land basis", "category": "land",
+     "basis": "lump_sum", "amount": 6000000},
+]
+
+CAPITAL_TARGETS = [
+    {"id": "t-phase1", "label": "Phase 1 roads and utilities", "month": 18, "amount_usd": 20000000, "cumulative": True},
+    {"id": "t-phase2", "label": "Phase 2 infrastructure", "month": 48, "amount_usd": 35000000, "cumulative": True},
+]
+
+_PARCEL_FINANCE = {
+    "PA-1": {"candidate_uses": ["ret-shops", "office"], "strategic_score": 85, "critical": True, "close_month": 12,
+             "land_value_usd": 12000000, "strategy_inputs": {
+                 "appreciation_pct": 3, "sale": {"sale_year": 1, "sale_cost_pct": 4}, "carry_cost_usd_per_year": 100000,
+                 "develop": {"total_cost_usd": 40000000, "stabilized_noi_usd": 3400000, "start_year": 1, "build_years": 2,
+                             "lease_up_years": 2, "exit_cap_pct": 6.5},
+                 "jv": {"cash_out_pct": 20, "project_cost_usd": 40000000, "stabilized_noi_usd": 3400000, "exit_cap_pct": 6.5},
+                 "ground_lease": {"rent_yield_pct": 6, "escalation_pct": 2, "key_money_pct": 5, "term_years": 65,
+                                  "start_year": 1}}},
+    "PA-2": {"candidate_uses": ["res-sfd", "res-mf"], "strategic_score": 30, "close_month": 12, "seller_note_usd": 0,
+             "land_value_usd": 22000000, "strategy_inputs": {
+                 "sale": {"sale_year": 1, "sale_cost_pct": 4},
+                 "ground_lease": {"rent_yield_pct": 5, "escalation_pct": 2, "term_years": 99, "start_year": 1}}},
+    "PA-3": {"candidate_uses": ["res-mf", "res-sfd"], "strategic_score": 55, "close_month": 30,
+             "debt_release_usd": 1000000, "land_value_usd": 10000000, "strategy_inputs": {
+                 "sale": {"sale_year": 2, "sale_cost_pct": 4},
+                 "develop": {"total_cost_usd": 120000000, "stabilized_noi_usd": 8000000, "start_year": 2,
+                             "build_years": 2, "lease_up_years": 2, "exit_cap_pct": 5.5},
+                 "jv": {"cash_out_pct": 25, "project_cost_usd": 120000000, "stabilized_noi_usd": 8000000,
+                        "exit_cap_pct": 5.5}}},
+    "PA-4": {"candidate_uses": ["hotel", "office"], "strategic_score": 70, "close_month": 48,
+             "do_not_sell_until_month": 36, "land_value_usd": 8000000, "strategy_inputs": {
+                 "sale": {"sale_year": 4, "sale_cost_pct": 4},
+                 "ground_lease": {"rent_yield_pct": 6, "escalation_pct": 2, "term_years": 65, "start_year": 3}}},
+}
+for _p in PARCELS:
+    _p.update(_PARCEL_FINANCE[_p["id"]])
+
+for _ph, _extra in zip(PHASES, ({"land_cost_usd": 6000000, "start_offset_years": 0},
+                                {"land_cost_usd": 4000000, "start_offset_years": 3},
+                                {"land_cost_usd": 3000000, "start_offset_years": 6}, {})):
+    _ph.update(_extra)
+
+INFRA[0].update(payer="owner", due_period=2027)
+INFRA[1].update(payer="owner", due_period=2028, parcel="PA-2")
+INFRA[2].update(payer="builder", due_period=2028)
+INFRA.extend([
+    {"id": "inf-water", "item": "Off-site water line", "category": "wet utilities", "phase": "2", "payer": "owner",
+     "due_period": 2030, "status": "planned", "provenance": "REQUIRES VALIDATION"},
+    {"id": "inf-park", "item": "Central park", "category": "parks", "phase": "2", "cost_usd": 4000000, "payer":
+     "district_financing", "due_period": 2031, "reimbursable": True, "status": "planned",
+     "provenance": "OWNERSHIP ASSUMPTION"},
+    {"id": "inf-stub-pa1", "item": "Utility stubs to the retail parcel", "category": "dry utilities", "phase": "1",
+     "cost_usd": 500000, "payer": "owner", "due_period": 2027, "parcel": "PA-1", "status": "planned",
+     "provenance": "OWNERSHIP ASSUMPTION"},
+])
+
+
+def _c(id_, label, unit, value, tags=(), provenance="OWNERSHIP ASSUMPTION"):
+    out = _a(id_, label, unit, value, provenance)
+    if tags:
+        out["tags"] = list(tags)
+    return out
+
+
+ASSUMPTIONS.extend([
+    _c("PF-BASE-YEAR", "First year of the pro forma", "count", 2027),
+    _c("PF-DISCOUNT-RATE-PCT", "Pro forma discount rate", "pct", 10, ["returns"]),
+    _c("PF-HOLD-YEARS", "Years held after stabilisation", "years", 10),
+    _c("PF-HURDLE-YOC-PCT", "Hurdle yield on cost", "pct", 6.5, ["returns"]),
+    _c("PF-BUILD-YEARS", "Years to build a phase", "years", 2),
+    _c("PF-LEASE-UP-MONTHS", "Months to lease up", "months", 24),
+    _c("PF-SELLOUT-MONTHS", "Months to sell out", "months", 24),
+    _c("PF-NOI-GROWTH-PCT", "NOI growth per year", "pct", 2, (), "MARKET ASSUMPTION"),
+    _c("FIN-CRITICAL-THRESHOLD", "Strategic score that makes a parcel critical", "count", 75),
+    _c("PF-HURDLE-IRR-PCT", "Hurdle IRR", "pct", 15, ["returns"]),
+    _c("FIN-NET-TO-GROSS-PCT", "Net acres as a share of gross", "pct", 80, (), "VERIFIED PROJECT FACT"),
+    _c("FIN-SPONSOR-HURDLE-PCT", "Sponsor hurdle on cost (minimum price)", "pct", 20, ["price_floor"]),
+    _c("FIN-STRATEGIC-PREMIUM-PCT", "Strategic premium on cost", "pct", 5, ["price_floor"]),
+    _c("FIN-TARGET-PCT-OF-RLV", "Target price as a share of residual value", "pct", 100, ["disposition"]),
+    _c("FIN-UPSIDE-PCT", "Upside over the target price", "pct", 15, ["disposition"]),
+    _c("FIN-BROKERAGE-PCT", "Brokerage commission", "pct", 3, ["disposition"]),
+    _c("FIN-CLOSING-PCT", "Closing costs", "pct", 0.75, ["disposition"]),
+    _c("FIN-TRANSFER-TAX-PCT", "Transfer tax", "pct", 0.1, ["disposition"]),
+    _c("FIN-RECORDING-FEE-USD", "Recording fee per sale", "usd", 1000, ["disposition"]),
+    _c("STR-DISCOUNT-RATE-PCT", "Strategy comparison discount rate", "pct", 8, ["returns"]),
+    _c("STR-APPRECIATION-PCT", "Land appreciation per year", "pct", 3, (), "MARKET ASSUMPTION"),
+    _c("STR-SALE-COST-PCT", "Selling cost of retained land", "pct", 4, ["disposition"]),
+    _c("STR-PLACEMAKING-LIFT-PCT", "Placemaking lift on retained land", "pct", 10, (), "MARKET ASSUMPTION"),
+    _c("STR-LIFT-YEAR", "Year the placemaking lift arrives", "count", 5),
+    _c("STR-RELEASE-ACRES", "Acres released in each tranche", "acres", 5),
+    _c("STR-RELEASE-EVERY-YEARS", "Years between tranches", "years", 2),
+    _c("STR-MIN-CORE-ACRES", "Core acres never released", "acres", 10),
+    _c("SCN-UNITS-1000", "Unit scenario: 1,000 homes", "units", 1000),
+    _c("SCN-UNITS-1200", "Unit scenario: 1,200 homes", "units", 1200),
+    _c("SCN-UNITS-1400", "Unit scenario: 1,400 homes", "units", 1400),
+    _c("SCN-ABSORPTION-UNITS-PER-YEAR", "Home absorption per year", "units_per_yr", 200, (), "MARKET ASSUMPTION"),
+    _c("SCN-PRELEASING-PCT", "Retail pre-leasing today", "pct", 55, (), "CURRENT OWNERSHIP INPUT"),
+    _c("FISCAL-CONSTRUCTION-JOBS-PER-MILLION", "Construction job-years per $1 million", "count", 5),
+    _c("FISCAL-CONSTRUCTION-MULTIPLIER", "Construction output multiplier", "ratio", 1.5),
+    _c("FISCAL-OPERATING-MULTIPLIER", "Operating output multiplier", "ratio", 1.3),
+    _c("FISCAL-SALES-TAX-PCT", "Local share of sales tax", "pct", 1),
+    _c("FISCAL-PROPERTY-TAX-PCT", "Property tax rate", "pct", 1),
+    _c("FISCAL-CITY-SHARE-PCT", "City share of property tax", "pct", 10),
+    _c("FISCAL-HOTEL-TAX-PCT", "Hotel room tax", "pct", 10),
+    _c("FISCAL-JOBS-PER-1000SF-RETAIL", "Jobs per 1,000 SF of retail", "jobs", 2.5),
+    _c("FISCAL-JOBS-PER-1000SF-OFFICE", "Jobs per 1,000 SF of office", "jobs", 4),
+    _c("FISCAL-JOBS-PER-1000SF-HOSPITALITY", "Jobs per 1,000 SF of hotel", "jobs", 1),
+    _c("FISCAL-SALES-PER-SF-RETAIL", "Taxable sales per SF of retail per year", "usd_per_sf", 300),
+    _c("EIFD-PARTICIPATING-SHARE-PCT", "Share of the increment a district captures", "pct", 25),
+    _c("EIFD-YEARS", "Years of increment shown", "years", 30),
+    _c("EIFD-GROWTH-PCT", "Assessed value growth per year", "pct", 2),
+])
+
+
 def content():
     return {"format": 1, "entities": {
         "uses": USES, "phases": PHASES, "program_lines": PROGRAM, "market_metrics": MARKET, "competitors": COMPETITORS,
         "parcels": PARCELS, "assumptions": ASSUMPTIONS, "deliverables": DELIVERABLES, "infrastructure": INFRA,
         "risks": RISKS, "comps": COMPS, "data_sources": SOURCES, "requirements": REQUIREMENTS, "sections": SECTIONS,
-        "reconciliations": RECONCILIATIONS}}
+        "reconciliations": RECONCILIATIONS, "land_uses": LAND_USES, "cost_items": COST_ITEMS,
+        "capital_targets": CAPITAL_TARGETS}}
 
 
 GIS = {"type": "FeatureCollection", "features": [

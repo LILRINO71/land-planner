@@ -21,7 +21,7 @@ from . import register as R
 from . import sample as S
 from .audit import Audit
 from .jsonsafe import dumps
-from .schema import AUDIENCES, ENTITIES, UNITS
+from .schema import AUDIENCE_DENY, AUDIENCES, ENTITIES, UNITS
 from .store import Store
 from .validate import clean_record
 
@@ -499,6 +499,8 @@ class DistrictAPI:
             return self._gis(ctx, req, project, p[1:], audience)
         if p[:1] == ["notes"]:
             return self._notes(ctx, req, project, p[1:])
+        if p[:1] == ["compute"] and len(p) == 2 and m in ("GET", "POST"):
+            return self._compute(ctx, req, project, p[1])
         if p[:1] == ["export"] and m == "GET" and len(p) == 2:
             return self._export(ctx, req, project, p[1], audience)
         raise Problem(404, "not-found", "Nothing here.")
@@ -743,6 +745,35 @@ class DistrictAPI:
             self.audit.log("note", user, project=pid, note=p[0], status=note["status"])
             return _json(200, {"note": note})
         raise Problem(404, "not-found", "Nothing here.")
+
+    # ---------------------------------------------------------------- computed results
+
+    def _compute(self, ctx, req, project, tool):
+        """A tool of the finance engine on one dataset version; POST carries what-if changes that are not saved."""
+        from . import compute as K
+        user, q, pid = ctx["user"], req["query"], project["id"]
+        self._need(ctx, "compute", project)
+        b = self._body(req) if req["method"] == "POST" else {}
+        if tool not in K.TOOLS:
+            raise Problem(404, "not-found", f"There is no compute tool by that name. The tools are: {', '.join(K.TOOLS)}.")
+        audience = A.audience_for(user, _q(q, "audience") or b.get("audience") or None)
+        did = _q(q, "dataset") or str(b.get("dataset") or "") or "baseline"
+        meta, v, content = self._dataset(ctx, project, did, _q(q, "version") or str(b.get("version") or "") or None)
+        deny = AUDIENCE_DENY.get(audience, AUDIENCE_DENY["city"])
+        visible = A.filter_content(content, audience) if deny else None
+        changed = []
+        if b.get("assumptions") or b.get("records"):
+            content, changed = K.apply_overrides(content, b, visible, deny)
+        options = b.get("options")
+        if options is None:
+            options = {k: _q(q, k) for k in K.OPTIONS.get(tool, {}) if _q(q, k)}
+        answer = K.run(tool, content, options,
+                       reconcile_content=A.filter_content(content, audience) if deny else content)
+        answer = A.scrub(K.filter_answer(answer, audience), audience)
+        self.audit.log("compute", user, project=pid, tool=tool, dataset=did, version=v, audience=audience,
+                       what_if=changed[:50])
+        return _json(200, {**answer, "dataset": did, "version": v, "audience": audience,
+                           "as_of": self.store.as_of(pid, did, v), "what_if": changed})
 
     # ---------------------------------------------------------------- exports
 

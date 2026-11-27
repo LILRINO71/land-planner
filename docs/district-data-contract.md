@@ -122,6 +122,8 @@ Id made from label when a row has no id.
 | preleasing_pct_trigger | number | pct |  | 0 to 100 |  |  | pre-leasing needed before it starts |
 | absorption_note | text |  |  |  |  |  | what absorption the phase depends on |
 | triggers | text |  |  |  |  |  | the other triggers and dependencies, in words |
+| land_cost_usd | number | usd |  | 0 to 100,000,000,000 |  |  | compute: the land cost charged to the phase's pro forma |
+| start_offset_years | integer | years |  | 0 to 100 |  |  | compute: years after the first phase that it starts |
 | tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
 | city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
 | note | text |  |  |  |  |  | a short note |
@@ -217,6 +219,17 @@ Id made from apn when a row has no id.
 | rlv_per_acre | number | usd_per_acre |  | -10,000,000,000 to 10,000,000,000 |  | rlv_parcel | residual land value per acre |
 | funding_target | text |  |  |  |  | disposition | the funding target the sale is linked to |
 | provenance | choice |  |  |  | VERIFIED PROJECT FACT, CURRENT OWNERSHIP INPUT, CONSULTANT INPUT, ESRI / ARCGIS DATA, OWNERSHIP ASSUMPTION, MARKET ASSUMPTION, CALCULATED, REQUIRES VALIDATION, HISTORICAL / SUPERSEDED |  | where the row's figures come from |
+| candidate_uses | refs |  |  |  |  |  | compute: the land_uses ids its residual value is worked out for |
+| strategic_score | number |  |  | 0 to 100 |  |  | compute: its strategic score, 0-100 |
+| strategic_scores | json |  |  |  |  |  | compute: {dimension id: score 0-100} for the 12 strategic dimensions |
+| critical | bool |  |  |  |  |  | compute: a critical strategic asset (never sold by a cash plan) |
+| must_keep | bool |  |  |  |  |  | compute: never sold |
+| close_month | integer | months |  | 0 to 600 |  | disposition | compute: month a sale would close (cash in) |
+| do_not_sell_until_month | integer | months |  | 0 to 600 |  | disposition | compute: no sale before this month |
+| land_value_usd | number | usd |  | 0 to 100,000,000,000 |  | disposition | compute: today's land value for the hold/sell/JV/ground-lease comparison |
+| seller_note_usd | number | usd |  | 0 to 100,000,000,000 |  | disposition | compute: a seller note paid from the sale |
+| debt_release_usd | number | usd |  | 0 to 100,000,000,000 |  | disposition | compute: debt released from the sale |
+| strategy_inputs | json |  |  |  |  | returns, disposition | compute: {sale, develop, jv, ground_lease, carry_cost_usd_per_year} as in docs/district-finance.md section 7 |
 | tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
 | city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
 | note | text |  |  |  |  |  | a short note |
@@ -283,6 +296,10 @@ Id made from item, phase when a row has no id.
 | status | choice |  |  |  | planned, designed, under construction, complete |  | where it stands |
 | provenance | choice |  |  |  | VERIFIED PROJECT FACT, CURRENT OWNERSHIP INPUT, CONSULTANT INPUT, ESRI / ARCGIS DATA, OWNERSHIP ASSUMPTION, MARKET ASSUMPTION, CALCULATED, REQUIRES VALIDATION, HISTORICAL / SUPERSEDED |  | where the cost comes from |
 | assumption | text |  |  |  |  |  | the id of the Assumption for the cost |
+| payer | choice |  |  |  | owner, builder, city, district_financing |  | compute: who pays |
+| due_period | integer |  |  | 0 to 3,000 |  |  | compute: the year it must be paid for |
+| reimbursable | bool |  |  |  |  |  | compute: the cost is paid back later |
+| parcel | text |  |  |  |  |  | compute: the parcel whose sale carries it as a stub (the id of a Parcel) |
 | tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
 | city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
 | note | text |  |  |  |  |  | a short note |
@@ -394,6 +411,71 @@ Id made from module, heading when a row has no id.
 | city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
 | note | text |  |  |  |  |  | a short note |
 
+### `land_uses` (LandUse (finance library))
+
+Id made from label when a row has no id.
+
+| field | type | unit | required | range | choices | tags | description |
+|---|---|---|---|---|---|---|---|
+| id | text |  | yes |  |  |  | the id of the Use it prices (res-mf, ret-shops, ...) |
+| label | text |  | yes |  |  |  | the name shown on screens |
+| units_per_net_ac | number |  |  | 0 to 1,000 |  |  | homes or hotel keys per net acre |
+| sf_per_unit | number | sf |  | 0 to 100,000 |  |  | building SF per home or key |
+| far | number | ratio |  | 0 to 50 |  |  | or: building SF per SF of land |
+| revenue_type | choice |  | yes |  | per_unit_sale, per_sf_sale, rent_per_unit_mo, rent_per_sf_yr, room_revenue |  | how the use earns |
+| price_per_unit | number | usd_per_unit |  | 0 to 1,000,000,000 |  |  | sale price per home |
+| price_per_sf | number | usd_per_sf |  | 0 to 1,000,000 |  |  | sale price per building SF |
+| rent_per_unit_mo | number | usd_per_unit_mo |  | 0 to 1,000,000 |  |  | rent per home per month |
+| rent_per_sf_yr | number | usd_per_sf_yr |  | 0 to 10,000 |  |  | rent per SF per year |
+| efficiency_pct | number | pct |  | 0 to 100 |  |  | leasable share of building SF |
+| adr | number | usd_per_night |  | 0 to 100,000 |  |  | hotel average daily rate |
+| occupancy_pct | number | pct |  | 0 to 100 |  |  | hotel occupancy |
+| vacancy_pct | number | pct |  | 0 to 100 |  |  | vacancy and credit loss |
+| other_income_pct | number | pct |  | 0 to 1,000 |  |  | other income as a share of rent |
+| opex_pct_of_income | number | pct |  | 0 to 100 |  |  | operating cost as a share of income |
+| sales_cost_pct | number | pct |  | 0 to 100 |  |  | selling cost |
+| cap_rate_pct | number | pct |  | 0 to 100 |  |  | capitalisation rate |
+| exit_cap_pct | number | pct |  | 0 to 100 |  |  | cap rate at the sale at the end |
+| required_return_pct | number | pct |  | 0 to 1,000 |  | returns | the developer's required profit on cost |
+| provenance | choice |  |  |  | VERIFIED PROJECT FACT, CURRENT OWNERSHIP INPUT, CONSULTANT INPUT, ESRI / ARCGIS DATA, OWNERSHIP ASSUMPTION, MARKET ASSUMPTION, CALCULATED, REQUIRES VALIDATION, HISTORICAL / SUPERSEDED |  | where the row's figures come from |
+| tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
+| city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
+| note | text |  |  |  |  |  | a short note |
+
+### `cost_items` (CostItem)
+
+Id made from use, parcel, item when a row has no id. A row with a parcel carries the tags price_floor.
+
+| field | type | unit | required | range | choices | tags | description |
+|---|---|---|---|---|---|---|---|
+| id | text |  | yes |  |  |  | short id |
+| use | text |  |  |  |  |  | the land_uses id it is a development cost of |
+| parcel | text |  |  |  |  |  | or: the parcel whose cost basis (price floor) it is part of |
+| item | text |  | yes |  |  |  | the cost item id (site_work, building_shell, ... see the finance doc) |
+| label | text |  |  |  |  |  | the name shown on screens |
+| category | choice |  |  |  | hard, soft, financing, land |  | the kind of cost |
+| basis | choice |  |  |  | per_unit, per_building_sf, per_net_ac, lump_sum, pct_of_hard, pct_of_prior |  | what the amount is per (development costs) |
+| amount | number |  |  | 0 to 100,000,000,000 |  |  | dollars per basis, or a percent; empty = not known |
+| provenance | choice |  |  |  | VERIFIED PROJECT FACT, CURRENT OWNERSHIP INPUT, CONSULTANT INPUT, ESRI / ARCGIS DATA, OWNERSHIP ASSUMPTION, MARKET ASSUMPTION, CALCULATED, REQUIRES VALIDATION, HISTORICAL / SUPERSEDED |  | where the amount comes from |
+| tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
+| city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
+| note | text |  |  |  |  |  | a short note |
+
+### `capital_targets` (CapitalTarget)
+
+Id made from label when a row has no id. Every row carries the tags disposition.
+
+| field | type | unit | required | range | choices | tags | description |
+|---|---|---|---|---|---|---|---|
+| id | text |  | yes |  |  |  | short id |
+| label | text |  | yes |  |  |  | what the cash is for |
+| month | integer | months | yes | 0 to 600 |  |  | the month the cash is needed by |
+| amount_usd | number | usd | yes | 0 to 100,000,000,000 |  |  | the cash needed |
+| cumulative | bool |  |  |  |  |  | true (the default): the amount is the total needed by that month |
+| tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
+| city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
+| note | text |  |  |  |  |  | a short note |
+
 ### `reconciliations` (Reconciliation)
 
 Id made from label when a row has no id.
@@ -457,7 +539,7 @@ analysts see every project. The permission table is `access.PERMISSIONS` (one pl
 | dataset.create_submission, import, compare, checks, templates | yes | yes | yes | | |
 | revisions.read, notes.resolve, gis.remove | yes | yes | | | |
 | notes.read, notes.write, documents.upload, gis.upload | yes | yes | yes | | |
-| documents.read, gis.read | yes | yes | yes | yes | yes |
+| documents.read, gis.read, compute | yes | yes | yes | yes | yes |
 | export | yes | yes | yes | if `partner_export` | if `city_export` |
 
 Which datasets each role can read: administrator and analyst all, every version; consultant the published
@@ -583,6 +665,7 @@ POST   /api/districts/projects/<p>/notes                notes.write {target:{dat
 POST   /api/districts/projects/<p>/notes/<n>/replies    notes.write {text} -> {note}
 POST   /api/districts/projects/<p>/notes/<n>/resolve    notes.resolve {status:"resolved"|"open", resolution?} -> {note}
 
+GET|POST /api/districts/projects/<p>/compute/<tool>  compute   see section 11
 GET    /api/districts/projects/<p>/export/table.xlsx    export     ?dataset= &version= &entity=<entity>|all|section:<section id> &audience= (501 until xlsx.py exists)
 GET    /api/districts/projects/<p>/export/module.pdf    export     ?module= &dataset= &version= &audience= (501 until pdf.py exists)
 ```
@@ -605,7 +688,7 @@ Shapes used above:
   hash}`. Actions: `sign-in`, `sign-out`, `session-expired`, `nda`, `denied`, `user-add`, `user-change`,
   `user-remove`, `settings`, `project-create`, `project-edit`, `modules`, `dataset-create`, `edit`, `publish`,
   `rollback`, `import-preview`, `import`, `upload-document`, `share-document`, `download-document`, `upload-gis`,
-  `remove-gis`, `share-gis`, `note`, `export`, `backup`, `restore`, `package-export`, `package-import`, `sample`.
+  `remove-gis`, `share-gis`, `compute`, `note`, `export`, `backup`, `restore`, `package-export`, `package-import`, `sample`.
 - **revision**: `{seq, at, user, name, dataset, entity, id, field, oldValue, newValue, reason, classification, prev,
   hash}`. `classification` is the record's provenance class (or the one given with the edit).
 
@@ -647,3 +730,112 @@ clean(obj)                                               # NaN and Infinity beco
 
 A module that adds routes for computed results must pass its answer through `access.scrub` for the caller's
 audience before it is sent.
+
+## 11. Compute (computed results)
+
+```
+GET    /api/districts/projects/<p>/compute/<tool>       compute    ?dataset=baseline &version= &audience= (admin/analyst only) &<option>=
+POST   /api/districts/projects/<p>/compute/<tool>       compute    {dataset?, version?, audience?, assumptions?, records?, options?}
+```
+
+`<tool>` is one of `landvalue`, `proceeds`, `proforma`, `strategy`, `scenarios`, `funding`, `fiscal`, `reconcile`. Every
+role may call them (viewers on the versions they can read). The answer:
+
+```json
+{"tool": "landvalue", "dataset": "baseline", "version": 1, "audience": "internal", "as_of": "2026-11-27",
+ "inputs_used": [{"assumption_id": "FIN-NET-TO-GROSS-PCT", "label": "...", "value": 80, "unit": "pct",
+                  "provenance": "VERIFIED PROJECT FACT", "what_if": false, "tags": []},
+                 {"field": "land_uses/ret-shops/rent_per_sf_yr", "value": 40, "unit": "usd_per_sf_yr",
+                  "provenance": "OWNERSHIP ASSUMPTION", "what_if": false, "tags": []}],
+ "result": {}, "formula": ["...", "..."], "missing": ["what the dataset lacks, in plain words"],
+ "disclaimer": "Economic calculation under the stated assumptions. ...", "what_if": [], "hidden_parts": []}
+```
+
+- `missing` names every input the tool looked for and did not find. A figure the engine has a starting value for is
+  used and said so (`provenance: "ENGINE STARTING FIGURE"`); one it has none for leaves that part out.
+- **What-if (POST).** Nothing is saved. `assumptions` is `{id: number}` (an existing register entry, or a convention id
+  below); `records` is `{entity: [{id, field: value}]}` merged into existing rows and checked like an edit. A viewer can
+  change only what their own view shows. `what_if` lists what was changed; those inputs carry `"what_if": true`.
+- **Options.** `proceeds`: `price_basis` = `target_market` (default), `minimum_recommended`, `upside_stretch` or
+  `economic_cost_floor`. `proforma`: `tornado_metric` = `irr_pct` (default), `yoc_pct`, `npv_usd`, `rlv_total_usd` or
+  `equity_multiple`. On a GET they are query parameters.
+- **Audience.** The answer is filtered on the server: result parts tagged in `compute.RESULT_TAGS` are removed for an
+  audience that denies the tag (listed in `hidden_parts`), inputs whose tags it denies are removed, and `access.scrub`
+  removes every remaining key named like a denied subject. The city never receives returns (IRR, yield on cost, NPV,
+  equity multiple, required return, margins, break-evens, the tornado), residual land value by parcel, pricing tiers,
+  sale proceeds, the capital plan, hold/sell decisions or the funding gap against land sales.
+
+### Where each input comes from
+
+| input | from |
+|---|---|
+| land use library | `land_uses` rows (one per Use id) and their `cost_items` (rows with `use`) |
+| a parcel's cost basis (price floor) | `cost_items` rows with `parcel`; an item without an amount is "not known" |
+| parcels | `parcels`: acres, net_acres (else `FIN-NET-TO-GROSS-PCT`), use, candidate_uses, strategic_score(s), critical, must_keep, close_month, do_not_sell_until_month, seller_note_usd, debt_release_usd, land_value_usd, strategy_inputs |
+| phases | `phases` (land_cost_usd, start_offset_years, the two triggers) with the base-case `program_lines` of each phase (units, else keys, else sf, else acres). The `full` phase is the whole buildout, not a phase of its own. Uses in the groups open space, civic, infrastructure and parks are left out quietly |
+| infrastructure stubs | `infrastructure` rows with `parcel`; payer and due year from `payer` and `due_period` |
+| capital targets | `capital_targets` (month, amount_usd, cumulative) |
+| everything else | assumptions by id, below |
+
+| assumption id | meaning | unit | engine starting figure |
+|---|---|---|---|
+| `PF-BASE-YEAR` | first year of the pro forma | count |  |
+| `PF-DISCOUNT-RATE-PCT` | pro forma discount rate | pct | 10.0 |
+| `PF-HOLD-YEARS` | years held after stabilisation | years | 10 |
+| `PF-BUILD-YEARS` | years to build | years | 2 |
+| `PF-LEASE-UP-MONTHS` | months to lease up | months | 24 |
+| `PF-SELLOUT-MONTHS` | months to sell out | months | 24 |
+| `PF-NOI-GROWTH-PCT` | NOI growth per year | pct | 0.0 |
+| `PF-HURDLE-YOC-PCT` | hurdle yield on cost | pct |  |
+| `PF-HURDLE-IRR-PCT` | hurdle IRR | pct |  |
+| `FIN-NET-TO-GROSS-PCT` | net acres as a share of gross | pct | 100.0 |
+| `FIN-SPONSOR-HURDLE-PCT` | sponsor hurdle on cost | pct | 20.0 |
+| `FIN-STRATEGIC-PREMIUM-PCT` | strategic premium on cost | pct | 0.0 |
+| `FIN-TARGET-PCT-OF-RLV` | target price as a share of residual value | pct | 100.0 |
+| `FIN-UPSIDE-PCT` | upside over the target price | pct | 15.0 |
+| `FIN-BROKERAGE-PCT` | brokerage commission | pct | 3.5 |
+| `FIN-CLOSING-PCT` | closing costs | pct | 0.75 |
+| `FIN-TRANSFER-TAX-PCT` | transfer tax | pct | 0.11 |
+| `FIN-RECORDING-FEE-USD` | recording fee per sale | usd | 0.0 |
+| `FIN-CRITICAL-THRESHOLD` | strategic score that makes a parcel critical | count | 75.0 |
+| `STR-DISCOUNT-RATE-PCT` | strategy comparison discount rate | pct | 8.0 |
+| `STR-APPRECIATION-PCT` | land appreciation per year | pct | 3.0 |
+| `STR-SALE-COST-PCT` | selling cost of retained land | pct | 4.36 |
+| `STR-PLACEMAKING-LIFT-PCT` | placemaking lift on retained land | pct | 0.0 |
+| `STR-LIFT-YEAR` | year the placemaking lift arrives | count | 1 |
+| `STR-RELEASE-ACRES` | acres released in each tranche | acres |  |
+| `STR-RELEASE-EVERY-YEARS` | years between tranches | years |  |
+| `STR-MIN-CORE-ACRES` | core acres never released | acres | 0.0 |
+| `SCN-ABSORPTION-UNITS-PER-YEAR` | home absorption per year | units_per_yr |  |
+| `SCN-PRELEASING-PCT` | pre-leasing today | pct |  |
+| `FISCAL-CONSTRUCTION-JOBS-PER-MILLION` | construction job-years per $1 million | count |  |
+| `FISCAL-CONSTRUCTION-MULTIPLIER` | construction output multiplier | ratio |  |
+| `FISCAL-OPERATING-MULTIPLIER` | operating output multiplier | ratio |  |
+| `FISCAL-SALES-TAX-PCT` | local sales tax rate | pct |  |
+| `FISCAL-PROPERTY-TAX-PCT` | property tax rate | pct |  |
+| `FISCAL-CITY-SHARE-PCT` | city share of property tax | pct |  |
+| `FISCAL-HOTEL-TAX-PCT` | hotel room tax | pct |  |
+| `EIFD-PARTICIPATING-SHARE-PCT` | share of the increment a district captures | pct |  |
+| `EIFD-YEARS` | years of increment shown | years | 30 |
+| `EIFD-GROWTH-PCT` | assessed value growth per year | pct | 2.0 |
+| `FISCAL-JOBS-PER-1000SF-<x>` | jobs per 1,000 SF of that use | jobs | |
+| `FISCAL-SALES-PER-SF-<x>` | taxable sales per SF per year | usd_per_sf | |
+| `SCN-UNITS-<n>` | a named unit-count scenario (one per id) | units | |
+
+`FISCAL-JOBS-PER-1000SF-<x>` and `FISCAL-SALES-PER-SF-<x>` are looked up first by the use id (`ret-shops`), then by the
+use's group in capitals (`RETAIL`, `OFFICE`, `HOSPITALITY`).
+
+### What each tool returns, and one example body
+
+| tool | result | example POST body |
+|---|---|---|
+| `landvalue` | `by_use` (residual per use and low/base/high: per net acre, gross acre, net SF), `by_parcel` (per parcel and candidate use), `pricing_tiers` (per parcel: cost floor, minimum recommended, target, upside) | `{"assumptions": {"FIN-TARGET-PCT-OF-RLV": 90}, "records": {"land_uses": [{"id": "ret-shops", "rent_per_sf_yr": 44}]}}` |
+| `proceeds` | `price_basis`, `waterfall` (gross-to-net per parcel and totals), `capital_plan` (max cash, balanced, max retention against the targets), `targets` | `{"options": {"price_basis": "minimum_recommended"}, "assumptions": {"FIN-BROKERAGE-PCT": 2.5}}` |
+| `proforma` | `phases`, `full_buildout` (totals, yield on cost, IRR with `converged`, equity multiple, NPV, cash flows), `break_even` (per driver the program has), `tornado` | `{"options": {"tornado_metric": "yoc_pct"}, "assumptions": {"PF-HURDLE-IRR-PCT": 18}}` |
+| `strategy` | `decisions` (hold, sell, JV, ground lease per parcel: NPVs, scores, guarded recommendation), `conflicts` (critical assets), `retained_value` (land kept, over 15 years), `paced_releases`, `retained_parcels` | `{"assumptions": {"STR-APPRECIATION-PCT": 4, "STR-RELEASE-ACRES": 4}}` |
+| `scenarios` | `low_base_high` (headline metrics side by side and against the base), `unit_scenarios` (one per `SCN-UNITS-<n>`), `absorption` (homes by year), `phase_triggers` (each phase's triggers met, not met or not known) | `{"assumptions": {"SCN-ABSORPTION-UNITS-PER-YEAR": 150, "SCN-PRELEASING-PCT": 65}}` |
+| `funding` | `register` (infrastructure totals by phase and payer, with the count of costs not known), `funding_gap` (owner cost against land-sale proceeds by year), `unknown_cost_items` | `{"records": {"infrastructure": [{"id": "inf-water", "cost_usd": 2000000}]}}` |
+| `fiscal` | `impact` (jobs, output, sales, property and hotel tax by phase), `eifd` (increment by year) | `{"assumptions": {"FISCAL-SALES-TAX-PCT": 1.5, "EIFD-PARTICIPATING-SHARE-PCT": 30}}` |
+| `reconcile` | `reconciliations` (each rule's difference, explanation and the engine's own check), `all_explained` | `{"assumptions": {"A-RET-CAT-TOTAL": 175000}}` |
+
+Every compute call is in the audit log (`compute`, with the tool, dataset, version, audience and what-if changes).

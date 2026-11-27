@@ -87,6 +87,10 @@ SENSITIVE_KEY_PHRASES = {
     "residual_land_value": "rlv_parcel", "price_floor": "price_floor", "floor_price": "price_floor",
     "cost_floor": "price_floor", "target_price": "disposition", "stretch_price": "disposition",
     "disposition_price": "disposition", "minimum_price": "disposition", "min_price": "disposition",
+    "proceeds": "disposition", "pricing_tier": "disposition", "tiers": "disposition", "minimum_recommended": "disposition",
+    "target_market": "disposition", "upside_stretch": "disposition", "gross_price": "disposition",
+    "land_value": "disposition", "break_even": "returns", "breakeven": "returns", "hurdle": "returns",
+    "spread": "returns", "sponsor": "price_floor", "required_return": "returns", "margin": "returns",
 }
 # Records whose own words (id, label, heading, metric, body) name one of these are kept from an audience that denies
 # the tag even when nobody tagged them: the city view fails closed. An administrator can set city_safe on a record.
@@ -135,6 +139,10 @@ ENTITIES = {
             "preleasing_pct_trigger": F("number", "pct", min=0, max=100, desc="pre-leasing needed before it starts"),
             "absorption_note": F("text", desc="what absorption the phase depends on"),
             "triggers": F("text", desc="the other triggers and dependencies, in words"),
+            "land_cost_usd": F("number", "usd", min=0, max=1e11, desc="compute: the land cost charged to the phase's "
+                                                                        "pro forma"),
+            "start_offset_years": F("integer", "years", min=0, max=100, desc="compute: years after the first phase "
+                                                                              "that it starts"),
         },
     },
     "program_lines": {
@@ -212,6 +220,24 @@ ENTITIES = {
                               desc="residual land value per acre"),
             "funding_target": F("text", tags=("disposition",), desc="the funding target the sale is linked to"),
             "provenance": F("choice", choices=PROVENANCE, desc="where the row's figures come from"),
+            "candidate_uses": F("refs", desc="compute: the land_uses ids its residual value is worked out for"),
+            "strategic_score": F("number", min=0, max=100, desc="compute: its strategic score, 0-100"),
+            "strategic_scores": F("json", desc="compute: {dimension id: score 0-100} for the 12 strategic dimensions"),
+            "critical": F("bool", desc="compute: a critical strategic asset (never sold by a cash plan)"),
+            "must_keep": F("bool", desc="compute: never sold"),
+            "close_month": F("integer", "months", min=0, max=600, tags=("disposition",),
+                             desc="compute: month a sale would close (cash in)"),
+            "do_not_sell_until_month": F("integer", "months", min=0, max=600, tags=("disposition",),
+                                         desc="compute: no sale before this month"),
+            "land_value_usd": F("number", "usd", min=0, max=1e11, tags=("disposition",),
+                                desc="compute: today's land value for the hold/sell/JV/ground-lease comparison"),
+            "seller_note_usd": F("number", "usd", min=0, max=1e11, tags=("disposition",),
+                                 desc="compute: a seller note paid from the sale"),
+            "debt_release_usd": F("number", "usd", min=0, max=1e11, tags=("disposition",),
+                                  desc="compute: debt released from the sale"),
+            "strategy_inputs": F("json", tags=("returns", "disposition"),
+                                 desc="compute: {sale, develop, jv, ground_lease, carry_cost_usd_per_year} as in "
+                                      "docs/district-finance.md section 7"),
         },
     },
     "assumptions": {
@@ -264,6 +290,10 @@ ENTITIES = {
             "status": F("choice", choices=("planned", "designed", "under construction", "complete"), desc="where it stands"),
             "provenance": F("choice", choices=PROVENANCE, desc="where the cost comes from"),
             "assumption": F("text", desc="the id of the Assumption for the cost"),
+            "payer": F("choice", choices=("owner", "builder", "city", "district_financing"), desc="compute: who pays"),
+            "due_period": F("integer", min=0, max=3000, desc="compute: the year it must be paid for"),
+            "reimbursable": F("bool", desc="compute: the cost is paid back later"),
+            "parcel": F("text", desc="compute: the parcel whose sale carries it as a stub (the id of a Parcel)"),
         },
     },
     "risks": {
@@ -354,6 +384,61 @@ ENTITIES = {
             "ai_assisted": F("bool", desc="written with AI help (NFR-09: it must cite what it uses)"),
         },
     },
+    "land_uses": {
+        "label": "LandUse (finance library)", "natural_key": ("label",),
+        "fields": {
+            "id": F("text", required=True, desc="the id of the Use it prices (res-mf, ret-shops, ...)"),
+            "label": F("text", required=True, desc="the name shown on screens"),
+            "units_per_net_ac": F("number", min=0, max=1000, desc="homes or hotel keys per net acre"),
+            "sf_per_unit": F("number", "sf", min=0, max=1e5, desc="building SF per home or key"),
+            "far": F("number", "ratio", min=0, max=50, desc="or: building SF per SF of land"),
+            "revenue_type": F("choice", required=True, choices=("per_unit_sale", "per_sf_sale", "rent_per_unit_mo",
+                                                                 "rent_per_sf_yr", "room_revenue"),
+                              desc="how the use earns"),
+            "price_per_unit": F("number", "usd_per_unit", min=0, max=1e9, desc="sale price per home"),
+            "price_per_sf": F("number", "usd_per_sf", min=0, max=1e6, desc="sale price per building SF"),
+            "rent_per_unit_mo": F("number", "usd_per_unit_mo", min=0, max=1e6, desc="rent per home per month"),
+            "rent_per_sf_yr": F("number", "usd_per_sf_yr", min=0, max=1e4, desc="rent per SF per year"),
+            "efficiency_pct": F("number", "pct", min=0, max=100, desc="leasable share of building SF"),
+            "adr": F("number", "usd_per_night", min=0, max=1e5, desc="hotel average daily rate"),
+            "occupancy_pct": F("number", "pct", min=0, max=100, desc="hotel occupancy"),
+            "vacancy_pct": F("number", "pct", min=0, max=100, desc="vacancy and credit loss"),
+            "other_income_pct": F("number", "pct", min=0, max=1000, desc="other income as a share of rent"),
+            "opex_pct_of_income": F("number", "pct", min=0, max=100, desc="operating cost as a share of income"),
+            "sales_cost_pct": F("number", "pct", min=0, max=100, desc="selling cost"),
+            "cap_rate_pct": F("number", "pct", min=0, max=100, desc="capitalisation rate"),
+            "exit_cap_pct": F("number", "pct", min=0, max=100, desc="cap rate at the sale at the end"),
+            "required_return_pct": F("number", "pct", min=0, max=1000, tags=("returns",),
+                                     desc="the developer's required profit on cost"),
+            "provenance": F("choice", choices=PROVENANCE, desc="where the row's figures come from"),
+        },
+    },
+    "cost_items": {
+        "label": "CostItem", "natural_key": ("use", "parcel", "item"),
+        "row_tags_when": {"parcel": ("price_floor",)},
+        "fields": {
+            "id": F("text", required=True, desc="short id"),
+            "use": F("text", desc="the land_uses id it is a development cost of"),
+            "parcel": F("text", desc="or: the parcel whose cost basis (price floor) it is part of"),
+            "item": F("text", required=True, desc="the cost item id (site_work, building_shell, ... see the finance doc)"),
+            "label": F("text", desc="the name shown on screens"),
+            "category": F("choice", choices=("hard", "soft", "financing", "land"), desc="the kind of cost"),
+            "basis": F("choice", choices=("per_unit", "per_building_sf", "per_net_ac", "lump_sum", "pct_of_hard",
+                                          "pct_of_prior"), desc="what the amount is per (development costs)"),
+            "amount": F("number", min=0, max=1e11, desc="dollars per basis, or a percent; empty = not known"),
+            "provenance": F("choice", choices=PROVENANCE, desc="where the amount comes from"),
+        },
+    },
+    "capital_targets": {
+        "label": "CapitalTarget", "natural_key": ("label",), "tags": ("disposition",),
+        "fields": {
+            "id": F("text", required=True, desc="short id"),
+            "label": F("text", required=True, desc="what the cash is for"),
+            "month": F("integer", "months", required=True, min=0, max=600, desc="the month the cash is needed by"),
+            "amount_usd": F("number", "usd", required=True, min=0, max=1e11, desc="the cash needed"),
+            "cumulative": F("bool", desc="true (the default): the amount is the total needed by that month"),
+        },
+    },
     "reconciliations": {
         "label": "Reconciliation", "natural_key": ("label",),
         "fields": {
@@ -407,6 +492,16 @@ def entity(name):
     return ENTITIES.get(name)
 
 
+def row_tags(entity_name, record):
+    """The tags a row carries because of its entity or its own fields (besides its own tags field)."""
+    e = ENTITIES.get(entity_name) or {}
+    out = set(e.get("tags", ()))
+    for f, tags in (e.get("row_tags_when") or {}).items():
+        if record.get(f) not in (None, "", []):
+            out |= set(tags)
+    return out
+
+
 def field_tags(entity_name, field_name):
     f = ENTITIES.get(entity_name, {}).get("fields", {}).get(field_name)
     return set(f.get("tags", ())) if f else set()
@@ -443,6 +538,10 @@ def markdown():
         extra = ""
         if e.get("require_one_of"):
             extra = f" A row needs at least one of: {', '.join(e['require_one_of'])}."
+        if e.get("tags"):
+            extra += f" Every row carries the tags {', '.join(e['tags'])}."
+        for f_, tg in (e.get("row_tags_when") or {}).items():
+            extra += f" A row with a {f_} carries the tags {', '.join(tg)}."
         lines.append(f"### `{name}` ({e['label']})\n")
         lines.append(f"Id made from {', '.join(e['natural_key'])} when a row has no id.{extra}\n")
         lines.append("| field | type | unit | required | range | choices | tags | description |")
