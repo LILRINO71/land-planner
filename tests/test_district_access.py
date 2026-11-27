@@ -207,6 +207,20 @@ class CityView(Base):
                                  query={"audience": "city"})[1]
         self.assertEqual((city_preview["audience"], self.walk(city_preview["content"])), ("city", []))
 
+    def test_the_city_gets_no_disposition_strategy_fields_but_the_partner_keeps_them(self):
+        strategy = {"parcels": ("hold_sell", "buyer_type", "timing", "must_keep", "critical"),
+                    "blocks": ("buyer_type", "intent", "core", "close_month")}
+        city = self.call("GET", P + "/datasets/baseline", self.tokens["viewer_city"])[1]["content"]["entities"]
+        partner = self.call("GET", P + "/datasets/baseline", self.tokens["viewer_partner"])[1]["content"]["entities"]
+        for entity, fields in strategy.items():
+            self.assertTrue(city[entity], entity)
+            for row in city[entity]:
+                self.assertEqual([f for f in fields if f in row], [], (entity, row.get("id")))
+            for f in fields:
+                if f in ("must_keep", "critical"):      # compute-only fields: a sample row may not carry them
+                    continue
+                self.assertTrue(any(f in row for row in partner[entity]), (entity, f))
+
     def test_an_untagged_figure_whose_words_are_sensitive_is_kept_from_the_city(self):
         a = self.tokens["administrator"]
         rec = {"id": "A-HIDDEN", "label": "Levered IRR, Phase 2", "value": 20, "unit": "pct", "status": "Baseline",

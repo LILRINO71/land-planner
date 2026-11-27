@@ -210,9 +210,9 @@ Id made from apn when a row has no id.
 | net_acres | number | acres |  | 0 to 1,000,000 |  |  | net acres |
 | use | text |  |  |  |  |  | the id of a Use |
 | phase | text |  |  |  |  |  | the id of a Phase |
-| hold_sell | choice |  |  |  | hold, sell, jv, ground lease, undecided |  | the plan for it |
-| buyer_type | text |  |  |  |  |  | the kind of buyer |
-| timing | text |  |  |  |  |  | when it is offered |
+| hold_sell | choice |  |  |  | hold, sell, jv, ground lease, undecided | disposition | the plan for it |
+| buyer_type | text |  |  |  |  | disposition | the kind of buyer |
+| timing | text |  |  |  |  | disposition | when it is offered |
 | price_floor | number | usd |  | 0 to 100,000,000,000 |  | price_floor, disposition | the lowest acceptable price |
 | target_price | number | usd |  | 0 to 100,000,000,000 |  | disposition | the asking price |
 | rlv | number | usd |  | -100,000,000,000 to 100,000,000,000 |  | rlv_parcel | residual land value |
@@ -222,8 +222,8 @@ Id made from apn when a row has no id.
 | candidate_uses | refs |  |  |  |  |  | compute: the land_uses ids its residual value is worked out for |
 | strategic_score | number |  |  | 0 to 100 |  |  | compute: its strategic score, 0-100 |
 | strategic_scores | json |  |  |  |  |  | compute: {dimension id: score 0-100} for the 12 strategic dimensions |
-| critical | bool |  |  |  |  |  | compute: a critical strategic asset (never sold by a cash plan) |
-| must_keep | bool |  |  |  |  |  | compute: never sold |
+| critical | bool |  |  |  |  | disposition | compute: a critical strategic asset (never sold by a cash plan) |
+| must_keep | bool |  |  |  |  | disposition | compute: never sold |
 | close_month | integer | months |  | 0 to 600 |  | disposition | compute: month a sale would close (cash in) |
 | do_not_sell_until_month | integer | months |  | 0 to 600 |  | disposition | compute: no sale before this month |
 | land_value_usd | number | usd |  | 0 to 100,000,000,000 |  | disposition | compute: today's land value for the hold/sell/JV/ground-lease comparison |
@@ -427,9 +427,9 @@ Id made from name when a row has no id.
 | price_per_sf_high | number | usd_per_sf |  | 0 to 100,000 |  | disposition | the high end of the stated price per net SF |
 | phase | text |  |  |  |  |  | the id of a Phase |
 | close_month | integer | months |  | 0 to 600 |  | disposition | month the sale closes (cash in) |
-| buyer_type | text |  |  |  |  |  | the kind of buyer |
-| intent | choice |  |  |  | sell, hold, jv, ground_lease, hold_develop |  | sell, hold, jv, ground_lease or hold_develop |
-| core | bool |  |  |  |  |  | a strategic core block: never sold by the max-retention plan, flagged when sold |
+| buyer_type | text |  |  |  |  | disposition | the kind of buyer |
+| intent | choice |  |  |  | sell, hold, jv, ground_lease, hold_develop | disposition | sell, hold, jv, ground_lease or hold_develop |
+| core | bool |  |  |  |  | disposition | a strategic core block: never sold by the max-retention plan, flagged when sold |
 | strategic_score | number |  |  | 0 to 100 |  |  | its strategic score, 0-100 |
 | stub_cost_usd | number | usd |  | 0 to 100,000,000,000 |  |  | infrastructure stub paid from the sale; leave empty when not known, 0 when none |
 | use | text |  |  |  |  |  | the id of a Use |

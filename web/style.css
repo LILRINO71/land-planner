@@ -1,6 +1,6 @@
 :root{
   --ink:#1d2a24;--muted:#5f6d65;--paper:#f5f2ea;--card:#fff;--green:#1f4436;--green-deep:#16332a;--green-soft:#e6efe9;
-  --gold:#f2b632;--gold-deep:#b98207;--line:#e0dbcd;--line-soft:#ece8dc;--red:#a53a2b;--side:252px;
+  --gold:#f2b632;--gold-deep:#8a6104;--line:#e0dbcd;--line-soft:#ece8dc;--red:#a53a2b;--side:252px;
   --shadow:0 1px 2px #1d2a2410,0 6px 18px #1d2a240d;
 }
 *{box-sizing:border-box}
@@ -388,7 +388,7 @@ table.cmp-table{min-width:1280px}
 .calm-tab-row{display:flex;flex-wrap:wrap;gap:2px;min-width:0}
 .calm-tab-row button{display:inline-flex;align-items:baseline;gap:7px;border:0;border-bottom:3px solid transparent;background:none;color:var(--muted);
   font:600 14.5px/1.2 "Segoe UI",system-ui,sans-serif;padding:12px 14px 10px;cursor:pointer;white-space:nowrap;border-radius:8px 8px 0 0;transition:color .15s,background .15s}
-.calm-tab-row button small{font-size:11.5px;font-weight:700;color:#a09a88;font-variant-numeric:tabular-nums}
+.calm-tab-row button small{font-size:11.5px;font-weight:700;color:#736d5b;font-variant-numeric:tabular-nums}
 .calm-tab-row button:hover{color:var(--ink);background:#fff8}
 .calm-tab-row button.on{color:var(--green);border-bottom-color:var(--gold);background:#fff}
 .calm-tab-row button.on small{color:var(--gold-deep)}
