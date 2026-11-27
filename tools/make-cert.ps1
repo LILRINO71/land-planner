@@ -19,6 +19,11 @@ param(
     [switch]$OnlyGiven
 )
 $ErrorActionPreference = "Stop"
+# Started from PowerShell 7, Windows PowerShell can inherit a module path that hides its own Cert: drive.
+if (-not (Get-PSDrive -Name Cert -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSHOME "Modules\Microsoft.PowerShell.Security") -ErrorAction SilentlyContinue
+    Import-Module (Join-Path $PSHOME "Modules\PKI") -ErrorAction SilentlyContinue
+}
 # "-DnsName a,b" arrives as one string when the script is run with -File
 $DnsName = @($DnsName | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $IpAddress = @($IpAddress | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })

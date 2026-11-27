@@ -432,7 +432,8 @@ class MakeCert(unittest.TestCase):
             done = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                                    str(ROOT / "tools" / "make-cert.ps1"), "-OutDir", out, "-OnlyGiven",
                                    "-DnsName", "localhost,planner.test", "-IpAddress", "127.0.0.1", "-Years", "1",
-                                   "-Label", label], capture_output=True, text=True, timeout=120)
+                                   "-Label", label], capture_output=True, text=True, timeout=120,
+                                  env={k: v for k, v in os.environ.items() if k.upper() != "PSMODULEPATH"})
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
             cert, key = Path(out) / "cert.pem", Path(out) / "key.pem"
             tls_context(cert, key)
