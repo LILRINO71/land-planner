@@ -600,7 +600,7 @@ exactly what that audience would get; a viewer cannot widen theirs.
 Role column: who may call it (`any` = no sign-in needed; `signed-in` = any role after the NDA).
 
 ```
-GET    /api/districts                                   any        {available, signed_in, bootstrap, google:{enabled, client_id}, features:{excel, pdf}, idle_minutes}
+GET    /api/districts                                   any        {available, signed_in, bootstrap, google:{enabled, client_id}, features:{excel, pdf}, idle_minutes, landing?:{title, subtitle, place, badge, notice, footer}}
 GET    /api/districts/session                           any        {signed_in:false, bootstrap, google} | {signed_in:true, user, audience, nda:{required, version, text}, idle_minutes}
 POST   /api/districts/session                           any        {method:"passcode", name, passcode} | {method:"google", id_token} -> session (Set-Cookie)
 DELETE /api/districts/session                           any        sign out -> {signed_in:false}
@@ -611,7 +611,7 @@ GET    /api/districts/users                             admin      {users:[user]
 POST   /api/districts/users                             admin      {id?, name, email?, role, status?, projects?, passcode?} -> {user}  (no id = new)
 DELETE /api/districts/users/<user_id>                   admin      {removed:true}
 GET    /api/districts/settings                          admin      settings (the client id is shown, no secrets are kept)
-POST   /api/districts/settings                          admin      {google_client_id?, idle_minutes?, nda_text?, nda_version?, disclaimers?} -> settings
+POST   /api/districts/settings                          admin      {google_client_id?, idle_minutes?, nda_text?, nda_version?, disclaimers?, landing?} -> settings
 GET    /api/districts/audit                             admin      ?q= &action= &user= &outcome= &project= &limit=200 &offset=0 -> {entries, total, chain:{ok, lines, broken_at, reason}}
 
 GET    /api/districts/templates                         templates  {entities:[names], columns:{entity:[fields]}, dictionary:{columns, rows}, units:{code:label}}
@@ -669,6 +669,11 @@ GET|POST /api/districts/projects/<p>/compute/<tool>  compute   see section 11
 GET    /api/districts/projects/<p>/export/table.xlsx    export     ?dataset= &version= &entity=<entity>|all|section:<section id> &audience= (501 until xlsx.py exists)
 GET    /api/districts/projects/<p>/export/module.pdf    export     ?module= &dataset= &version= &audience= (501 until pdf.py exists)
 ```
+
+`landing` (before sign-in, so only these six lines of text, never an id, a name or a figure): the settings' own
+`landing` when an administrator has set it (`null` clears it); otherwise, when exactly one project that is not the sample
+exists, that project's branding (`place` is its `location` line); otherwise left out. `footer` is one string with " · "
+between its parts; a list given for it is joined that way.
 
 Shapes used above:
 

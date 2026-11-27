@@ -54,6 +54,7 @@ MIN_PASSCODE = 8
 MAX_TRIES, TRY_WINDOW = 5, 15 * 60
 DEFAULT_SETTINGS = {
     "google_client_id": "",
+    "landing": None,
     "idle_minutes": 30,
     "nda_version": 1,
     "nda_text": "Confidentiality agreement (NDA): wording to be supplied by counsel.",
@@ -147,6 +148,8 @@ class Settings:
                 if not 1 <= m <= 24 * 60:
                     raise Problem(400, "bad-request", "The idle time-out is from 1 to 1,440 minutes.")
                 current["idle_minutes"] = m
+            if "landing" in changes:
+                current["landing"] = landing_lines(changes["landing"]) if changes["landing"] else None
             if "nda_text" in changes:
                 current["nda_text"] = str(changes["nda_text"] or "")[:20000] or DEFAULT_SETTINGS["nda_text"]
             if "nda_version" in changes:
@@ -161,6 +164,25 @@ class Settings:
                 current["disclaimers"].update({k: str(v or "")[:4000] for k, v in d.items()})
             _write(self.path, current)
             return current
+
+
+LANDING_KEYS = ("title", "subtitle", "place", "badge", "notice", "footer")
+
+
+def landing_lines(value, strict=True):
+    """The sign-in page's branding lines: {title, subtitle, place, badge, notice, footer} as plain text. A footer
+    given as a list is joined with " · " (the screen splits on it)."""
+    if not isinstance(value, dict) or (strict and any(k not in LANDING_KEYS for k in value)):
+        raise Problem(400, "bad-request", f"landing is {{{', '.join(LANDING_KEYS)}}}, each a line of text.")
+    out = {}
+    for k in LANDING_KEYS:
+        v = value.get(k)
+        if isinstance(v, (list, tuple)):
+            v = " · ".join(str(x).strip() for x in v if str(x).strip())
+        if v is not None and not isinstance(v, (str, int, float)):
+            raise Problem(400, "bad-request", f"landing {k} is a line of text.")
+        out[k] = str(v or "").strip()[:200]
+    return out
 
 
 # ---------------------------------------------------------------- the user directory

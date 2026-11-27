@@ -293,9 +293,34 @@ class DistrictAPI:
             except Problem:
                 feats[name] = False
         uid, state = self.sessions.find(req["token"], s["idle_minutes"]) if req["token"] else (None, "none")
-        return {"available": True, "signed_in": state == "ok", "bootstrap": self.users.empty(),
-                "google": {"enabled": bool(s["google_client_id"]), "client_id": s["google_client_id"] or None},
-                "features": feats, "idle_minutes": s["idle_minutes"]}
+        out = {"available": True, "signed_in": state == "ok", "bootstrap": self.users.empty(),
+               "google": {"enabled": bool(s["google_client_id"]), "client_id": s["google_client_id"] or None},
+               "features": feats, "idle_minutes": s["idle_minutes"]}
+        landing = self._landing(s)
+        if landing:
+            out["landing"] = landing
+        return out
+
+    def _landing(self, settings):
+        """The sign-in page's lines, shown before anyone signs in: the settings' own, else the branding of the one
+        real project when there is exactly one. Only those six lines; never an id, a name or a figure."""
+        if settings.get("landing"):
+            try:
+                return A.landing_lines(settings["landing"], strict=False)
+            except Problem:
+                return None
+        try:
+            real = [self.store.project(pid) for pid in self.store.project_ids()]
+        except Problem:
+            return None
+        real = [pr for pr in real if not pr.get("sample")]
+        if len(real) != 1:
+            return None
+        b = real[0].get("branding") if isinstance(real[0].get("branding"), dict) else {}
+        lines = A.landing_lines({"title": b.get("title"), "subtitle": b.get("subtitle"),
+                                 "place": b.get("location") or b.get("place"), "badge": b.get("badge"),
+                                 "notice": b.get("notice"), "footer": b.get("footer")}, strict=False)
+        return lines if any(lines.values()) else None
 
     # ---------------------------------------------------------------- signing in
 

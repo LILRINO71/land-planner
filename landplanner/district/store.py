@@ -134,8 +134,9 @@ class Store:
             b = meta.get("branding") or {}
             if not isinstance(b, dict):
                 raise Problem(400, "bad-request", "Branding is a set of lines: title, subtitle, badge, footer.")
-            out["branding"] = {k: str(b.get(k) or "")[:200] for k in ("title", "subtitle", "location", "badge",
-                                                                       "notice", "footer", "model_label")}
+            out["branding"] = {k: (" · ".join(str(x).strip() for x in b[k] if str(x).strip())
+                                   if isinstance(b.get(k), (list, tuple)) else str(b.get(k) or ""))[:200]
+                               for k in ("title", "subtitle", "location", "badge", "notice", "footer", "model_label")}
         if "apns" in meta:
             apns = meta.get("apns") or []
             if not isinstance(apns, list) or len(apns) > 500:

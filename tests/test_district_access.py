@@ -420,6 +420,44 @@ class NoNaN(Base):
                 self.call("GET", path, t)                       # strict() raises on NaN or Infinity
 
 
+class Landing(Base):
+    BRAND = {"title": "RIDGE DISTRICT", "subtitle": "Invented Strategy Platform", "location": "Nowhere, California",
+             "badge": "Private Sample Badge", "notice": "Invited Guests Only", "footer": ["Invented footer", "Line two"]}
+
+    def landing(self):
+        s, b, _ = self.call("GET", "/api/districts")          # no sign-in
+        self.assertEqual(s, 200)
+        return b
+
+    def test_the_one_real_projects_branding_is_shown_before_sign_in_and_nothing_else(self):
+        self.assertNotIn("landing", self.landing(), "only the sample: no landing")
+        a = self.tokens["administrator"]
+        self.assertEqual(self.call("POST", "/api/districts/projects", a, body={
+            "id": "secret-ridge", "name": "Secret Ridge Holdings", "branding": self.BRAND,
+            "site": {"gross_acres": 777}})[0], 200)
+        b = self.landing()
+        self.assertEqual(b["landing"], {"title": "RIDGE DISTRICT", "subtitle": "Invented Strategy Platform",
+                                        "place": "Nowhere, California", "badge": "Private Sample Badge",
+                                        "notice": "Invited Guests Only", "footer": "Invented footer · Line two"})
+        text = json.dumps(b)
+        for secret in ("secret-ridge", "Secret Ridge", "777", "sample-district"):
+            self.assertNotIn(secret, text)
+        self.call("POST", "/api/districts/projects", a, body={"id": "second-one", "name": "Second", "branding": self.BRAND})
+        self.assertNotIn("landing", self.landing(), "two real projects: which one is not known")
+
+    def test_the_settings_own_landing_wins_and_only_an_administrator_sets_it(self):
+        mine = {"title": "SET BY HAND", "subtitle": "s", "place": "p", "badge": "b", "notice": "n", "footer": "a · b"}
+        self.assertEqual(self.call("POST", "/api/districts/settings", self.tokens["analyst"],
+                                   body={"landing": mine})[0], 403)
+        self.assertEqual(self.call("POST", "/api/districts/settings", self.tokens["administrator"],
+                                   body={"landing": {"title": "x", "figures": 1}})[0], 400)
+        self.assertEqual(self.call("POST", "/api/districts/settings", self.tokens["administrator"],
+                                   body={"landing": mine})[0], 200)
+        self.assertEqual(self.landing()["landing"], mine)
+        self.call("POST", "/api/districts/settings", self.tokens["administrator"], body={"landing": None})
+        self.assertNotIn("landing", self.landing())
+
+
 class RealServer(unittest.TestCase):
     """The district routes through the app's own HTTP server, beside the routes that need no sign-in."""
 
