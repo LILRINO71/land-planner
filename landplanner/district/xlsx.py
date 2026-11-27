@@ -337,7 +337,7 @@ def _width_for(widths, sheet_name, original_name):
     return widths
 
 
-def _sheet_xml(rows, strings, index, col_widths):
+def _sheet_xml(rows, strings, index, col_widths, header_row=1):
     ncols = max((len(r) for r in rows), default=0)
     if len(rows) > 1_048_576 or ncols > MAX_COLUMNS:
         raise ValueError("That is more rows or columns than an Excel sheet can hold.")
@@ -347,8 +347,9 @@ def _sheet_xml(rows, strings, index, col_widths):
         out.append(f'<dimension ref="A1:{_col_letters(ncols - 1)}{len(rows)}"/>')
     out.append('<sheetViews><sheetView workbookViewId="0"%s>' % (' tabSelected="1"' if index == 0 else ""))
     if rows:
-        out.append('<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
-                   '<selection pane="bottomLeft" activeCell="A2" sqref="A2"/>')
+        below = header_row + 1
+        out.append(f'<pane ySplit="{header_row}" topLeftCell="A{below}" activePane="bottomLeft" state="frozen"/>'
+                   f'<selection pane="bottomLeft" activeCell="A{below}" sqref="A{below}"/>')
     out.append('</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>')
     cols = []
     for key, w in col_widths.items():
@@ -364,7 +365,7 @@ def _sheet_xml(rows, strings, index, col_widths):
                                       for i, w in sorted(cols)) + "</cols>")
     out.append("<sheetData>")
     for r, row in enumerate(rows):
-        header = r == 0
+        header = r == header_row - 1
         cells = []
         for c, v in enumerate(row):
             if v is None or (isinstance(v, str) and v == ""):
@@ -406,12 +407,13 @@ def _string_cell(ref, text, strings, style):
     return f'<c r="{ref}" t="s"{_s(style)}><v>{idx}</v></c>'
 
 
-def write_workbook(sheets, widths=None):
+def write_workbook(sheets, widths=None, header_row=1):
     """A valid .xlsx as bytes. `sheets` is {name: rows}; the first row of each sheet is the bold, frozen header.
 
     Numbers are written as numbers. Text is always written as text, so a cell like "=1+1" or "@x" is shown, never
     run. `widths` is {column: width in characters} for every sheet, or {sheet name: {column: width}}; a column is
-    a 0-based number or a letter. Sheet names are cut to Excel's rules (31 characters, none of [ ] : * ? / \\)."""
+    a 0-based number or a letter. `header_row` (1-based, or {sheet name: row}) is the row that is bold and frozen
+    along with everything above it; the default is row 1. Sheet names are cut to Excel's rules (31 characters, none of [ ] : * ? / \\)."""
     if not sheets:
         sheets = {"Sheet1": []}
     taken, named = set(), []
@@ -420,7 +422,9 @@ def write_workbook(sheets, widths=None):
     strings = {}
     parts = {}
     for i, (original, name, rows) in enumerate(named):
-        parts[f"xl/worksheets/sheet{i + 1}.xml"] = _sheet_xml(rows, strings, i, _width_for(widths, name, original))
+        hr = header_row.get(original, header_row.get(name, 1)) if isinstance(header_row, dict) else header_row
+        hr = hr if isinstance(hr, int) and 1 <= hr <= max(len(rows), 1) else 1
+        parts[f"xl/worksheets/sheet{i + 1}.xml"] = _sheet_xml(rows, strings, i, _width_for(widths, name, original), hr)
     n = len(named)
     sst = "".join(f'<si><t xml:space="preserve">{_xml_text(s)}</t></si>' for s in strings)
     parts["xl/sharedStrings.xml"] = (

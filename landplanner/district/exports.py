@@ -46,6 +46,20 @@ def _banner(project, audience, as_of, disclaimer):
             [disclaimer], []]
 
 
+BANNER_ROWS = 4          # three banner lines and a blank row; the column header is the row after them
+MIN_WIDTH, MAX_WIDTH = 8, 60
+
+
+def _widths(rows, header_row):
+    """{column index: width in characters} from the header and the first 300 data rows, within sensible bounds."""
+    out = {}
+    for r in rows[header_row - 1:header_row + 300]:
+        for i, v in enumerate(r):
+            n = max((len(line) for line in str(v if v is not None else "").split(chr(10))), default=0)
+            out[i] = max(out.get(i, 0), n)
+    return {i: min(max(n + 2, MIN_WIDTH), MAX_WIDTH) for i, n in out.items()}
+
+
 def table_xlsx(project, content, what, audience, as_of, disclaimer):
     """(bytes, file name). `what` is an entity, 'all', or 'section:<id>'."""
     write = _writer("xlsx", "write_workbook")
@@ -70,8 +84,15 @@ def table_xlsx(project, content, what, audience, as_of, disclaimer):
         sheets["empty"] = _banner(project, audience, as_of, disclaimer) + [["(no rows)"]]
     sheets["About"] = [["Project", project.get("name", "")], ["Audience", AUDIENCE_NAMES.get(audience, audience)],
                        ["As of", as_of], ["Marking", WATERMARK], ["Disclaimer", disclaimer]]
+    header_rows = {n: BANNER_ROWS + 1 for n in sheets if n != "About"}
+    header_rows["About"] = 1
+    widths = {n: _widths(rows, header_rows[n]) for n, rows in sheets.items()}
+    widths["About"] = {0: 14, 1: MAX_WIDTH}
     name = f"{project['id']}-{str(what).replace(':', '-')}-{audience}-{as_of}.xlsx"
-    return write(sheets), name
+    try:
+        return write(sheets, widths=widths, header_row=header_rows), name
+    except TypeError:        # a writer that knows nothing of header_row (a stand-in, or an older xlsx.py)
+        return write(sheets, widths=widths), name
 
 
 def module_pdf(project, modules, content, module_id, audience, as_of, disclaimer):
@@ -108,11 +129,14 @@ def module_pdf(project, modules, content, module_id, audience, as_of, disclaimer
                 if isinstance(i, dict):
                     paras.append(f"Q: {i.get('question', '')}")
                     paras.append(f"A: {i.get('answer', '')}")
+                    if i.get("cites"):
+                        paras.append("Figures: " + ", ".join(str(c) for c in i["cites"]))
         if s.get("cites"):
             paras.append("Sources in the register: " + ", ".join(s["cites"]))
         if s.get("ai_assisted"):
             paras.append("AI-assisted text.")
-        sections.append({"heading": s.get("heading") or "", "paragraphs": paras, "tables": tables})
+        sections.append({"heading": s.get("heading") or "", "paragraphs": paras, "tables": tables,
+                         "small": [str(s["note"])] if s.get("note") else []})
     for t in mod.get("tables") or []:
         ent = t.get("entity")
         if ent not in ENTITIES:

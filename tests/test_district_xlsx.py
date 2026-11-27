@@ -128,6 +128,24 @@ class WrittenFile(unittest.TestCase):
         self.assertIn('width="40"', z.read("xl/worksheets/sheet2.xml").decode())
 
 
+class HeaderRow(unittest.TestCase):
+    def test_the_header_can_be_a_later_row(self):
+        rows = [["Banner"], ["as of"], [], ["Name", "Count"], ["Sample", 10]]
+        data = xlsx.write_workbook({"S": rows, "T": [["H"], ["v"]]}, header_row={"S": 4})
+        z = zipfile.ZipFile(io.BytesIO(data))
+        s1, s2 = z.read("xl/worksheets/sheet1.xml").decode(), z.read("xl/worksheets/sheet2.xml").decode()
+        self.assertIn('ySplit="4" topLeftCell="A5"', s1)
+        root = ET.fromstring(s1)
+        self.assertEqual({c.get("s") for c in root.find(f".//{NS}row[@r='4']")}, {"1"})
+        self.assertIsNone(root.find(f".//{NS}row[@r='1']")[0].get("s"))
+        self.assertIn('ySplit="1"', s2)
+        self.assertEqual(xlsx.read_workbook(data)["S"], rows)
+
+    def test_a_header_row_past_the_end_falls_back_to_row_one(self):
+        data = xlsx.write_workbook({"S": [["H"], ["v"]]}, header_row=9)
+        self.assertIn('ySplit="1"', zipfile.ZipFile(io.BytesIO(data)).read("xl/worksheets/sheet1.xml").decode())
+
+
 class SheetNames(unittest.TestCase):
     def names(self, given):
         return list(xlsx.read_workbook(xlsx.write_workbook({k: [["x"]] for k in given})))

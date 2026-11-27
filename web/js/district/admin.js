@@ -36,7 +36,9 @@ async function users(box, ctx, alive) {
       rows: list.map((x) => [{ html: `<b>${esc(x.name)}</b>${x.email ? `<small>${esc(x.email)}</small>` : ""}`, sort: x.name }, { html: esc(roleWords(x.role)), sort: x.role },
         { html: esc((x.projects || []).includes("*") ? "All projects" : (x.projects || []).map((p) => (projects.find((q) => q.id === p) || { name: p }).name).join(", ") || "None"), sort: "" },
         { html: x.status === "INACTIVE" ? chip("Turned off", "warn") : chip("Active"), sort: x.status }, { html: esc(when(x.last_sign_in) || "Never"), sort: x.last_sign_in || "" },
-        { html: `<button type="button" class="btn small" data-edit="${esc(x.id)}">Change</button>`, sort: "" }]) })}`;
+        { html: `<button type="button" class="btn small" data-edit="${esc(x.id)}">Change</button>`, sort: "" }]) })}
+    <div class="dz-sessions" data-sessions style="margin-top:28px"></div>`;
+  signedIn(box.querySelector("[data-sessions]"), alive).catch((e) => { if (alive()) box.querySelector("[data-sessions]").innerHTML = `<p class="dz-bad">${esc(e.message)}</p>`; });
   box.addEventListener("click", (e) => {
     if (e.target.closest("[data-new]")) return userForm(ctx, null, projects, () => users(box, ctx, alive));
     const ed = e.target.closest("[data-edit]");
@@ -76,6 +78,38 @@ function userForm(ctx, user, projects, done) {
   });
 }
 
+// ---------------------------------------------------------------- who is signed in now (under People)
+
+async function sessionsCall(method, path) {
+  let res, data = null;
+  try { res = await fetch("/api/districts/sessions" + path, { method, credentials: "same-origin" }); }
+  catch (e) { throw new Error("Land Planner is not running. Start it again, then reload this page."); }
+  try { data = await res.json(); } catch (e) { /* not JSON */ }
+  if (!res.ok || !data) throw new Error((data && data.error && data.error.message) || "The signed-in sessions could not be read.");
+  return data;
+}
+async function signedIn(holder, alive) {
+  const a = await sessionsCall("GET", "");
+  if (!alive() || !holder.isConnected) return;
+  const rows = a.sessions || [];
+  holder.innerHTML = `<h2>Signed in now</h2>
+    <p>${rows.length} ${rows.length === 1 ? "session" : "sessions"}. A session ends after ${esc(a.idle_minutes)} minutes without use, after ${esc(a.longest_hours)} hours at most, or when it is ended here. Turning a person off or removing them ends theirs too.</p>
+    ${tableHtml({ caption: "Signed-in sessions", foldAfter: 30, columns: [{ label: "Who" }, { label: "From" }, { label: "Signed in" }, { label: "Last used" }, { label: "" }],
+      rows: rows.map((r) => [{ html: `<b>${esc(r.user.name || r.user.id)}</b><small>${esc(roleWords(r.user.role))}</small>`, sort: r.user.name || "" },
+        { html: `${esc(r.client || "This computer")}${r.agent ? `<small>${esc(String(r.agent).slice(0, 70))}</small>` : ""}`, sort: r.client || "" },
+        { html: esc(when(r.started)), sort: r.started }, { html: esc(when(r.last)), sort: r.last },
+        { html: r.current ? "<small>This is you</small>" : `<button type="button" class="btn small" data-end="${esc(r.id)}">End this session</button>`, sort: "" }]) })}
+    <p class="dz-status" role="status" aria-live="polite"></p>`;
+  const status = holder.querySelector(".dz-status");
+  holder.onclick = async (e) => {      // one handler however often the list is redrawn
+    const b = e.target.closest("[data-end]");
+    if (!b) return;
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Press again to sign them out"; return; }
+    try { await sessionsCall("DELETE", "/" + encodeURIComponent(b.dataset.end)); toast("Signed out."); signedIn(holder, alive); }
+    catch (err) { say(status, err.message, "bad"); b.dataset.sure = ""; b.textContent = "End this session"; }
+  };
+}
+
 // ---------------------------------------------------------------- audit log
 
 async function audit(box, ctx, alive) {
@@ -111,15 +145,17 @@ async function audit(box, ctx, alive) {
 async function settings(box, ctx) {
   const s = await ctx.api.settings();
   const d = s.disclaimers || {};
-  box.innerHTML = `<form class="card dz-form" style="max-width:820px">
+  box.innerHTML = `<form class="card dz-form" data-workspace style="max-width:820px"><h2>The whole workspace</h2>
     <label class="field"><span>Google client id (from Google Cloud; empty turns Google sign-in off)</span><input name="google_client_id" value="${esc(s.google_client_id || "")}" placeholder="1234-abc.apps.googleusercontent.com"></label>
     <label class="field"><span>Sign people out after this many minutes without use</span><input name="idle_minutes" type="number" min="5" max="720" value="${esc(s.idle_minutes || 30)}" style="width:140px"></label>
     <label class="field"><span>Confidentiality agreement (NDA) text</span><textarea name="nda_text" rows="5">${esc(s.nda_text || "")}</textarea></label>
     <label class="check"><input type="checkbox" name="bump"> Ask everyone to accept it again (new version ${esc((s.nda_version || 1) + 1)})</label>
     <fieldset class="dz-fieldset"><legend>Disclaimer on every export, by audience</legend>
       ${["internal", "consultant", "partner", "city"].map((a) => `<label class="field"><span>${a[0].toUpperCase() + a.slice(1)}</span><input name="d_${a}" value="${esc(d[a] || "")}"></label>`).join("")}</fieldset>
-    <button class="btn primary" type="submit">Save the settings</button><p class="dz-status" role="status" aria-live="polite"></p></form>`;
-  const f = box.querySelector("form");
+    <button class="btn primary" type="submit">Save the settings</button><p class="dz-status" role="status" aria-live="polite"></p></form>
+    <div data-project-settings style="margin-top:28px"></div>`;
+  projectSettings(box.querySelector("[data-project-settings]"), ctx);
+  const f = box.querySelector("form[data-workspace]");
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = { google_client_id: f.google_client_id.value.trim(), idle_minutes: Number(f.idle_minutes.value) || 30, nda_text: f.nda_text.value,
@@ -127,6 +163,33 @@ async function settings(box, ctx) {
     if (f.bump.checked) body.nda_version = (s.nda_version || 1) + 1;
     try { await ctx.api.saveSettings(body); say(f.querySelector(".dz-status"), "Saved.", "ok"); }
     catch (err) { say(f.querySelector(".dz-status"), err.message, "bad"); }
+  });
+}
+
+// this project's own settings: what partners and the city may download, and when a change counts as large
+function projectSettings(holder, ctx) {
+  const s = ctx.project.settings || {};
+  const pct = s.compare_threshold_pct ?? 10;
+  holder.innerHTML = `<form class="card dz-form" style="max-width:820px"><h2>This project: ${esc(ctx.project.name || ctx.project.id)}</h2>
+    <label class="check"><input type="checkbox" name="partner_export"${s.partner_export ? " checked" : ""}> Partners may download PDFs and Excel files</label>
+    <p class="muted">Off: partners can read the pages but not take copies away. Their downloads always carry the partner disclaimer and only what partners may see.</p>
+    <label class="check"><input type="checkbox" name="city_export"${s.city_export ? " checked" : ""}> City staff may download PDFs and Excel files</label>
+    <p class="muted">Off: city staff can read the city view but not take copies away. Their downloads never hold returns, land values or sale prices.</p>
+    <label class="field"><span>Mark a figure as a large change when baseline and a submission differ by more than this percent</span><input name="compare_threshold_pct" type="number" min="0" max="1000" step="0.5" value="${esc(pct)}" style="width:140px"></label>
+    <p class="muted">Used by Compare: smaller differences are still listed, larger ones are flagged for a closer look.</p>
+    <button class="btn primary" type="submit">Save this project's settings</button><p class="dz-status" role="status" aria-live="polite"></p></form>`;
+  const f = holder.querySelector("form"), status = f.querySelector(".dz-status");
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const t = Number(f.compare_threshold_pct.value);
+    if (!(t >= 0 && t <= 1000)) return say(status, "The percent is a number from 0 to 1,000.", "bad");
+    say(status, "Saving…", "busy");
+    try {
+      const a = await ctx.api.saveProject(ctx.project.id, { settings: { partner_export: f.partner_export.checked, city_export: f.city_export.checked, compare_threshold_pct: t } });
+      ctx.project.settings = (a.project && a.project.settings) || ctx.project.settings;
+      forget(ctx.project.id);
+      say(status, "Saved.", "ok");
+    } catch (err) { say(status, err.message, "bad"); }
   });
 }
 
@@ -194,7 +257,16 @@ async function file(box, ctx) {
 
 async function publish(box, ctx) {
   const kind = { baseline: "Baseline", scenario: "Scenario", consultant: "Consultant submission" };
+  // a new scenario starts as a copy of a dataset's published version or working copy
+  const sources = ctx.datasets.filter((d) => d.kind !== "consultant").flatMap((d) => [
+    ...(d.current ? [[`${d.id}|published`, `${d.label || d.id}, published version ${d.current}`]] : []),
+    [`${d.id}|draft`, `${d.label || d.id}, working copy`]]);
   box.innerHTML = `<p class="lead">Publishing copies a dataset's draft into a new version that viewers see. Rolling back publishes an older version again; nothing is deleted.</p>
+    ${ctx.can["dataset.create_scenario"] ? `<form class="card dz-form" data-new-scenario><h2>New scenario</h2>
+      <p class="muted">A scenario is a separate copy of the figures to try other assumptions in. The baseline is not changed; publish the scenario when others should see it.</p>
+      <div class="dz-row"><label class="field grow"><span>Name</span><input name="label" required maxlength="120" placeholder="For example: Slower absorption"></label>
+      <label class="field"><span>Start from</span><select name="from">${opts(sources)}</select></label>
+      <button class="btn primary" type="submit">Make the scenario</button></div><p class="dz-status" role="status" aria-live="polite"></p></form>` : ""}
     <ul class="dz-list">${ctx.datasets.map((d) => {
       const pubs = (d.published || []).slice().reverse();
       return `<li class="card" data-ds="${esc(d.id)}"><h3>${esc(d.label || d.id)} <span class="muted">${esc(kind[d.kind] || d.kind)}</span></h3>
@@ -208,7 +280,20 @@ async function publish(box, ctx) {
     }).join("")}</ul>`;
   box.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const li = e.target.closest("[data-ds]"), st = li.querySelector(":scope > .dz-status"), d = li.dataset.ds;
+    if (e.target.matches("[data-new-scenario]")) {
+      const f = e.target, st = f.querySelector(".dz-status"), [dataset, version] = f.from.value.split("|");
+      if (!f.label.value.trim()) return say(st, "Give the scenario a name.", "bad");
+      say(st, "Making the scenario…", "busy");
+      try {
+        const a = await ctx.api.createDataset(ctx.project.id, { kind: "scenario", label: f.label.value.trim(), copy_from: { dataset, version } });
+        toast(`Made ${(a.dataset && (a.dataset.label || a.dataset.id)) || "the scenario"}.`);
+        ctx.refresh();
+      } catch (err) { say(st, err.message, "bad"); }
+      return;
+    }
+    const li = e.target.closest("[data-ds]");
+    if (!li) return;
+    const st = li.querySelector(":scope > .dz-status"), d = li.dataset.ds;
     say(st, "Working…", "busy");
     try {
       if (e.target.matches("[data-pub]")) { const a = await ctx.api.publish(ctx.project.id, d, e.target.note.value); toast(`Published version ${a.version && a.version.version ? a.version.version : a.version}.`); }

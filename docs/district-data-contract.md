@@ -17,6 +17,10 @@ data/
   district-users.json         the user directory (who may sign in, their role, their projects)
   district-settings.json      Google client id, idle timeout, NDA text and version, export disclaimers
   district-audit.jsonl        append-only audit log; each line holds the hash of the line before it
+  district-audit.jsonl.head   {lines, head} after the last append, so lines cut off the end, a deleted log or one
+                              written again from the start show (each revisions.jsonl has its .head beside it too)
+  district-sessions.json      signed-in sessions: the SHA-256 of each token (never the token), user, times, address
+  tls/cert.pem, tls/key.pem   network mode's HTTPS certificate and key (tools/make-cert.ps1); land-planner.cer to trust
   projects/<project_id>/
     project.json              name, branding lines, place, city id, APNs, site facts, settings, sample flag
     modules.json              the pages and their KPI cards (section 4)
@@ -40,7 +44,7 @@ baseline dataset of every project is `baseline`.
 
 Not done, on purpose: files are not encrypted at rest (the standard library has no cipher; turn on BitLocker or
 Windows device encryption for the `data` folder) and the project zip is not password-protected (move it on a
-private drive). The server answers on 127.0.0.1 only, so the HTTPS of NFR-01 does not apply until it is hosted.
+private drive). By default the server answers on 127.0.0.1 only; network mode (section 6) serves HTTPS (NFR-01).
 
 ## 2. Datasets and versions
 
@@ -602,8 +606,29 @@ exactly what that audience would get; a viewer cannot widen theirs.
   Google Cloud; nothing is faked).
 - **First run.** While the directory is empty, the first person to sign in (either way) becomes the administrator,
   and the Sample District is installed so the workspace is not empty.
-- **Session.** A cookie `lp_district` (HttpOnly, SameSite=Strict, Path=/api/districts) that ends after
-  `idle_minutes` (default 30) without a request, at sign-out, or when the app restarts.
+- **Session.** A cookie `lp_district` (HttpOnly, SameSite=Strict, Path=/api/districts; in network mode Path=/api
+  and Secure) that ends after `idle_minutes` (default 30) without a request, 12 hours after sign-in however busy,
+  at sign-out, when an administrator ends it, or when the user is turned off, removed, or given another role or
+  passcode. Sessions are kept in `data/district-sessions.json` and survive a restart: the file holds the SHA-256
+  of each token, never the token, with the user, the times and the address it signed in from. The "last used"
+  time is written at most once a minute, so after a restart a session may end up to a minute early. A missing or
+  damaged file only means everyone signs in again. Wrong passcode tries are counted in memory (a restart clears
+  them).
+- **Network mode.** `python -m landplanner --host 0.0.0.0 --https` (or "Start Land Planner (network).bat") lets
+  other computers sign in:
+  - HTTPS only: TLS 1.2 or newer with forward-secret AEAD ciphers, `Strict-Transport-Security: max-age=31536000`
+    (not sent to localhost, where it would stick and break the plain one-computer mode). Plain `http://` on the
+    port is sent to the same `https://` address (307). The certificate is `--cert`/`--key`, else
+    `data/tls/cert.pem` and `key.pem` from `tools/make-cert.ps1` (Windows' New-SelfSignedCertificate exported as
+    PEM: Python's standard library cannot make a certificate, so nothing is added to the app).
+  - A non-local address without HTTPS is refused at start unless `--allow-plain-http` is given (with a warning).
+  - Every `/api` route needs a signed-in user who accepted the NDA, except `GET /api/health` (app name and
+    version), `GET /api/districts` and the sign-in routes `/api/districts/session`. The pages, scripts and styles
+    under `web/` hold no data and stay open so the sign-in page loads. Changing lands, plans, forecasts and My
+    lands (POST, DELETE) needs an administrator or analyst; a refusal is logged.
+  - `--public-url https://...` for a reverse proxy or tunnel: its host is answered, its origin may send changes,
+    and sign-in is required as above even though the app itself listens on 127.0.0.1. `--name` adds a host name.
+  - In network mode the port does not move to the next free one: people were given one address.
 - **NDA.** Data is served only after the user has acknowledged the current NDA version
   (`POST /api/districts/session/nda {"accept": true}`); the time and version are recorded. The default NDA text is
   the placeholder "Confidentiality agreement (NDA): wording to be supplied by counsel."
@@ -619,8 +644,14 @@ exactly what that audience would get; a viewer cannot widen theirs.
   `sign-in-refused` (401, wrong passcode or a Google token that fails a check), `not-authorized` (403, a Google account that is not an active user), `unreadable` (500, a damaged data file),
   `too-large` (413), `too-many-tries` (429), `not-ready` (501, the Excel or PDF writer is not installed yet),
   `google-not-set-up` (501), `google-unreachable` (502).
-- Every request is also checked by the app's server: only 127.0.0.1/localhost as Host, and an Origin header (when
-  sent) must be this computer.
+- Every request is also checked by the app's server, on 127.0.0.1 too: the Host header must be one of the
+  server's own names or addresses (127.0.0.1, localhost, ::1; in network mode also this computer's name and
+  network addresses, `--name` and `--public-url` hosts), else `403 not-local` (DNS rebinding). A POST or DELETE
+  whose Origin or Referer is sent must be the server's own origin (scheme, host and port), else `403 not-local`.
+- Each connection has its own thread and a 30-second limit on silence (TLS handshake, headers, body). A body sent
+  with Transfer-Encoding is refused (411); a Content-Length over the route's limit is refused (413) before any of
+  it is read. At most 128 connections are served at once (`--max-connections`); one more is answered at once with
+  `503 busy` and `Retry-After: 5` (over HTTPS it is closed, since a plain answer cannot be read there).
 - Files come back with `Content-Disposition: attachment; filename=...`.
 - No answer ever holds NaN or Infinity: every division is guarded and the writer refuses them.
 
@@ -642,6 +673,8 @@ DELETE /api/districts/users/<user_id>                   admin      {removed:true
 GET    /api/districts/settings                          admin      settings (the client id is shown, no secrets are kept)
 POST   /api/districts/settings                          admin      {google_client_id?, idle_minutes?, nda_text?, nda_version?, disclaimers?, landing?} -> settings
 GET    /api/districts/audit                             admin      ?q= &action= &user= &outcome= &project= &limit=200 &offset=0 -> {entries, total, chain:{ok, lines, broken_at, reason}}
+GET    /api/districts/sessions                          admin      {sessions:[{id, user:{id, name, role}, started, last, expires, idle_ends, client, agent, current}], idle_minutes, longest_hours}
+DELETE /api/districts/sessions/<session_id>             admin      end that session -> {ended:true} (404 when it has already ended; logged as session-end)
 
 GET    /api/districts/templates                         templates  {entities:[names], columns:{entity:[fields]}, dictionary:{columns, rows}, units:{code:label}}
 GET    /api/districts/templates/<entity>.csv            templates  CSV with the header row
@@ -803,7 +836,12 @@ role may call them (viewers on the versions they can read). The answer:
   audience that denies the tag (listed in `hidden_parts`), inputs whose tags it denies are removed, and `access.scrub`
   removes every remaining key named like a denied subject. The city never receives returns (IRR, yield on cost, NPV,
   equity multiple, required return, margins, break-evens, the tornado), residual land value by parcel, pricing tiers,
-  sale proceeds, the capital plan, hold/sell decisions or the funding gap against land sales.
+  sale proceeds, the capital plan, hold/sell decisions or the funding gap against land sales. Nor anything that would
+  let it work those out: inputs whose words name a denied subject are removed like tagged ones, a hidden register figure
+  a tool copies into its answer (`compute.ECHOES`, for example the pro forma's discount rate) goes with it, and keys in
+  `compute.RESULT_KEY_TAGS` go too (the land value's required profit, its ranking of uses by residual and "feasible
+  now"). The rule a test keeps: changing only figures the city may not see changes nothing in the city's answer. A
+  what-if on a record the audience cannot see gets the same answer as one on a record that does not exist.
 
 ### Where each input comes from
 

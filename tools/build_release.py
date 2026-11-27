@@ -3,8 +3,9 @@
     python tools/build_release.py --runtime <folder> [--version v2.0.0]
 
 <folder> is an unpacked copy of python.org's "Windows embeddable package" (the release workflow downloads it and
-checks its signature). The zip holds one folder, LandPlanner, with the app, that Python in runtime/, a starter
-.bat and an icon, so the app runs on a Windows computer that has no Python installed.
+checks its signature). The zip holds one folder, LandPlanner, with the app, that Python in runtime/, the starter
+.bat, the network starter (with tools/make-cert.ps1, which makes its HTTPS certificate) and an icon, so the app
+runs on a Windows computer that has no Python installed.
 """
 import argparse
 import shutil
@@ -14,7 +15,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KEEP = ("landplanner", "web", "tools/menifee.py", "Start Land Planner.bat", "README.md")
+KEEP = ("landplanner", "web", "tools/menifee.py", "tools/make-cert.ps1", "Start Land Planner.bat",
+        "Start Land Planner (network).bat", "README.md")
 SKIP = ("__pycache__", ".pyc")
 
 
@@ -97,7 +99,10 @@ def build(runtime, version, out):
         f"and plans are kept.\n\n"
         f"Or paste this into PowerShell:\n\n"
         f"```powershell\nirm https://raw.githubusercontent.com/LILRINO71/land-planner/main/install.ps1 | iex\n```\n\n"
-        f"`LandPlanner.zip` is the same app as a plain folder: unzip it anywhere and double-click `Start Land Planner.bat`.\n",
+        f"`LandPlanner.zip` is the same app as a plain folder: unzip it anywhere and double-click `Start Land Planner.bat`.\n\n"
+        f"To let partners, consultants and city staff sign in from their own computers on your network, start "
+        f"**Land Planner (network)** from the Start menu (or `Start Land Planner (network).bat` in the folder) "
+        f"instead; the README's \"Letting others sign in from their computers\" says what they will see.\n",
         encoding="utf-8")
     return archive
 

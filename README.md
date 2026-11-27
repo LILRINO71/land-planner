@@ -270,8 +270,40 @@ your own `data` folder.
   audience's disclaimer. An audio briefing on every page.
 
 The data layout and every route are in [docs/district-data-contract.md](docs/district-data-contract.md); the
-calculations in [docs/district-finance.md](docs/district-finance.md). It runs on this computer only (no hosting),
-so partners and city staff sign in on the same machine until it is hosted with HTTPS.
+calculations in [docs/district-finance.md](docs/district-finance.md). It runs on this computer only unless you
+let others in, below.
+
+### Letting others sign in from their computers
+
+Partners, consultants and city staff can sign in from their own computers while Land Planner runs on yours.
+
+1. Under **Districts > Admin > Users**, add each person with a role and a passcode (or their Google e-mail).
+2. Start **Land Planner (network)** from the Start menu, or double-click **Start Land Planner (network).bat** in
+   the Land Planner folder. The first time it makes this
+   computer's own HTTPS certificate with Windows' own tools (nothing is downloaded); the files go in `data\tls`.
+   On the command line it is `python -m landplanner --host 0.0.0.0 --https`.
+3. If Windows asks whether Python may use the network, tick **Private networks** and choose **Allow**. (On a
+   public network, such as a cafe's, leave it off.)
+4. The window prints the address to give people, such as `https://192.168.1.20:8777/#/districts`. They must be on
+   the same network (the same office Wi-Fi, or a VPN to it).
+5. The first time, their browser warns that the connection is not private or the certificate is not trusted:
+   the certificate is this computer's own, not one bought from a certificate company. They choose **Advanced**,
+   then **Continue to ...** (Edge and Chrome) or **Accept the Risk and Continue** (Firefox). Check that the
+   address is the one you gave them. To stop the warning on a computer you trust, open `data\tls\land-planner.cer`
+   there and install it under Trusted Root Certification Authorities.
+6. Your computer must stay on, awake and connected, with that window open, for them to reach it. Closing the
+   window stops it for everyone.
+
+In this mode every page's data needs a signed-in person who has accepted the NDA (only administrators and analysts
+can change lands, plans and forecasts), connections are encrypted (TLS 1.2 or newer), sessions survive a restart
+of the app, and an administrator can see who is signed in and end any session under **Admin > Users**. Land
+Planner refuses to open itself to the network without HTTPS unless you add `--allow-plain-http`.
+
+From the internet (outside your network) is different: it needs a real domain name and a certificate for it,
+given with `--cert` and `--key`, and your router set to forward the port; or a hosting service or tunnel in front
+of the app, given with `--public-url https://your-address`. Both are for someone who looks after networks; the
+certificate made here only covers your own network. If your computer's address changes, the old certificate no
+longer names it: run `powershell -ExecutionPolicy Bypass -File tools\make-cert.ps1 -Force` and start again.
 
 ## What it cannot tell you yet
 
@@ -319,5 +351,8 @@ owner, his engineer and the city's planners.
 12. A second city (Temecula), with the shared sources moved out so a third city is one file. *(done)*
 13. Districts: a whole development's market package with provenance, roles, the city view, imports, exports,
     the finance engine and eight tools. *(done)*
-14. Next: real quotes from the owner; the consultant's market study loaded through Import; hosting with HTTPS
-    so partners and the city can sign in from their own computers; Temecula's own table of allowed uses.
+14. Partners, consultants and city staff sign in from their own computers on the local network, over HTTPS,
+    with lasting sessions an administrator can end. *(done)*
+15. Next: real quotes from the owner; the consultant's market study loaded through Import; a public address
+    (a domain and its certificate, or a hosting service) so people outside the office network can sign in;
+    Temecula's own table of allowed uses.

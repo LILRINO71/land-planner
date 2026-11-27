@@ -28,6 +28,10 @@ const lost = new Set();
 let lastRequest = Date.now();
 export const lastRequestAt = () => lastRequest;
 export function onSignedOut(fn) { lost.add(fn); return () => lost.delete(fn); }
+// the other way round: a session answer that is signed in with the NDA accepted (main.js returns people to the
+// page that sent them here to sign in)
+const found = new Set();
+export function onSignedIn(fn) { found.add(fn); return () => found.delete(fn); }
 
 function query(params) {
   const q = new URLSearchParams();
@@ -58,6 +62,9 @@ async function send(method, path, { body, file, params, blob } = {}) {
     const e = new DistrictError(err.message || plainMessage(code), code, res.status);
     if (code === "sign-in-needed" || code === "session-expired") lost.forEach((fn) => { try { fn(e); } catch (x) { console.error(x); } });
     throw e;
+  }
+  if (path.startsWith("/session") && data.signed_in === true && !(data.nda && data.nda.required)) {
+    found.forEach((fn) => { try { fn(data); } catch (x) { console.error(x); } });
   }
   return data;
 }

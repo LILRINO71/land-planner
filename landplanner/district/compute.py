@@ -88,6 +88,24 @@ OPTIONS = {"landvalue": {"basis": BASIS}, "strategy": {"basis": BASIS},
            "proforma": {"tornado_metric": ("irr_pct", "yoc_pct", "npv_usd", "rlv_total_usd", "equity_multiple")}}
 
 
+# Register figures a tool copies into its answer under its own key (in an "assumptions" object). When the figure is
+# one the audience may not see, filter_answer drops the copy too.
+PF_ECHO = (("PF-BASE-YEAR", "base_year"), ("PF-DISCOUNT-RATE-PCT", "discount_rate_pct"),
+           ("PF-HOLD-YEARS", "hold_years"), ("PF-BUILD-YEARS", "build_years"),
+           ("PF-LEASE-UP-MONTHS", "lease_up_months"), ("PF-SELLOUT-MONTHS", "sellout_months"),
+           ("PF-NOI-GROWTH-PCT", "noi_growth_pct"), ("PF-HURDLE-YOC-PCT", "hurdle_yoc_pct"),
+           ("PF-HURDLE-IRR-PCT", "hurdle_irr_pct"))
+STR_ECHO = (("STR-DISCOUNT-RATE-PCT", "discount_rate_pct"), ("STR-APPRECIATION-PCT", "appreciation_pct"),
+            ("STR-SALE-COST-PCT", "sale_cost_pct"), ("FIN-CRITICAL-THRESHOLD", "critical_threshold"))
+ECHOES = {"proforma": dict(PF_ECHO), "strategy": dict(STR_ECHO), "landvalue": {"FIN-NET-TO-GROSS-PCT": "net_to_gross_pct"},
+          "fiscal": {}, "funding": {}, "scenarios": {}, "proceeds": {}, "reconcile": {}}
+# Keys, anywhere inside a kept result part, that an audience denying the tag never receives. The ranking of uses is by
+# residual land value, and "feasible now" is whether that residual is above zero: with what-if rents a viewer could
+# search for the point where it flips and so work out the required return.
+RESULT_KEY_TAGS = {"landvalue": {"ranking": {"rlv_parcel"}, "ranked_by": {"rlv_parcel"},
+                                 "feasible_now": {"rlv_parcel", "returns"}}}
+
+
 class Inputs:
     """Reads the dataset for one tool, and keeps the list of what it used and what was missing."""
 
@@ -211,11 +229,7 @@ class Inputs:
 
     def pro_forma_assumptions(self):
         out = {}
-        for aid, key in (("PF-BASE-YEAR", "base_year"), ("PF-DISCOUNT-RATE-PCT", "discount_rate_pct"),
-                         ("PF-HOLD-YEARS", "hold_years"), ("PF-BUILD-YEARS", "build_years"),
-                         ("PF-LEASE-UP-MONTHS", "lease_up_months"), ("PF-SELLOUT-MONTHS", "sellout_months"),
-                         ("PF-NOI-GROWTH-PCT", "noi_growth_pct"), ("PF-HURDLE-YOC-PCT", "hurdle_yoc_pct"),
-                         ("PF-HURDLE-IRR-PCT", "hurdle_irr_pct")):
+        for aid, key in PF_ECHO:
             v = self.num(aid)
             if v is not None:
                 out[key] = int(v) if key in ("base_year", "hold_years", "build_years") else v
@@ -658,10 +672,7 @@ def t_proforma(inp, options):
 
 def t_strategy(inp, options):
     basis, _ = basis_for(inp, options)
-    assumptions = {"discount_rate_pct": inp.num("STR-DISCOUNT-RATE-PCT"),
-                   "appreciation_pct": inp.num("STR-APPRECIATION-PCT"),
-                   "sale_cost_pct": inp.num("STR-SALE-COST-PCT"),
-                   "critical_threshold": inp.num("FIN-CRITICAL-THRESHOLD")}
+    assumptions = {key: inp.num(aid) for aid, key in STR_ECHO}
     lv = None
     if basis == "residual" or not inp.rows("blocks"):
         lv, _ = t_landvalue(inp, {"basis": basis})
@@ -940,9 +951,10 @@ def apply_overrides(content, body, visible=None, deny=frozenset()):
         have = {r.get("id"): r for r in out["entities"][entity]}
         vis = None if visible is None else {r.get("id"): r for r in visible["entities"][entity]}
         for patch in rows:
-            if not isinstance(patch, dict) or patch.get("id") not in have:
+            if not isinstance(patch, dict) or patch.get("id") not in have or (vis is not None and patch["id"] not in vis):
+                # a record the audience cannot see gets the same answer as one that does not exist
                 raise Problem(400, "bad-request", f"A what-if {entity} row must name an existing id.")
-            if vis is not None and (patch["id"] not in vis or any(
+            if vis is not None and (any(
                     k != "id" and ((k in have[patch["id"]] and k not in vis[patch["id"]]) or field_tags(entity, k) & deny)
                     for k in patch)):
                 raise Problem(403, "forbidden", f"{entity}/{patch['id']} is not something your view can change.")
@@ -981,16 +993,49 @@ def run(tool, content, options=None, reconcile_content=None):
 
 
 def filter_answer(answer, audience):
-    """Drop the result parts and the inputs an audience may not receive (access.scrub runs after this)."""
+    """Drop the result parts and the inputs an audience may not receive (access.scrub runs after this): parts tagged
+    in RESULT_TAGS, keys in RESULT_KEY_TAGS, inputs whose tags or words the audience denies, and the copies of those
+    inputs that a tool echoes in an "assumptions" object (ECHOES)."""
+    from .access import word_tags
     deny = AUDIENCE_DENY.get(audience, AUDIENCE_DENY["city"])
     if not deny:
         return answer
     out = dict(answer)
-    tags = RESULT_TAGS.get(answer["tool"], {})
-    out["result"] = {k: v for k, v in (answer.get("result") or {}).items() if not (tags.get(k, set()) & deny)}
+    tool = answer["tool"]
+    tags = RESULT_TAGS.get(tool, {})
+    result = {k: v for k, v in (answer.get("result") or {}).items() if not (tags.get(k, set()) & deny)}
+    denied_keys = {k for k, t in RESULT_KEY_TAGS.get(tool, {}).items() if t & deny}
+    if denied_keys:
+        result = _drop_keys(result, denied_keys)
+
+    def hidden(i):
+        return bool(set(i.get("tags") or []) & deny) or bool(word_tags(i.get("assumption_id"), i.get("label")) & deny)
+    used = answer.get("inputs_used") or []
+    gone = {i.get("assumption_id") for i in used if i.get("assumption_id") and hidden(i)}
+    echoed = {key for aid, key in ECHOES.get(tool, {}).items() if aid in gone}
+    out["result"] = _drop_echoes(result, echoed) if echoed else result
     out["hidden_parts"] = sorted(k for k in (answer.get("result") or {}) if tags.get(k, set()) & deny)
-    out["inputs_used"] = [i for i in answer.get("inputs_used") or [] if not (set(i.get("tags") or []) & deny)]
+    out["inputs_used"] = [i for i in used if not hidden(i)]
     words = ("price", "proceeds", "floor", "residual", "rlv", "irr", "yield", "return", "value_usd", "land value",
-             "strategy_inputs", "sale plan", "hurdle", "premium", "upside")
+             "strategy_inputs", "sale plan", "hurdle", "premium", "upside", "discount rate", "profit")
     out["missing"] = [m for m in answer.get("missing") or [] if not any(w in m.lower() for w in words)]
     return out
+
+
+def _drop_keys(x, keys):
+    """A copy without these keys at any depth."""
+    if isinstance(x, dict):
+        return {k: _drop_keys(v, keys) for k, v in x.items() if k not in keys}
+    if isinstance(x, list):
+        return [_drop_keys(v, keys) for v in x]
+    return x
+
+
+def _drop_echoes(x, keys):
+    """A copy without these keys in any "assumptions" object."""
+    if isinstance(x, dict):
+        return {k: (({a: b for a, b in v.items() if a not in keys} if isinstance(v, dict) else _drop_echoes(v, keys))
+                    if k == "assumptions" else _drop_echoes(v, keys)) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_drop_echoes(v, keys) for v in x]
+    return x

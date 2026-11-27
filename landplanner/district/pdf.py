@@ -82,6 +82,11 @@ _SWAPS = {"≤": "<=", "≥": ">=", "≠": "!=", "→": "->", "←": "<-", "↔"
           "∗": "*", "∙": "•", "●": "•", "▪": "•", "‣": "•",
           "⁃": "-", "­": "", "​": "", "‌": "", "‍": "", "️": "", "﻿": "",
           "\t": "    "}
+_SWAPS.update({"✓": "yes", "✔": "yes", "✅": "yes", "☑": "yes", "✗": "no", "✘": "no",
+               "❌": "no", "☐": "[ ]", "★": "*", "☆": "*", "′": "'", "″": '"',
+               "Ł": "L", "ł": "l", "Đ": "D", "đ": "d", "Ħ": "H", "ħ": "h",
+               "ı": "i", "ĸ": "k", "Ŀ": "L", "ŀ": "l", "Ŧ": "T", "ŧ": "t",
+               "ẞ": "SS", "№": "No."})
 
 
 def clean(value):
@@ -151,6 +156,10 @@ def wrap(text, bold, size, width):
                 k = len(word) - 1
                 while k > 1 and text_width(word[:k], bold, size) > width:
                     k -= 1
+                # prefer to break after a hyphen, underscore or slash, so ids stay readable and searchable
+                cut = max((i for i in range(1, k + 1) if word[i - 1] in "-_/"), default=0)
+                if cut >= max(3, k // 3):
+                    k = cut
                 lines.append(word[:k])
                 word = word[k:]
             cur = word
@@ -262,12 +271,22 @@ class _Layout:
 
     # -- pieces
     def heading(self, text, first_keep=40.0):
-        self.need(30 + first_keep)
+        lines = wrap(text, True, 15, self.avail)[:4] if text else []
+        extra = 18.0 * max(len(lines) - 1, 0)
+        self.need(30 + extra + first_keep)
         if text:
             self.toc.append((text, self.page_number()))
-            self.page.text(self.left, self.y - 16, text, True, 15, NAVY)
-            self.page.line(self.left, self.y - 22, self.right, self.y - 22, NAVY, 0.8)
-        self.y -= 34
+            for k, ln in enumerate(lines):
+                self.page.text(self.left, self.y - 16 - 18 * k, ln, True, 15, NAVY)
+            self.page.line(self.left, self.y - 22 - extra, self.right, self.y - 22 - extra, NAVY, 0.8)
+        self.y -= 34 + extra
+
+    def small(self, text, size=7.5):
+        for ln in wrap(clean(text), False, size, self.avail):
+            self.need(size + 3)
+            self.page.text(self.left, self.y - size, ln, False, size, GREY)
+            self.y -= size + 3
+        self.y -= 4
 
     def paragraph(self, text):
         lines = wrap(clean(text), False, BODY, self.avail)
@@ -364,8 +383,9 @@ class _Layout:
         given = list(t.get("align") or [])
         aligns = []
         for c in range(n):
-            if c < len(given) and given[c] in ("l", "r", "c"):
-                aligns.append(given[c])
+            a = str(given[c])[:1].lower() if c < len(given) and given[c] else ""
+            if a in ("l", "r", "c"):
+                aligns.append(a)
                 continue
             col = [row[c] for row in rows if row[c].strip()]
             aligns.append("r" if col and all(_is_number_text(v) for v in col) else "l")
@@ -383,9 +403,11 @@ class _Layout:
         head_h = max(len(h) for h in head) * lead + 2 * py
         title = clean(t.get("title") or "")
         if title:
-            self.need(16 + head_h + 3 * lead)
-            self.page.text(self.left, self.y - 11, title, True, 10.5, BLACK)
-            self.y -= 18
+            tl = wrap(title, True, 10.5, self.avail)[:3]
+            self.need(8 + 13 * len(tl) + head_h + 3 * lead)
+            for k, ln in enumerate(tl):
+                self.page.text(self.left, self.y - 11 - 13 * k, ln, True, 10.5, BLACK)
+            self.y -= 5 + 13 * len(tl)
         else:
             self.need(head_h + 3 * lead)
 
@@ -508,6 +530,8 @@ def build_pdf(doc):
     lay.new_page()
     for sec in sections:
         lay.heading(clean(sec.get("heading") or ""))
+        for note in sec.get("small") or []:
+            lay.small(note)
         lay.kpis(sec.get("kpis") or [])
         for para in sec.get("paragraphs") or []:
             lay.paragraph(para)

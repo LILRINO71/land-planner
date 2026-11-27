@@ -2,6 +2,7 @@
 the city view's field filtering, the last-administrator rule, the audit log's hash chain, the idle time-out, the
 NDA, Google sign-in (Google's answer replayed), no NaN in any answer, and the real HTTP server's cookie and
 upload handling. Offline, in a temporary data folder, on the invented sample."""
+import hashlib
 import http.client
 import json
 import sys
@@ -352,6 +353,107 @@ class Sessions(Base):
         self.assertEqual((s, b["signed_in"]), (200, False))
         self.assertEqual(self.call("GET", P, t)[0], 401)
         self.assertEqual(self.call("GET", P)[1]["error"]["code"], "sign-in-needed")
+
+
+class LastingSessions(Base):
+    """Sessions are kept in data/district-sessions.json (only the SHA-256 of each token) and survive a restart."""
+
+    def restart(self, **kw):
+        self.api = DistrictAPI(self.folder.name, self.clock, tokeninfo=lambda token: dict(self.google), **kw)
+
+    def kept(self):
+        return (Path(self.folder.name) / "district-sessions.json").read_text(encoding="utf-8")
+
+    def test_sessions_survive_a_restart_and_only_their_hashes_are_on_disk(self):
+        text = self.kept()
+        for role, token in self.tokens.items():
+            self.assertNotIn(token, text, f"the {role}'s token itself is never written down")
+            self.assertIn(hashlib.sha256(token.encode()).hexdigest(), text)
+        self.restart()
+        for role in ROLES:
+            self.assertEqual(self.call("GET", P, self.tokens[role])[0], 200, role)
+
+    def test_after_a_restart_the_idle_time_out_and_the_longest_life_still_end_a_session(self):
+        t = self.tokens["analyst"]
+        self.clock.now += 20 * 60
+        self.assertEqual(self.call("GET", P, t)[0], 200)
+        self.restart()
+        self.clock.now += 29 * 60
+        self.assertEqual(self.call("GET", P, t)[0], 200, "the last use was kept, so the idle clock carries on")
+        self.restart()
+        self.clock.now += 31 * 60
+        self.assertEqual(self.call("GET", P, t)[1]["error"]["code"], "session-expired")
+        busy = self.sign_in("Analyst", "pass-analyst-1")
+        started = self.clock.now
+        while self.clock.now - started < access.SESSION_HOURS * 3600 - 25 * 60:
+            self.clock.now += 25 * 60
+            self.assertEqual(self.call("GET", P, busy)[0], 200)
+        self.restart()
+        self.clock.now += 25 * 60
+        self.assertEqual(self.call("GET", P, busy)[1]["error"]["code"], "session-expired",
+                         f"no session lasts longer than {access.SESSION_HOURS} hours, however busy")
+
+    def test_sign_out_and_a_removed_user_stay_signed_out_after_a_restart(self):
+        self.call("DELETE", "/api/districts/session", self.tokens["consultant"])
+        uid = next(u["id"] for u in self.call("GET", "/api/districts/users", self.tokens["administrator"])[1]["users"]
+                   if u["role"] == "viewer_city")
+        self.assertEqual(self.call("DELETE", f"/api/districts/users/{uid}", self.tokens["administrator"])[0], 200)
+        self.restart()
+        self.assertEqual(self.call("GET", P, self.tokens["consultant"])[0], 401)
+        self.assertEqual(self.call("GET", P, self.tokens["viewer_city"])[0], 401)
+        self.assertEqual(self.call("GET", P, self.tokens["analyst"])[0], 200)
+
+    def test_an_administrator_sees_every_session_and_can_end_any_of_them(self):
+        a = self.tokens["administrator"]
+        s, b, _ = self.call("GET", "/api/districts/sessions", a)
+        self.assertEqual(s, 200, b)
+        rows = b["sessions"]
+        self.assertEqual(sorted(r["user"]["role"] for r in rows), sorted(ROLES))
+        self.assertEqual([r["user"]["role"] for r in rows if r["current"]], ["administrator"])
+        text = json.dumps(b)
+        for token in self.tokens.values():
+            self.assertNotIn(token, text)
+            self.assertNotIn(hashlib.sha256(token.encode()).hexdigest(), text, "the listing shows ids, not hashes")
+        analyst = next(r for r in rows if r["user"]["role"] == "analyst")
+        self.assertTrue({"id", "started", "last", "expires", "idle_ends"} <= set(analyst))
+        for role in ROLES[1:]:
+            self.assertEqual(self.call("GET", "/api/districts/sessions", self.tokens[role])[0], 403, role)
+            self.assertEqual(self.call("DELETE", f"/api/districts/sessions/{analyst['id']}", self.tokens[role])[0],
+                             403, role)
+        self.assertEqual(self.call("DELETE", f"/api/districts/sessions/{analyst['id']}", a)[1], {"ended": True})
+        self.assertEqual(self.call("GET", P, self.tokens["analyst"])[0], 401, "the ended session no longer works")
+        self.assertEqual(self.call("DELETE", f"/api/districts/sessions/{analyst['id']}", a)[0], 404)
+        self.assertEqual(self.call("GET", P, self.tokens["consultant"])[0], 200, "the others go on")
+        self.assertEqual(self.audit(action="session-end")["total"], 1)
+        self.restart()
+        self.assertEqual(self.call("GET", P, self.tokens["analyst"])[0], 401, "ended on disk too")
+
+    def test_a_damaged_sessions_file_only_means_signing_in_again(self):
+        (Path(self.folder.name) / "district-sessions.json").write_text("{not json", encoding="utf-8")
+        self.restart()
+        self.assertEqual(self.call("GET", P, self.tokens["analyst"])[0], 401)
+        self.assertEqual(self.call("GET", P, self.sign_in("Analyst", "pass-analyst-1"))[0], 200)
+
+    def test_the_cookie_is_secure_on_https_and_keeps_http_only_and_same_site_strict(self):
+        h = self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Analyst",
+                                                              "passcode": "pass-analyst-1"})[2]
+        self.assertEqual(h["Set-Cookie"].split("; ")[1:], ["HttpOnly", "SameSite=Strict", "Path=/api/districts"])
+        self.restart(secure=True, cookie_path="/api")
+        h = self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Analyst",
+                                                              "passcode": "pass-analyst-1"})[2]
+        self.assertEqual(h["Set-Cookie"].split("; ")[1:], ["HttpOnly", "SameSite=Strict", "Path=/api", "Secure"])
+        h = self.call("DELETE", "/api/districts/session", self.tokens["analyst"])[2]
+        self.assertIn("Max-Age=0", h["Set-Cookie"])
+        self.assertIn("Secure", h["Set-Cookie"])
+
+    def test_in_network_mode_a_cookie_from_the_one_computer_mode_is_widened_to_every_route(self):
+        self.assertNotIn("Set-Cookie", self.call("GET", "/api/districts/session", self.tokens["consultant"])[2])
+        self.restart(secure=True, cookie_path="/api")
+        s, b, h = self.call("GET", "/api/districts/session", self.tokens["consultant"])
+        self.assertEqual((s, b["signed_in"]), (200, True))
+        self.assertEqual(h["Set-Cookie"], f"lp_district={self.tokens['consultant']}; HttpOnly; SameSite=Strict; "
+                                          "Path=/api; Secure")
+        self.assertNotIn("Set-Cookie", self.call("GET", "/api/districts/session")[2], "nothing for the signed out")
 
 
 class Google(Base):

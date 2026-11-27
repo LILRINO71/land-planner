@@ -205,6 +205,37 @@ class Layout(unittest.TestCase):
             self.assertGreaterEqual(len(streams), 1)
 
 
+class Wrapping(unittest.TestCase):
+    def test_long_ids_break_after_a_hyphen_underscore_or_slash(self):
+        for sep in "-_/":
+            word = sep.join(["SEGMENTONE", "SEGMENTTWO", "SEGMENTTHREE", "SEGMENTFOUR"])
+            lines = pdf.wrap(word, False, 10, 110)
+            self.assertEqual("".join(lines), word)
+            self.assertTrue(all(ln.endswith(sep) for ln in lines[:-1]), lines)
+            self.assertTrue(all(ln.startswith("SEGMENT") for ln in lines), lines)
+
+    def test_a_word_with_no_break_point_is_still_split_to_fit(self):
+        lines = pdf.wrap("W" * 60, False, 10, 100)
+        self.assertGreater(len(lines), 1)
+        self.assertTrue(all(pdf.text_width(ln, False, 10) <= 100.01 for ln in lines))
+
+    def test_long_headings_and_table_titles_wrap_inside_the_margins(self):
+        long = "A very long heading about the corridor districts and neighborhoods of the sample area " * 2
+        doc = {"sections": [{"heading": long, "tables": [{"title": long, "columns": ["A"], "rows": [["x"]]}]}]}
+        streams = page_streams(pdf.build_pdf(doc))
+        seen = 0
+        for s in streams:
+            for m in re.finditer(r"/F2 (15|10\.5) Tf [\d. ]+ rg ([\d.]+) [\d.]+ Td \(((?:[^()\\]|\\.)*)\)", s):
+                seen += 1
+                self.assertLessEqual(float(m.group(2)) + pdf.text_width(m.group(3), True, float(m.group(1))), 558.5)
+        self.assertGreaterEqual(seen, 4)
+
+    def test_small_notes_and_word_alignment(self):
+        doc = {"sections": [{"heading": "H", "small": ["A small note."], "tables": [
+            {"columns": ["A", "B"], "rows": [["x", 1]], "align": ["left", "right"]}]}]}
+        self.assertIn("A small note.", strings(page_streams(pdf.build_pdf(doc))[0]))
+
+
 class Widths(unittest.TestCase):
     def test_known_helvetica_widths(self):
         self.assertAlmostEqual(pdf.text_width("Hello", False, 10), 22.78, delta=0.01)      # H722 e556 l222 l222 o556
@@ -225,7 +256,11 @@ class Characters(unittest.TestCase):
 
     def test_the_rest_become_question_marks(self):
         self.assertEqual(pdf.clean("ok \U0001F600 \u4e2d"), "ok ? ?")
-        self.assertEqual(pdf.clean("\u2713"), "?")
+        self.assertEqual(pdf.clean("\u2713 \u4e2d"), "yes ?")
+
+    def test_latin_extended_letters_fall_back_to_their_base_letter(self):
+        self.assertEqual(pdf.clean("Łódź ąę đ"), "Lódz ae d")
+        self.assertEqual(pdf.clean("čř ě ő"), "cr e o")
 
     def test_control_characters_are_dropped_to_spaces(self):
         self.assertEqual(pdf.clean("a\x00b\x1fc"), "a b c")

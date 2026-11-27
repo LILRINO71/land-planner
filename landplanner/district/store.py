@@ -14,9 +14,9 @@ import shutil
 import threading
 import time
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
-from . import Problem, check_id, check_slug, chain, day, slug, stamp
+from . import SLUG, Problem, check_id, check_slug, chain, day, slug, stamp
 from .jsonsafe import dumps
 from .schema import ENTITIES
 
@@ -544,7 +544,12 @@ class Store:
             v = next((x for x in doc["versions"] if str(x["version"]) == str(version)), None)
             if v is None:
                 raise Problem(404, "not-found", "That document has no such version.")
-        path = self._dir(pid) / "documents" / doc["id"] / v["file"]
+        folder = self._dir(pid) / "documents"
+        if not SLUG.fullmatch(str(doc.get("id") or "")) or not _STORED_FILE.fullmatch(str(v.get("file") or "")):
+            raise Problem(404, "not-found", "That version's file is not where the library keeps files.")
+        path = folder / doc["id"] / v["file"]
+        if not _inside(folder, path):
+            raise Problem(404, "not-found", "That version's file is not where the library keeps files.")
         if not path.is_file():
             raise Problem(404, "not-found", "That version's file is missing. Restore the project from a backup.")
         return doc, v, path.read_bytes()
@@ -714,6 +719,8 @@ class Store:
         try:
             for rel, data in files.items():
                 target = stage / rel
+                if not safe_relative(rel) or not _inside(stage, target) or target.resolve() == stage.resolve():
+                    raise Problem(400, "bad-request", f"A file name in that zip is not safe: {str(rel)[:80]}.")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
             trash = self.root / f".trash-{pid}-{os.urandom(4).hex()}"
@@ -747,9 +754,10 @@ class Store:
         pid = check_slug(manifest.get("project_id"), "project id")
         inner = {}
         for name, blob in files.items():
-            if not name.startswith("project/"):
+            rel = name[len("project/"):]
+            if not name.startswith("project/") or not safe_relative(rel):
                 raise Problem(400, "bad-request", f"That zip holds a file outside the project: {name[:80]}.")
-            inner[name[len("project/"):]] = blob
+            inner[rel] = blob
         listed = manifest["files"]
         if set(inner) != set(listed):
             raise Problem(400, "bad-request", "That zip's files do not match its manifest, so it was not imported.")
@@ -775,6 +783,33 @@ class Store:
             return self.project(pid), replaced, safety
 
 
+_RESERVED = re.compile(r"(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)(\..*)?", re.I)
+_STORED_FILE = re.compile(r"v[0-9]{1,4}\.(pdf|pptx|xlsx|docx|csv)")
+
+
+def safe_relative(name):
+    """True when a zip member's name is a plain relative path that stays inside its folder on Windows and elsewhere:
+    no drive, root, '..', ':' (drives and NTFS streams), reserved device name or trailing dot or space in any part."""
+    name = str(name or "")
+    if not name or "\\" in name or "\x00" in name:
+        return False
+    win = PureWindowsPath(name)
+    if win.drive or win.root or name.startswith("/"):
+        return False
+    for part in name.split("/"):
+        if part in ("", ".", "..") or ":" in part or part != part.rstrip(". ") or _RESERVED.fullmatch(part):
+            return False
+        if any(ord(c) < 32 for c in part):
+            return False
+    return True
+
+
+def _inside(base, target):
+    """True when target (once resolved) is inside base."""
+    base, target = Path(base).resolve(), Path(target).resolve()
+    return base == target or base in target.parents
+
+
 def _safe_members(data, prefix=None):
     """{relative path: bytes} of a zip, refusing anything that could land outside its folder or is far too big."""
     try:
@@ -789,9 +824,8 @@ def _safe_members(data, prefix=None):
         for info in infos:
             if info.is_dir():
                 continue
-            name = info.filename.replace("\\", "/")
-            parts = name.split("/")
-            if name.startswith("/") or re.match(r"[A-Za-z]:", name) or any(p in ("", ".", "..") for p in parts):
+            name = info.filename
+            if not safe_relative(name):
                 raise Problem(400, "bad-request", f"That zip holds a file with an unsafe name: {name[:80]}.")
             if info.flag_bits & 0x1:
                 raise Problem(400, "bad-request", "That zip is password-protected.")

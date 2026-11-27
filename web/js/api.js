@@ -5,6 +5,11 @@ export class ApiError extends Error {
   constructor(message, code, status) { super(message); this.code = code; this.status = status; }
 }
 
+// In network mode the app's own routes need a district sign-in: main.js hears a 401 (or an NDA still to accept)
+// here and takes the person to Districts to sign in, then back.
+const needSignIn = new Set();
+export function onSignInNeeded(fn) { needSignIn.add(fn); return () => needSignIn.delete(fn); }
+
 async function call(method, path, body) {
   let response;
   try {
@@ -18,7 +23,9 @@ async function call(method, path, body) {
   try { data = await response.json(); } catch (e) { /* handled below */ }
   if (!response.ok || !data) {
     const err = data && data.error;
-    throw new ApiError((err && err.message) || "Something went wrong. Try again.", (err && err.code) || "unknown", response.status);
+    const e = new ApiError((err && err.message) || "Something went wrong. Try again.", (err && err.code) || "unknown", response.status);
+    if (response.status === 401 || e.code === "nda-needed") needSignIn.forEach((fn) => { try { fn(e); } catch (x) { console.error(x); } });
+    throw e;
   }
   return data;
 }

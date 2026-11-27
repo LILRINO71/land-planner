@@ -54,19 +54,24 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class DistrictAPI:
-    def __init__(self, data_dir, clock=time.time, tokeninfo=None):
+    def __init__(self, data_dir, clock=time.time, tokeninfo=None, secure=False, cookie_path=COOKIE_PATH):
+        """secure: the app is served over HTTPS, so the cookie carries Secure. cookie_path: "/api" in network mode,
+        where the app's other routes need the session too."""
         self.data_dir = Path(data_dir)
         self.clock = clock
+        self.secure = bool(secure)
+        self.cookie_path = cookie_path
         self.store = Store(self.data_dir, clock)
         self.users = A.Directory(self.data_dir, clock)
         self.settings = A.Settings(self.data_dir)
-        self.sessions = A.Sessions(clock)
+        self.sessions = A.Sessions(clock, self.data_dir / "district-sessions.json")
         self.audit = Audit(self.data_dir, clock)
         self.tokeninfo = tokeninfo or A.fetch_tokeninfo
 
     # ---------------------------------------------------------------- the entry point
 
-    def handle(self, method, path, query=None, headers=None, body=None):
+    def handle(self, method, path, query=None, headers=None, body=None, client=None):
+        """client: the caller's address, kept with a new session so an administrator can tell sessions apart."""
         query = query or {}
         headers = headers or {}
         try:
@@ -74,7 +79,8 @@ class DistrictAPI:
             if parts[:2] != ["api", "districts"]:
                 raise Problem(404, "not-found", "Nothing here.")
             req = {"method": method, "parts": parts[2:], "query": query, "headers": headers, "raw": body or b"",
-                   "kind": str(headers.get("Content-Type") or "").lower(), "token": self._token(headers)}
+                   "kind": str(headers.get("Content-Type") or "").lower(), "token": self._token(headers),
+                   "client": client}
             return self._route(req)
         except Problem as e:
             extra = {"Set-Cookie": self._clear()} if e.code == "session-expired" else None
@@ -111,13 +117,12 @@ class DistrictAPI:
         except Exception:  # noqa: BLE001 - an unreadable cookie is no cookie
             return None
 
-    @staticmethod
-    def _cookie(token):
-        return f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path={COOKIE_PATH}"
+    def _cookie(self, token):
+        return f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path={self.cookie_path}" + ("; Secure" if self.secure else "")
 
-    @staticmethod
-    def _clear():
-        return f"{COOKIE}=; HttpOnly; SameSite=Strict; Path={COOKIE_PATH}; Max-Age=0"
+    def _clear(self):
+        return (f"{COOKIE}=; HttpOnly; SameSite=Strict; Path={self.cookie_path}; Max-Age=0"
+                + ("; Secure" if self.secure else ""))
 
     def _body(self, req):
         if req["method"] != "POST":
@@ -232,9 +237,12 @@ class DistrictAPI:
                     if e.code == "session-expired":
                         raise
                     return _json(200, self._signed_out_view())
-                return _json(200, self._session_view(ctx["user"]))
+                # in network mode the cookie must reach every /api route: one set by the one-computer mode (Path=
+                # /api/districts) is widened here, so the app's other pages do not ask for a sign-in again
+                widen = {"Set-Cookie": self._cookie(ctx["token"])} if self.cookie_path != COOKIE_PATH else None
+                return _json(200, self._session_view(ctx["user"]), widen)
             if m == "POST":
-                return self._sign_in(self._body(req))
+                return self._sign_in(self._body(req), req)
             if m == "DELETE":
                 uid, state = self.sessions.find(req["token"], 10 ** 6)
                 if state == "ok":
@@ -259,6 +267,8 @@ class DistrictAPI:
         ctx = self._current(req)
         if p[:1] == ["users"]:
             return self._users(ctx, req)
+        if p[:1] == ["sessions"]:
+            return self._sessions(ctx, req)
         if p == ["settings"]:
             self._need(ctx, "settings.edit")
             if m == "GET":
@@ -324,13 +334,14 @@ class DistrictAPI:
 
     # ---------------------------------------------------------------- signing in
 
-    def _start(self, user, how):
+    def _start(self, user, how, req=None):
         user = self.users.touch(user["id"], last_sign_in=self._now())
-        token = self.sessions.start(user["id"])
+        req = req or {}
+        token = self.sessions.start(user["id"], req.get("client"), (req.get("headers") or {}).get("User-Agent"))
         self.audit.log("sign-in", user, method=how)
         return _json(200, self._session_view(user), {"Set-Cookie": self._cookie(token)})
 
-    def _bootstrap(self, data, how):
+    def _bootstrap(self, data, how, req=None):
         user = self.users.save_user({**data, "role": "administrator", "status": "ACTIVE", "projects": ["*"]}, None)
         self.audit.log("user-add", user, target=user["id"], role="administrator", why="first sign-in (bootstrap)")
         try:
@@ -338,9 +349,9 @@ class DistrictAPI:
             self.audit.log("sample", user, project=S.PROJECT_ID)
         except Problem:
             pass
-        return self._start(user, how + " (first administrator)")
+        return self._start(user, how + " (first administrator)", req)
 
-    def _sign_in(self, b):
+    def _sign_in(self, b, req=None):
         how = b.get("method")
         if how == "passcode":
             name, passcode = str(b.get("name") or "").strip(), str(b.get("passcode") or "")
@@ -350,7 +361,7 @@ class DistrictAPI:
                 self.audit.log("sign-in", {"name": name}, "denied", method="passcode", why="too many tries")
                 raise Problem(429, "too-many-tries", "Too many wrong tries for that name. Wait 15 minutes.")
             if self.users.empty():
-                return self._bootstrap({"name": name, "passcode": passcode}, "passcode")
+                return self._bootstrap({"name": name, "passcode": passcode}, "passcode", req)
             user = self.users.by_name(name)
             ok = bool(user and user.get("status") == "ACTIVE" and user.get("passcode")
                       and A.check_passcode(user["passcode"], passcode))
@@ -360,7 +371,7 @@ class DistrictAPI:
                 self.audit.log("sign-in", user or {"name": name}, "denied", method="passcode", why=why)
                 raise Problem(401, "sign-in-refused", "That name and passcode do not match an active user.")
             self.sessions.cleared(name)
-            return self._start(user, "passcode")
+            return self._start(user, "passcode", req)
         if how == "google":
             s = self.settings.get()
             try:
@@ -369,14 +380,14 @@ class DistrictAPI:
                 self.audit.log("sign-in", None, "denied", method="google", why=e.code)
                 raise
             if self.users.empty():
-                return self._bootstrap({"name": email, "email": email}, "google")
+                return self._bootstrap({"name": email, "email": email}, "google", req)
             user = self.users.by_email(email)
             if not user or user.get("status") != "ACTIVE":
                 self.audit.log("sign-in", user or {"name": email}, "denied", method="google",
                                why="not in the directory" if not user else "inactive", email=email)
                 raise Problem(403, "not-authorized", f"The Google account {email} is not on the list of people allowed "
                                                      "into this workspace. Ask the administrator to add it.")
-            return self._start(user, "google")
+            return self._start(user, "google", req)
         raise Problem(400, "bad-request", "Sign in with {\"method\": \"passcode\"} or {\"method\": \"google\"}.")
 
     # ---------------------------------------------------------------- users
@@ -403,6 +414,38 @@ class DistrictAPI:
             self.audit.log("user-remove", ctx["user"], target=old["id"], name_removed=old.get("name"))
             return _json(200, {"removed": True})
         raise Problem(404, "not-found", "Nothing here.")
+
+    # ---------------------------------------------------------------- sessions (administrators)
+
+    def _sessions(self, ctx, req):
+        """Who is signed in now, and ending any one of those sessions. Ids only: never a token or its hash."""
+        self._need(ctx, "users.manage")
+        m, p = req["method"], req["parts"]
+        idle = self.settings.get()["idle_minutes"]
+        if p == ["sessions"] and m == "GET":
+            rows = self.sessions.listing(idle, ctx["token"])
+            for r in rows:
+                u = self.users.get(r["user"]) or {"id": r["user"]}
+                r["user"] = {"id": u.get("id"), "name": u.get("name"), "role": u.get("role")}
+                for k in ("started", "last", "expires", "idle_ends"):
+                    r[k] = self._stamp(r[k])
+            return _json(200, {"sessions": rows, "idle_minutes": idle, "longest_hours": A.SESSION_HOURS})
+        if len(p) == 2 and m == "DELETE":
+            gone = self.sessions.end_id(p[1])
+            if gone is None:
+                raise Problem(404, "not-found", "That session has already ended.")
+            self.audit.log("session-end", ctx["user"], target=gone["user"], session=p[1])
+            return _json(200, {"ended": True})
+        raise Problem(404, "not-found", "Nothing here.")
+
+    def _stamp(self, t):
+        from . import stamp
+        return stamp(t)
+
+    def signed_in_user(self, headers, client=None):
+        """For the app's server in network mode: the active user behind these request headers, with the current
+        NDA accepted. Raises Problem (401 sign-in-needed or session-expired, 403 nda-needed) otherwise."""
+        return self._current({"token": self._token(headers or {}), "client": client})["user"]
 
     # ---------------------------------------------------------------- templates
 

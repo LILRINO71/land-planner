@@ -1,6 +1,7 @@
 // The frame of the app: the sidebar and which page is showing. Addresses look like
 //   #/cities   #/lands/menifee   #/my-lands   #/land/menifee/372100001/terrain
-import { cities, saved } from "./api.js";
+import { cities, saved, onSignInNeeded } from "./api.js";
+import { onSignedIn } from "./district/api.js";
 import { esc, num, plural, icon, problem } from "./util.js";
 import * as citiesView from "./views/cities.js";
 import * as landsView from "./views/lands.js";
@@ -87,8 +88,31 @@ function notAParcel(route) {
   main.focus({ preventScroll: true });
 }
 
+// Network mode: a page whose data needs signing in sends the person to Districts' sign-in, and back to the same
+// address once they are signed in and have accepted the NDA. The address waits in this tab's sessionStorage.
+const RETURN = "lp-return-after-sign-in";
+let returnedAt = 0;
+function remembered(value) {
+  try { if (value === undefined) return sessionStorage.getItem(RETURN); if (value === null) sessionStorage.removeItem(RETURN); else sessionStorage.setItem(RETURN, value); }
+  catch (e) { return null; }
+  return null;
+}
+onSignInNeeded(() => {
+  if (parse().name === "districts" || Date.now() - returnedAt < 3000) return;   // never bounce back and forth
+  remembered(location.hash || "#/cities");
+  location.hash = "#/districts";
+});
+onSignedIn(() => {
+  const back = remembered();
+  if (!back || parse().name !== "districts") return;
+  remembered(null);
+  returnedAt = Date.now();
+  location.hash = back;
+});
+
 async function show() {
   const route = parse(), mine = ++visit;
+  if (route.name !== "districts") remembered(null);     // the person went elsewhere: no return is owed
   leaving.splice(0).forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
   const alive = () => mine === visit;
   alive.onLeave = (fn) => { if (alive()) leaving.push(fn); else fn(); };

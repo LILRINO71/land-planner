@@ -3,8 +3,9 @@
 #   irm https://raw.githubusercontent.com/LILRINO71/land-planner/main/install.ps1 | iex
 #
 # It downloads the latest release, puts it in %LOCALAPPDATA%\LandPlanner, adds "Land Planner" to the Desktop and
-# the Start menu, and starts it. Running it again updates the app; your saved lands and plans (the data folder)
-# are kept. To remove Land Planner, delete that folder and the two shortcuts.
+# the Start menu (and "Land Planner (network)" to the Start menu, for letting others sign in from their own
+# computers), and starts it. Running it again updates the app; your saved lands and plans (the data folder) are
+# kept. To remove Land Planner, delete that folder and the shortcuts.
 #
 # For testing: LANDPLANNER_DIR (where to install), LANDPLANNER_ZIP (a local zip or another address),
 # LANDPLANNER_NO_SHORTCUT=1, LANDPLANNER_NO_START=1.
@@ -17,6 +18,7 @@ $repo = "LILRINO71/land-planner"
 $source = if ($env:LANDPLANNER_ZIP) { $env:LANDPLANNER_ZIP } else { "https://github.com/$repo/releases/latest/download/LandPlanner.zip" }
 $dir = if ($env:LANDPLANNER_DIR) { $env:LANDPLANNER_DIR } else { Join-Path $env:LOCALAPPDATA "LandPlanner" }
 $starter = Join-Path $dir "Start Land Planner.bat"
+$networkStarter = Join-Path $dir "Start Land Planner (network).bat"
 
 Write-Host ""
 Write-Host "  Land Planner" -ForegroundColor Green
@@ -68,6 +70,18 @@ if (-not $env:LANDPLANNER_NO_SHORTCUT) {
         $link.Save()
     }
     Write-Host "  Added 'Land Planner' to the Desktop and the Start menu."
+    # Letting others sign in from their computers: Start menu only, with its window open (it shows the address)
+    $programs = [Environment]::GetFolderPath("Programs")
+    if ($programs -and (Test-Path -LiteralPath $networkStarter)) {
+        $link = $shell.CreateShortcut((Join-Path $programs "Land Planner (network).lnk"))
+        $link.TargetPath = $networkStarter
+        $link.WorkingDirectory = $dir
+        $link.Description = "Land Planner for partners, consultants and city staff on other computers (HTTPS)"
+        $icon = Join-Path $dir "landplanner.ico"
+        if (Test-Path -LiteralPath $icon) { $link.IconLocation = $icon }
+        $link.Save()
+        Write-Host "  Added 'Land Planner (network)' to the Start menu."
+    }
 }
 
 $version = ""
@@ -75,6 +89,8 @@ $versionFile = Join-Path $dir "VERSION.txt"
 if (Test-Path -LiteralPath $versionFile) { $version = (Get-Content -LiteralPath $versionFile -TotalCount 1).Trim() }
 Write-Host "  Installed $version" -ForegroundColor Green
 Write-Host "  Your saved lands and plans are kept in $(Join-Path $dir 'data') on this computer only."
+Write-Host "  To let others sign in from their own computers, start 'Land Planner (network)' from the Start menu"
+Write-Host "  (or '$networkStarter')."
 
 if (-not $env:LANDPLANNER_NO_START) {
     Write-Host "  Starting Land Planner. It opens in your browser."

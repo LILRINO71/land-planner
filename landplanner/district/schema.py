@@ -91,6 +91,8 @@ SENSITIVE_KEY_PHRASES = {
     "target_market": "disposition", "upside_stretch": "disposition", "gross_price": "disposition",
     "land_value": "disposition", "break_even": "returns", "breakeven": "returns", "hurdle": "returns",
     "spread": "returns", "sponsor": "price_floor", "required_return": "returns", "margin": "returns",
+    # value - cost - required profit is the residual land value, and required profit / value gives the return
+    "required_profit": "returns", "developer_profit": "returns", "profit_margin": "returns",
 }
 # Records whose own words (id, label, heading, metric, body) name one of these are kept from an audience that denies
 # the tag even when nobody tagged them: the city view fails closed. An administrator can set city_safe on a record.

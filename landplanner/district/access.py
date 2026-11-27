@@ -2,7 +2,8 @@
 hides a button is a convenience, the check here is the rule (FR-04).
 
 - The user directory is data/district-users.json; passcodes are PBKDF2-SHA256 with a salt per user.
-- Sessions are kept in memory (a restart signs everyone out) behind an HttpOnly, SameSite=Strict cookie.
+- Sessions live behind an HttpOnly, SameSite=Strict cookie (Secure on HTTPS). data/district-sessions.json keeps
+  them across a restart, holding only the SHA-256 of each token (never the token itself) and its expiry.
 - PERMISSIONS is the one table of what each role may do; filter_content and scrub remove what an audience may not
   receive, driven by the tags in schema.py.
 """
@@ -363,21 +364,74 @@ def google_email(id_token, client_id, now, fetch=fetch_tokeninfo):
 
 # ---------------------------------------------------------------- sessions and tries
 
+SESSION_HOURS = 12          # the longest a session lasts, however busy it is
+SAVE_EVERY = 60             # seconds: how stale a kept "last used" time may be (a request is not a disk write)
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+
+
 class Sessions:
-    def __init__(self, clock):
+    """Signed-in sessions, keyed by the SHA-256 of the cookie's token. With a path they are kept on disk (only the
+    hashes, the user, the times and where they came from) and survive a restart; a missing or damaged file only
+    means everyone signs in again. Wrong passcode tries are kept in memory."""
+
+    def __init__(self, clock, path=None):
         self.clock = clock
+        self.path = Path(path) if path else None
         self._live = {}
+        self._saved = {}            # hash -> the "last" time last written to disk
         self._tries = {}
         self._guard = threading.Lock()
+        self._load()
 
     @staticmethod
     def _key(token):
         return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
-    def start(self, uid):
+    # -- the file
+
+    def _load(self):
+        if not self.path:
+            return
+        try:
+            box = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        rows = box.get("sessions") if isinstance(box, dict) else None
+        now = self.clock()
+        for key, s in (rows or {}).items() if isinstance(rows, dict) else ():
+            try:
+                ok = (_HEX64.fullmatch(key) and isinstance(s, dict) and isinstance(s.get("user"), str)
+                      and float(s["expires"]) > now and float(s["last"]) <= now + 60)
+            except (KeyError, TypeError, ValueError):
+                ok = False
+            if ok:
+                rec = {k: s.get(k) for k in ("id", "user", "started", "last", "expires", "client", "agent")}
+                rec["id"] = str(rec.get("id") or secrets.token_hex(8))
+                self._live[key] = rec
+                self._saved[key] = rec["last"]
+
+    def _save(self):
+        """Called with the guard held. A file that cannot be written leaves sessions working until a restart."""
+        if not self.path:
+            return
+        try:
+            _write(self.path, {"version": 1, "note": "SHA-256 of each session token, never the token itself",
+                               "sessions": self._live})
+            self._saved = {k: s["last"] for k, s in self._live.items()}
+        except OSError:
+            pass
+
+    # -- sessions
+
+    def start(self, uid, client=None, agent=None):
         token = secrets.token_urlsafe(32)
+        now = self.clock()
         with self._guard:
-            self._live[self._key(token)] = {"user": uid, "started": self.clock(), "last": self.clock()}
+            self._live[self._key(token)] = {
+                "id": secrets.token_hex(8), "user": uid, "started": now, "last": now,
+                "expires": now + SESSION_HOURS * 3600, "client": str(client or "")[:64] or None,
+                "agent": str(agent or "")[:160] or None}
+            self._save()
         return token
 
     def find(self, token, idle_minutes):
@@ -385,24 +439,61 @@ class Sessions:
         if not token:
             return None, "none"
         key = self._key(token)
+        now = self.clock()
         with self._guard:
             s = self._live.get(key)
             if not s:
                 return None, "none"
-            if self.clock() - s["last"] > idle_minutes * 60:
+            if now - s["last"] > idle_minutes * 60 or now >= s["expires"]:
                 del self._live[key]
+                self._save()
                 return s["user"], "expired"
-            s["last"] = self.clock()
+            s["last"] = now
+            if now - self._saved.get(key, 0) >= SAVE_EVERY:
+                self._save()
             return s["user"], "ok"
 
     def end(self, token):
         with self._guard:
-            return self._live.pop(self._key(token), None) is not None
+            gone = self._live.pop(self._key(token), None) is not None
+            if gone:
+                self._save()
+            return gone
 
     def end_user(self, uid):
         with self._guard:
-            for k in [k for k, s in self._live.items() if s["user"] == uid]:
+            keys = [k for k, s in self._live.items() if s["user"] == uid]
+            for k in keys:
                 del self._live[k]
+            if keys:
+                self._save()
+
+    def end_id(self, sid):
+        """End one session by its listed id (for an administrator). The ended session, or None."""
+        with self._guard:
+            key = next((k for k, s in self._live.items() if s.get("id") == sid), None)
+            if key is None:
+                return None
+            gone = self._live.pop(key)
+            self._save()
+            return gone
+
+    def listing(self, idle_minutes, current_token=None):
+        """The live sessions, newest first, each with its id (never its token or hash). Ended ones are dropped."""
+        now = self.clock()
+        mine = self._key(current_token) if current_token else None
+        with self._guard:
+            dead = [k for k, s in self._live.items() if now - s["last"] > idle_minutes * 60 or now >= s["expires"]]
+            for k in dead:
+                del self._live[k]
+            if dead:
+                self._save()
+            rows = [{**{k: s.get(k) for k in ("id", "user", "started", "last", "expires", "client", "agent")},
+                     "idle_ends": min(s["last"] + idle_minutes * 60, s["expires"]), "current": k == mine}
+                    for k, s in self._live.items()]
+        return sorted(rows, key=lambda r: -r["started"])
+
+    # -- wrong tries
 
     def locked(self, name):
         key = str(name or "").strip().lower()
