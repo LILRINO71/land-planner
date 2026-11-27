@@ -1,6 +1,6 @@
 /* The eight district tools (web/js/district/tools/*.js). Builds on style.css, district.css and the calm block. */
 
-.tl-page{min-width:0;font-variant-numeric:tabular-nums}
+.tl-page{min-width:0;font-variant-numeric:lining-nums tabular-nums}
 .tl-part{min-width:0}
 
 /* ---- the answer first */
@@ -14,12 +14,12 @@
 .tl-lead-num{display:flex;flex-direction:column;align-items:flex-end;text-align:right;min-width:0;max-width:100%}
 .tl-big-btn{all:unset;cursor:pointer;border-bottom:2px dotted #b98207;max-width:100%}
 .tl-big-btn:focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-radius:4px}
-.tl-big{display:block;font:600 clamp(32px,3.6vw,46px)/1.05 Georgia,serif;color:var(--green);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tl-big{display:block;font:600 clamp(32px,3.6vw,46px)/1.05 Georgia,serif;color:var(--green);font-variant-numeric:lining-nums tabular-nums;overflow-wrap:anywhere}
 .tl-big-label{margin-top:6px;font-size:13px;font-weight:650;color:var(--muted)}
 @media(max-width:640px){.tl-lead{padding:16px 16px}.tl-lead-num{align-items:flex-start;text-align:left}}
 
 /* ---- a number that opens its source */
-.tl-n{all:unset;cursor:pointer;font-weight:650;font-variant-numeric:tabular-nums;border-bottom:1px dotted #8d978f;white-space:nowrap}
+.tl-n{all:unset;cursor:pointer;font-weight:650;font-variant-numeric:lining-nums tabular-nums;border-bottom:1px dotted #8d978f;white-space:nowrap}
 .tl-n:hover{color:var(--green);border-bottom-color:var(--green)}
 .tl-n:focus-visible{outline:3px solid var(--gold);outline-offset:2px;border-radius:3px}
 .tl-n.on{color:var(--green)}
@@ -36,7 +36,7 @@
 .tl-mini{margin:4px 0 0;padding-left:18px;font-size:13.5px;display:grid;gap:3px}
 .tl-mini li{max-width:none}
 .tl-mini code,.tl-missing code,.tl-ins code{font:12px Consolas,"Courier New",monospace;color:var(--muted);overflow-wrap:anywhere}
-.tl-apns{font-size:13.5px;margin:4px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.tl-apns{font-size:13.5px;margin:4px 0 0;overflow-wrap:anywhere;font-variant-numeric:lining-nums tabular-nums}
 .tl-hidden{margin:0 0 16px;padding:11px 16px;border-radius:10px;background:#eef3f8;color:#1e3f5e;font-size:14.5px;font-weight:600;max-width:none}
 
 /* ---- quiet boxes */
@@ -98,7 +98,7 @@
 .tl-slider{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center}
 .tl-slider span{grid-column:1/-1;font-size:13.5px;font-weight:600}
 .tl-slider input{width:100%;accent-color:var(--green);min-height:28px}
-.tl-slider output{font-weight:700;font-size:14px;min-width:9ch;text-align:right;font-variant-numeric:tabular-nums}
+.tl-slider output{font-weight:700;font-size:14px;min-width:9ch;text-align:right;font-variant-numeric:lining-nums tabular-nums}
 .tl-wi-out{margin-top:10px}
 .tl-wi-head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin-bottom:10px;font-size:13.5px}
 .tl-compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:12px;margin:0 0 12px}
@@ -207,3 +207,5 @@
 .tl-table tr.flag th[scope=row]{background:#fff4e6}
 .tl-table tr.total th[scope=row]{background:#faf8f2}
 .tl-table th[scope=row] .link{white-space:nowrap}
+.tl-missing-fold{margin-top:4px;border-top:0}
+.tl-missing-fold>.calm-fold-body{padding-top:8px}

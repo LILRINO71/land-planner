@@ -9,7 +9,7 @@
 /* ---- charts (charts.js) */
 .dc-chart{width:100%;min-width:0}
 .dc-chart-title{margin:0 0 6px;font-weight:650;font-size:14.5px;max-width:none}
-.dc-svg{display:block;max-width:100%;height:auto;font:12px "Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums;-webkit-print-color-adjust:exact;print-color-adjust:exact;overflow:visible}
+.dc-svg{display:block;max-width:100%;height:auto;font:12px "Segoe UI",system-ui,sans-serif;font-variant-numeric:lining-nums tabular-nums;-webkit-print-color-adjust:exact;print-color-adjust:exact;overflow:visible}
 .dc-grid{stroke:#e3ded0;stroke-width:1}
 .dc-grid.zero,.dc-base{stroke:#5f6d65;stroke-width:1.4}
 .dc-base{stroke-dasharray:4 3}
@@ -23,13 +23,15 @@
 .dc-legend i,.dc-donut-list i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .dc-donut{display:flex;flex-wrap:wrap;gap:16px 24px;align-items:center}
 .dc-donut-list{list-style:none;margin:0;padding:0;display:grid;gap:6px;min-width:200px;flex:1}
-.dc-donut-list li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:baseline;max-width:none;font-size:13.5px;font-variant-numeric:tabular-nums}
+.dc-donut-list li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:baseline;max-width:none;font-size:13.5px;font-variant-numeric:lining-nums tabular-nums}
 .dc-donut-list small{color:var(--muted)}
 .dc-chart-empty{color:var(--muted);font-style:italic;font-size:13.5px}
 
 /* ---- sign-in, first run, NDA */
 body.dz-gated .main{display:flex;align-items:flex-start;justify-content:center}
 .dz-root{min-width:0}
+/* Georgia draws old-style figures by default (0 like o, 7 and 9 dropping below the line); every number here stands on the line */
+.dz-root,.dp,.dz-idle{font-variant-numeric:lining-nums}
 .dz-gate{width:100%;max-width:560px;margin:4vh auto 0;display:flex;flex-direction:column;gap:18px}
 .dz-gate-card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:30px clamp(20px,4vw,40px) 28px;border-top:5px solid var(--green)}
 .dz-gate-top{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-bottom:22px}
@@ -70,28 +72,31 @@ body.dz-gated .main{display:flex;align-items:flex-start;justify-content:center}
 .dz-who span{font-weight:650;color:#fff}
 .dz-who small{color:#b9cbc1;flex-basis:100%}
 .dz-signout{color:var(--gold)!important;font-size:13px}
+.side-district>.dz-who:first-child{margin-top:0;border-top:0;padding-top:0}
 .dz-all{margin-top:10px}
 .dz-drawer-btn{display:none}
 .dz-drawer{display:block}
 
 /* ---- project list */
 .dz-projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr));gap:18px}
-.dz-project{display:flex;flex-direction:column;gap:4px;text-decoration:none;color:inherit;transition:border-color .15s}
+.dz-project{position:relative;display:flex;flex-direction:column;gap:4px;text-decoration:none;color:inherit;transition:border-color .15s}
 .dz-project:hover{border-color:var(--green)}
-.dz-project h2{font-size:25px;margin:6px 0 0}
-.dz-project .dz-chip{align-self:flex-start}
+.dz-project h2{font-size:25px;margin:0}
+.dz-project .dz-chip{position:absolute;top:20px;right:20px}
+.dz-project .dz-chip+h2{padding-right:110px}
+.dz-sample-row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:18px}
+.dz-sample-row .fine{margin:0}
 .dz-open{margin-top:10px;font-weight:650;color:var(--green)}
 .dz-calm{max-width:760px}
 .dz-calm h2{font-size:20px}
+.dz-closed{margin-top:4px}
 
 /* ---- chips, tags */
 .dz-chip{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:99px;background:var(--green-soft);color:var(--green);white-space:nowrap;vertical-align:1px}
 .dz-chip.gold{background:#fdf3d7;color:#6b4a00}
 .dz-chip.warn{background:#fff0e0;color:#8a3a00}
 .dz-chip.ai{background:#ece6f7;color:#4d3577;font-family:"Segoe UI",sans-serif}
-.dz-src{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:#f1ede1;color:#5a4c22;white-space:nowrap}
-/* a long source tag shows in full on hover, or when its card has the keyboard focus */
-.dz-src:hover,.dz-src:focus,.dz-kpi:focus-visible .dz-src{white-space:normal;overflow:visible}
+.dz-src{display:inline-block;max-width:100%;vertical-align:middle;font-size:10.5px;line-height:1.35;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:#f1ede1;color:#5a4c22;overflow-wrap:anywhere}
 .dz-srcs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;max-width:100%}
 .dz-prov{font-size:12px;font-weight:700;letter-spacing:.05em}
 
@@ -124,10 +129,10 @@ body.dz-gated .main{display:flex;align-items:flex-start;justify-content:center}
 .dz-kpi:hover{border-color:var(--green)}
 .dz-kpi:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .dz-kpi-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#7a5600}
-.dz-kpi-value{font:600 clamp(24px,2vw,32px)/1.15 Georgia,serif;font-variant-numeric:tabular-nums;color:var(--ink);overflow-wrap:normal;word-break:normal}
+.dz-kpi-value{font:600 clamp(24px,2vw,32px)/1.15 Georgia,serif;font-variant-numeric:lining-nums tabular-nums;color:var(--ink);overflow-wrap:normal;word-break:normal}
 .dz-kpi-value.long{font-size:clamp(21px,1.6vw,26px)}
 .dz-kpi-value.xlong{font-size:clamp(18px,1.3vw,22px)}
-.dz-kpi-aside{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}
+.dz-kpi-aside{font-size:13.5px;color:var(--muted);font-variant-numeric:lining-nums tabular-nums;font-weight:600}
 .dz-kpi-desc{font-size:13.5px;line-height:1.45;color:var(--muted)}
 .dz-kpi-foot{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:auto;padding-top:8px;min-width:0;max-width:100%}
 .dz-kpi-id{margin-left:auto;font:11.5px Consolas,"Courier New",monospace;color:var(--muted);overflow-wrap:anywhere;min-width:0}
@@ -145,7 +150,10 @@ body.dz-gated .main{display:flex;align-items:flex-start;justify-content:center}
 .dz-narr-lead{font:500 18px/1.5 Georgia,serif;max-width:70ch}
 .dz-cites{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 .dz-cites>span{font-size:12px;font-weight:650;color:var(--muted);margin-right:2px}
-.dz-cite{font:600 12.5px/1.2 "Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums;border:1px solid #b9cbbf;background:var(--green-soft);color:var(--green);border-radius:99px;padding:5px 11px;cursor:pointer;text-align:left}
+.dz-cites-more{flex-basis:100%;margin:0;border-top:0}
+.dz-cites-more>summary{padding:4px 2px 2px;font-size:13px}
+.dz-cites-more .calm-fold-body{display:flex;flex-wrap:wrap;gap:6px;padding-top:4px}
+.dz-cite{font:600 12.5px/1.2 "Segoe UI",system-ui,sans-serif;font-variant-numeric:lining-nums tabular-nums;border:1px solid #b9cbbf;background:var(--green-soft);color:var(--green);border-radius:99px;padding:5px 11px;cursor:pointer;text-align:left}
 .dz-cite:hover{border-color:var(--green)}
 .dz-foot{max-width:none}
 .dt-folded .dt-more{display:none}
@@ -154,7 +162,7 @@ body.dz-gated .main{display:flex;align-items:flex-start;justify-content:center}
 .dz-page table.data td small{display:block;color:var(--muted);font-size:12px}
 .dz-page table.data th{white-space:normal}
 .dz-page table.data .sort{white-space:nowrap}
-table.data td{font-variant-numeric:tabular-nums}
+table.data td{font-variant-numeric:lining-nums tabular-nums}
 
 /* ---- reconciliations */
 .dz-recons{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));gap:14px;margin-top:6px}
@@ -165,7 +173,7 @@ table.data td{font-variant-numeric:tabular-nums}
 .dz-recon-sum{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .dz-recon-sum>span{color:var(--muted);font-weight:650}
 .dz-recon-sum small{display:block;font-size:12px;color:var(--muted)}
-.dz-recon-sum b{font:600 20px/1.2 Georgia,serif;font-variant-numeric:tabular-nums}
+.dz-recon-sum b{font:600 20px/1.2 Georgia,serif;font-variant-numeric:lining-nums tabular-nums}
 .dz-recon-a{all:unset;cursor:pointer;border-bottom:2px dotted #b98207}
 .dz-recon-a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .dz-recon-d{margin-left:auto;text-align:right}
@@ -177,10 +185,10 @@ table.data td{font-variant-numeric:tabular-nums}
 .dz-qa-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 @media(min-width:1180px){.dz-qa-grid{grid-template-columns:minmax(0,1fr) minmax(300px,380px);align-items:start}.dz-qa-side{position:sticky;top:70px}}
 .dz-qa-main{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px clamp(18px,2.4vw,30px);box-shadow:var(--shadow)}
-.dz-qa-count{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#7a5600;font-variant-numeric:tabular-nums}
+.dz-qa-count{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#7a5600;font-variant-numeric:lining-nums tabular-nums}
 .dz-qa-q{font:600 clamp(20px,1.7vw,25px)/1.3 Georgia,serif;margin:0 0 14px;max-width:60ch;outline:none}
 .dz-qa-lead{font-size:18px;line-height:1.5;font-weight:600;max-width:68ch}
-.dz-qa-lead.long{font-size:16.5px;font-weight:550}
+.dz-qa-lead.long{font-size:16.5px;font-weight:400;line-height:1.6}
 .dz-qa-rest p{max-width:72ch}
 .dz-qa-nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft)}
 .dz-qa-side .calm-fold{margin-top:0;border-top:0}
@@ -188,7 +196,7 @@ table.data td{font-variant-numeric:tabular-nums}
 .dz-qa-list li{max-width:none;border-bottom:1px solid var(--line-soft)}
 .dz-qa-list li:last-child{border-bottom:0}
 .dz-qa-list button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:28px 1fr;gap:6px;width:100%;padding:9px 12px;cursor:pointer;font-size:13.5px;line-height:1.4}
-.dz-qa-list button small{color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+.dz-qa-list button small{color:var(--muted);font-weight:700;font-variant-numeric:lining-nums tabular-nums}
 .dz-qa-list button:hover{background:#faf8f2}
 .dz-qa-list button.on{background:#fdf3d7;box-shadow:inset 4px 0 0 var(--gold);font-weight:600}
 .dz-qa-list button:focus-visible{outline:3px solid var(--gold);outline-offset:-3px}
@@ -202,7 +210,7 @@ table.data td{font-variant-numeric:tabular-nums}
 .dp-head h2{margin:0;font-size:19px;outline:none}
 .dp-body{padding:18px 20px 30px;overflow-y:auto;flex:1}
 .dp-label{margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#7a5600}
-.dp-value{font:600 30px/1.2 Georgia,serif;font-variant-numeric:tabular-nums;margin:4px 0 12px}
+.dp-value{font:600 30px/1.2 Georgia,serif;font-variant-numeric:lining-nums tabular-nums;margin:4px 0 12px}
 .dp-facts{margin:12px 0;font-size:14px}
 .dp-facts dd{font-weight:550}
 .dp-sub{margin:20px 0 8px;font-size:15px}
@@ -219,7 +227,7 @@ table.data td{font-variant-numeric:tabular-nums}
 /* ---- requirements */
 .dz-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
 .dz-count{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--card);border:1px solid var(--line);border-top:4px solid #9aa39d;border-radius:12px;padding:12px 14px;cursor:pointer;font:inherit;color:inherit;text-align:left}
-.dz-count b{font:600 28px/1.1 Georgia,serif;font-variant-numeric:tabular-nums}
+.dz-count b{font:600 28px/1.1 Georgia,serif;font-variant-numeric:lining-nums tabular-nums}
 .dz-count span{font-size:13px;color:var(--muted);font-weight:600}
 .dz-count[aria-pressed="true"]{background:#fdf3d7;border-color:var(--gold-deep)}
 .dz-count.s-done{border-top-color:#2f7f53}.dz-count.s-adapted{border-top-color:#3d6f99}.dz-count.s-needs-owner{border-top-color:#c98a0b}.dz-count.s-open{border-top-color:#b5562f}
@@ -228,7 +236,7 @@ table.data td{font-variant-numeric:tabular-nums}
 .dz-reqs{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:12px}
 .dz-req{display:grid;grid-template-columns:minmax(120px,170px) minmax(0,1fr) minmax(140px,190px);gap:6px 18px;padding:12px 16px;border-bottom:1px solid var(--line-soft);max-width:none}
 .dz-req:last-child{border-bottom:0}
-.dz-req-id b{display:block;font-variant-numeric:tabular-nums}
+.dz-req-id b{display:block;font-variant-numeric:lining-nums tabular-nums}
 .dz-req-id small,.dz-req-end small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
 .dz-req-text p{margin:0 0 4px;max-width:90ch}
 .dz-req-end{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
@@ -242,7 +250,10 @@ table.data td{font-variant-numeric:tabular-nums}
 .dz-audio .field.inline{margin:0}
 .dz-audio select{height:34px;border:1px solid #c9d3cc;border-radius:8px;padding:0 8px;background:#fff}
 .dz-audio .dz-audio-end{margin-left:auto;display:flex;gap:10px;align-items:center}
-.dz-transcript{flex-basis:100%;margin:4px 0 0;border-top:1px solid var(--line-soft)}
+.dz-transcript{margin:0;border-top:0}
+.dz-transcript>summary{padding:6px 2px}
+.dz-transcript[open]{flex-basis:100%;order:9;border-top:1px solid var(--line-soft)}
+.dz-audio .dz-status:empty{display:none}
 .dz-transcript p{font-size:14px}
 .dz-audio.speaking{border-color:var(--green);box-shadow:0 0 0 3px #1f443618}
 
@@ -255,11 +266,28 @@ table.data td{font-variant-numeric:tabular-nums}
 .dz-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .dz-list>li{max-width:none}
 .dz-kv{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13.5px;color:var(--muted);margin:4px 0 0}
-.dz-kv b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.dz-big{font:600 34px/1.1 Georgia,serif;font-variant-numeric:tabular-nums;margin:0}
+.dz-kv b{color:var(--ink);font-weight:600;font-variant-numeric:lining-nums tabular-nums}
+.dz-big{font:600 34px/1.1 Georgia,serif;font-variant-numeric:lining-nums tabular-nums;margin:0}
 .dz-ok{color:#1d6b38;font-weight:650}
 .dz-bad{color:var(--red);font-weight:650}
 .dz-file{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.dz-data>.lead{margin:0 0 16px}
+.card.dz-form{margin-top:0}
+.dz-block .dz-form .field,.dz-block .dz-form .dz-fieldset{max-width:640px}
+/* the register: text values wrap, so no column is squeezed and no header is cut off */
+.dz-reg th{white-space:normal}
+.dz-reg td.num{white-space:normal;min-width:9ch;max-width:24ch;overflow-wrap:anywhere}
+.dz-reg td:first-child{width:15ch}
+.dz-reg td:first-child code{overflow-wrap:anywhere}
+.dz-reg td:nth-child(2){min-width:20ch}
+.dz-reg td:nth-child(6){min-width:22ch}
+.dz-reg td:nth-child(7){white-space:nowrap}
+.dz-reg td:last-child .dz-row{flex-wrap:nowrap;gap:6px}
+/* a long source reads in two lines here; all of it is on hover and in the figure's panel */
+.dz-reg td:nth-child(6) small{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dz-req-text .calm-fold{margin-top:2px;border-top:0}
+.dz-req-text .calm-fold>summary{padding:2px 0;font-size:13px}
+.dz-req-text .calm-fold-body p{font-size:13.5px;color:var(--muted);margin:0}
 .dz-file input[type=file]{font:inherit;max-width:100%}
 .dz-fieldset{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0}
 .dz-fieldset legend{font-size:12.5px;font-weight:650;color:var(--muted);padding:0 4px}
@@ -284,7 +312,15 @@ table.data td{font-variant-numeric:tabular-nums}
   body.in-district .side-district .side-title{display:block}
   body.in-district .dz-who{margin:8px 4px 0;padding-top:8px}
   body.in-district .dz-who small{flex-basis:auto}
-  .dz-rule{max-height:32vh;overflow-y:auto;padding:9px 12px 9px 40px;background-position:12px 10px}
+  /* on a phone the rule is read once and scrolls away; held at the top it would cover a quarter of the screen */
+  .dz-rule{position:static;box-shadow:none;padding:9px 12px 9px 40px;background-position:12px 10px}
+  /* every tab stays in view: they wrap to a second line instead of sliding off the edge */
+  .dz-root .calm-tabs{flex-wrap:wrap;position:static}
+  .dz-root .calm-tab-row{flex-wrap:wrap;overflow:visible}
+  .dz-bar-fold{margin:0 0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 12px}
+  .dz-bar-fold>summary{padding:11px 2px;width:auto;font-size:13.5px;color:var(--ink)}
+  .dz-bar-fold>summary b{color:var(--green)}
+  .dz-bar-fold .dz-bar{border:0;padding:0 0 12px;margin:0;background:none}
   .dz-rule p{font-size:14px}
   .dz-bar{padding:10px 12px}
   .dz-bar-end{margin-left:0}

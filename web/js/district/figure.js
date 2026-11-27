@@ -47,10 +47,12 @@ export async function openFigure(ctx, id) {
     if (!p.aside.isConnected) return;
     const f = ans.figure || {};
     if (!ans.found && !f.id) { p.body.innerHTML = `<p class="notice">The register has no entry ${esc(id)} in this dataset. The figure is shown without a source.</p>`; return; }
-    const words = figureWords(f, null);
+    // the panel says the figure the way its card says it (105.19 acres on the card is 105.19 acres here)
+    const card = ctx.modules.flatMap((m) => m.cards || []).find((c) => c.format && c.format !== "range" && !((c.assumptions || []).length > 1) && (c.assumption === (f.id || id) || (c.assumptions || [])[0] === (f.id || id)));
+    const words = figureWords(f, null), shown = card ? figureWords(f, card.format).main : f.display || words.main;
     const rows = [
       ["Register entry", `<code>${esc(f.id || id)}</code>`],
-      ["Value and unit", esc(f.display || words.main) + (words.aside ? ` <span class="muted">(${esc(words.aside)})</span>` : "") +
+      ["Value and unit", esc(shown) + (words.aside ? ` <span class="muted">(${esc(words.aside)})</span>` : "") +
         (isNum(f.value_low) && isNum(f.value_high) && isNum(f.value) ? `<br><small>Range ${esc(valueIn(f.value_low, f.unit))} to ${esc(valueIn(f.value_high, f.unit))}</small>` : "")],
       ["Status", f.status ? `${esc(f.status)} <small class="muted">${esc(STATUS_HELP[f.status] || "")}</small>` : ""],
       ["Provenance", f.provenance ? `<span class="dz-prov">${esc(f.provenance)}</span>` : ""],
@@ -61,7 +63,7 @@ export async function openFigure(ctx, id) {
     if (f.superseded_by) rows.push(["Replaced by", `<button type="button" class="link" data-fig="${esc(f.superseded_by)}">${esc(f.superseded_by)}</button>`]);
     const used = (ans.used_by || []).map((u) => usedWords(u, ctx)).filter(Boolean);
     const notes = ans.notes || [];
-    p.body.innerHTML = `<p class="dp-label">${esc(f.label || id)}</p><p class="dp-value">${esc(f.display || words.main)}</p>
+    p.body.innerHTML = `<p class="dp-label">${esc(f.label || id)}</p><p class="dp-value">${esc(shown)}</p>
       ${f.description ? `<p>${esc(f.description)}</p>` : ""}
       <dl class="facts dp-facts">${rows.filter((r) => has(r[1])).map((r) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join("")}</dl>
       ${f.note ? `<p class="fine">Note: ${esc(f.note)}</p>` : ""}

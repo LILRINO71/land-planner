@@ -119,20 +119,23 @@ export function ndaPage(el, info, session, { done, signOut }) {
 let idleTimer = 0, warnBox = null, lastPing = 0;
 export function watchIdle(minutes, { onEnded }) {
   stopIdle();
-  const limit = Math.max(2, Number(minutes) || 30) * 60000;
+  // the server's idle time exactly (Settings allows 1 minute); the warning comes at max(idle - 1 minute, idle / 2)
+  const limit = Math.max(1, Number(minutes) || 30) * 60000;
+  const warnAt = Math.max(limit - 60000, limit / 2);
+  const pingAfter = Math.min(120000, limit / 2);
   const activity = () => {
-    // someone using the page is not idle: keep the session alive, at most once every two minutes
-    if (Date.now() - lastRequestAt() > 120000 && Date.now() - lastPing > 60000) { lastPing = Date.now(); dapi.session().catch(() => {}); }
+    // someone using the page is not idle: keep the session alive, at most once every two minutes (sooner for a short idle time)
+    if (Date.now() - lastRequestAt() > pingAfter && Date.now() - lastPing > Math.min(60000, limit / 4)) { lastPing = Date.now(); dapi.session().catch(() => {}); }
   };
   document.addEventListener("pointerdown", activity, true);
   document.addEventListener("keydown", activity, true);
   const tick = () => {
     const idle = Date.now() - lastRequestAt();
     if (idle >= limit) { hideWarn(); onEnded(); return; }
-    if (idle >= limit - 60000) showWarn(Math.max(1, Math.round((limit - idle) / 1000)));
+    if (idle >= warnAt) showWarn(Math.max(1, Math.round((limit - idle) / 1000)));
     else hideWarn();
   };
-  idleTimer = setInterval(tick, 5000);
+  idleTimer = setInterval(tick, limit <= 5 * 60000 ? 1000 : 5000);
   stopIdle.extra = () => { document.removeEventListener("pointerdown", activity, true); document.removeEventListener("keydown", activity, true); };
 }
 export function stopIdle() {
@@ -145,7 +148,7 @@ function showWarn(seconds) {
     warnBox.className = "dz-idle";
     warnBox.setAttribute("role", "alertdialog");
     warnBox.setAttribute("aria-labelledby", "dz-idle-t");
-    warnBox.innerHTML = `<p id="dz-idle-t"><b>You will be signed out in about a minute</b> because the workspace has not been used.</p><button class="btn primary" type="button">Stay signed in</button>`;
+    warnBox.innerHTML = `<p id="dz-idle-t"><b>You will be signed out ${seconds > 45 ? "in about a minute" : "in less than a minute"}</b> because the workspace has not been used.</p><button class="btn primary" type="button">Stay signed in</button>`;
     warnBox.querySelector("button").addEventListener("click", () => { dapi.session().catch(() => {}); hideWarn(); });
     document.body.appendChild(warnBox);
     warnBox.querySelector("button").focus({ preventScroll: true });

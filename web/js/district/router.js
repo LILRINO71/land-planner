@@ -25,6 +25,34 @@ const GROUPS = ["Overview", "Market", "Program", "Land strategy", "Advisory", "C
 const GROUP_CODES = { overview: "Overview", market: "Market", program: "Program", "land-strategy": "Land strategy", land_strategy: "Land strategy",
   advisory: "Advisory", context: "Context", corridor: "Context", data: "Data", requirements: "Requirements" };
 const AUDIENCES = [["internal", "Internal"], ["partner", "Partner"], ["city", "City"], ["consultant", "Consultant"]];
+// tools whose whole answer is left out for an audience (the server's RESULT_TAGS against AUDIENCE_DENY): not offered there
+const TOOLS_HIDDEN = { city: new Set(["landvalue", "proforma", "strategy"]) };
+export const toolShown = (id, audience) => !(TOOLS_HIDDEN[audience] || new Set()).has(id);
+
+// what the signed-in role may do with one dataset. The server lists only the datasets a role may read; a consultant
+// reads drafts and edits only their own submissions (kind "consultant"), never the baseline or a scenario.
+export function canDraft(ctx, ds) {
+  if (!ds || !ctx.can["dataset.read_draft"]) return false;
+  return ctx.session.audience === "internal" || ds.kind === "consultant";
+}
+export function canEdit(ctx, ds) {
+  if (!ds || !ctx.can["dataset.edit"] || ctx.viewAs) return false;
+  return ctx.session.audience === "internal" || ds.kind === "consultant";
+}
+// the versions of a dataset this role can open, as [value, words]
+export function versionsOf(ctx, ds) {
+  const pubs = ((ds && ds.published) || []).slice().reverse(), out = [];
+  if (pubs.length) out.push(["published", `Published (latest, v${(ds && ds.current) || pubs[0].version})`]);
+  if (canDraft(ctx, ds)) out.push(["draft", "Draft (working copy)"]);
+  if (ctx.session.audience === "internal" || canDraft(ctx, ds)) pubs.forEach((p) => out.push([String(p.version), `Version ${p.version}${p.note ? ": " + p.note : ""}`]));
+  return out;
+}
+// a calm page for a part this role cannot open, reached by its address
+export function notForRole(el, ctx, label) {
+  el.innerHTML = `<header class="page-head"><p class="kicker">${esc(ctx.project.name || "")}</p><h1>${esc(label)}</h1></header>
+    <div class="card dz-calm dz-closed" role="note"><h2>Not available for your role</h2><p>This part of the workspace is not shared with ${ctx.viewAs ? "the audience you are viewing as" : "your role"}. Everything in the menu is open to you.</p>
+    <p><a class="btn" href="${ctx.link([])}">Back to the project</a></p></div>`;
+}
 
 // which sidebar group a data-defined page sits in: its own `group`, else what its id and name say
 export function groupOf(m) {
@@ -88,7 +116,7 @@ export function side(route) {
     GROUPS.forEach((g) => {
       html += group(g, nav.modules.filter((m) => groupOf(m) === g).map((m) => item(link([nav.id, "m", m.id]), m.label || m.id, here === "m/" + m.id)));
     });
-    html += group("Tools", TOOLS.map(([id, label]) => item(link([nav.id, "tool", id]), label, here === "tool/" + id)));
+    html += group("Tools", TOOLS.filter(([id]) => toolShown(id, nav.audience)).map(([id, label]) => item(link([nav.id, "tool", id]), label, here === "tool/" + id)));
     const modsIn = (g) => nav.modules.filter((m) => groupOf(m) === g).map((m) => item(link([nav.id, "m", m.id]), m.label || m.id, here === "m/" + m.id));
     html += group("Data", modsIn("Data").concat(DATA_PARTS.filter((d) => !d[2] || nav.can[d[2]]).map(([id, label]) => item(link([nav.id, "data", id]), label, here === "data/" + id))));
     if (nav.checklist) html += group("Requirements", [item(link([nav.id, "requirements"]), "Requirements checklist", here === "requirements")].concat(modsIn("Requirements")));
@@ -166,7 +194,9 @@ async function context(p, route) {
   if (!ds) throw new DistrictError("This project has no datasets yet.", "not-found", 404);
   const published = (ds.published || []).length > 0;
   let v = q.v || (published ? "published" : "draft");
-  if (v === "draft" && !can["dataset.read_draft"] && published) v = "published";
+  const internalRole = session.audience === "internal";
+  const draftOk = !!can["dataset.read_draft"] && (internalRole || ds.kind === "consultant");
+  if (v !== "published" && !draftOk && published) v = "published";
   const data = await contentOf(p, ds.id, v, viewAs);
   const modules = (pd.modules && pd.modules.modules) || pd.modules || [];
   const sorted = [...modules].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
@@ -178,7 +208,7 @@ async function context(p, route) {
     go: (parts, extra) => go([p].concat(parts || []), extra), link: (parts, extra) => link([p].concat(parts || []), extra),
     refresh: () => { forget(p); window.dispatchEvent(new HashChangeEvent("hashchange")); },
   };
-  S.nav = { id: p, name: ctx.project.name || p, place: ctx.project.place, modules: sorted.filter((m) => m.id !== "requirements"), can,
+  S.nav = { id: p, name: ctx.project.name || p, place: ctx.project.place, modules: sorted.filter((m) => m.id !== "requirements"), can, audience: ctx.audience,
     // the checklist is for the team: shown when this audience gets its page, or to internal users
     checklist: sorted.some((m) => m.id === "requirements") || ctx.audience === "internal" };
   return ctx;
@@ -188,11 +218,8 @@ async function context(p, route) {
 
 export function viewBar(ctx, { exports = null } = {}) {
   const ds = ctx.datasets, kindWords = { baseline: "Baseline", scenario: "Scenario", consultant: "Consultant submission" };
-  const pubs = (ctx.datasetMeta.published || []).slice().reverse();
-  const versions = [];
-  if (pubs.length) versions.push(["published", `Published (latest, v${ctx.datasetMeta.current || pubs[0].version})`]);
-  if (ctx.can["dataset.read_draft"]) versions.push(["draft", "Draft (working copy)"]);
-  pubs.forEach((p) => versions.push([String(p.version), `Version ${p.version}${p.note ? ": " + p.note : ""}`]));
+  const versions = versionsOf(ctx, ctx.datasetMeta);
+  if (!versions.some(([v]) => String(v) === String(ctx.version))) versions.unshift([String(ctx.version), ctx.version === "draft" ? "Draft (working copy)" : `Version ${ctx.version}`]);
   const opt = (val, words, cur) => `<option value="${esc(val)}"${String(cur) === String(val) ? " selected" : ""}>${esc(words)}</option>`;
   let html = `<div class="dz-bar" role="group" aria-label="What you are looking at">
     <label class="field"><span>Dataset</span><select data-dz-ds>${ds.map((d) => opt(d.id, `${d.label || d.id} (${kindWords[d.kind] || d.kind})`, ctx.dataset)).join("")}</select></label>
@@ -204,6 +231,12 @@ export function viewBar(ctx, { exports = null } = {}) {
   }
   if (exports) html += `<div class="dz-bar-end">${exports}</div>`;
   html += "</div>";
+  // a phone gets the answer first: what is being looked at in one line, the pickers behind it
+  if (typeof window !== "undefined" && window.innerWidth <= 820) {
+    const d = ds.find((x) => x.id === ctx.dataset), vw = (versions.find(([v]) => String(v) === String(ctx.version)) || [, ctx.version])[1];
+    const who = (AUDIENCES.find((a) => a[0] === (ctx.viewAs || "internal")) || [, ""])[1];
+    html = `<details class="calm-fold dz-bar-fold"><summary><span>Viewing <b>${esc((d && (d.label || d.id)) || ctx.dataset)}</b>, ${esc(vw.replace(/ \(.*\)$/, "").toLowerCase())}${ctx.internal ? `, ${esc(who.toLowerCase())} view` : ""}</span></summary>${html}</details>`;
+  }
   if (ctx.viewAs) html += `<p class="dz-viewing" role="status">You are seeing exactly what the <b>${esc(AUDIENCES.find((a) => a[0] === ctx.viewAs)[1])}</b> audience gets. <a href="${ctx.link(ctx.route.rest.slice(1), { as: "" })}">Back to the internal view</a></p>`;
   if (ctx.version === "draft") html += `<p class="dz-viewing draft">This is the draft: the working copy, not yet published.</p>`;
   return html;
@@ -227,6 +260,7 @@ const notBuilt = (label) => `<header class="page-head"><p class="kicker">Tools</
 async function toolPage(el, ctx, name, alive) {
   const t = TOOLS.find((x) => x[0] === name);
   if (!t) { el.innerHTML = notBuilt("That tool"); return; }
+  if (!toolShown(name, ctx.audience)) { notForRole(el, ctx, t[1]); wireViewBar(el, ctx); return; }
   el.innerHTML = loading("Opening " + t[1].toLowerCase() + "…");
   let mod = null;
   try { mod = await import(`./tools/${name}.js`); } catch (e) { mod = null; }
@@ -260,8 +294,8 @@ function projectList(el, list) {
         <h2>${esc(p.name || p.id)}</h2><p class="muted">${esc(p.place || b.location || "")}</p>
         ${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}<span class="dz-open">Open the project</span></a>`;
     }).join("")}</div>
-    ${admin ? `<p class="fine foot">${list.some((p) => p.sample) ? "The Sample District holds invented figures for trying the workspace." : ""}
-      <button type="button" class="btn small" data-sample>${list.some((p) => p.sample) ? "Reinstall the Sample District" : "Add the Sample District"}</button></p>` : ""}`;
+    ${admin ? `<div class="dz-sample-row">${list.some((p) => p.sample) ? '<p class="fine">The Sample District holds invented figures for trying the workspace.</p>' : ""}
+      <button type="button" class="btn small" data-sample>${list.some((p) => p.sample) ? "Reinstall the Sample District" : "Add the Sample District"}</button></div>` : ""}`;
   const b = el.querySelector("[data-sample]");
   if (b) b.addEventListener("click", async () => {
     b.disabled = true;
@@ -338,7 +372,7 @@ export async function render(main, route, alive) {
     }
     if (kind === "m") { const m = await import("./module.js"); if (alive()) await m.render(el, ctx, part, alive); return; }
     if (kind === "tool") return toolPage(el, ctx, part, alive);
-    if (kind === "requirements") return lazyPage(el, ctx, "./requirements.js", part, alive, "Requirements");
+    if (kind === "requirements") return S.nav.checklist ? lazyPage(el, ctx, "./requirements.js", part, alive, "Requirements") : notForRole(el, ctx, "Requirements checklist");
     if (kind === "data") return lazyPage(el, ctx, "./data.js", part || "register", alive, "Data");
     if (kind === "admin") return lazyPage(el, ctx, "./admin.js", part || "users", alive, "Admin");
     el.innerHTML = `<header class="page-head"><h1>That page is not in the workspace</h1></header><p><a class="btn" href="${link([p])}">Back to the project</a></p>`;

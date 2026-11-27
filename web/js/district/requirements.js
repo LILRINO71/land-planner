@@ -5,7 +5,7 @@ import { exportButtons, wireExports } from "./exports.js";
 
 const STATUS = [["done", "Done"], ["adapted", "Adapted"], ["needs-owner", "Needs the owner"], ["not-applicable", "Not applicable"], ["open", "Open"]];
 const statusWords = (s) => (STATUS.find((x) => x[0] === s) || [s, s || "Open"])[1];
-const PAGE = 60;
+const PAGE = 25;
 
 export async function render(el, ctx) {
   const all = ((ctx.content.entities || {}).requirements || []).map((r) => ({ ...r, status: r.status || "open" }));
@@ -36,7 +36,7 @@ export async function render(el, ctx) {
     shown.textContent = rows.length === all.length ? `Showing all ${all.length}.` : `Showing ${rows.length} of ${all.length}.`;
     list.innerHTML = rows.slice(0, state.shown).map((r) => `<li class="dz-req s-${esc(r.status)}">
       <div class="dz-req-id"><b>${esc(r.id)}</b><small>${esc([r.source_document, r.section].filter(Boolean).join(" · "))}</small></div>
-      <div class="dz-req-text"><p>${esc(r.text || "")}</p>${r.note ? `<p class="fine">${esc(r.note)}</p>` : ""}</div>
+      <div class="dz-req-text"><p>${esc(r.text || "")}</p>${r.note ? `<details class="calm-fold"><summary>Show the note</summary><div class="calm-fold-body"><p>${esc(r.note)}</p></div></details>` : ""}</div>
       <div class="dz-req-end"><span class="dz-chip st-${esc(r.status)}">${esc(statusWords(r.status))}</span>${r.kind ? `<small>${esc(r.kind)}</small>` : ""}
         ${r.where_in_app && /^#\/districts\//.test(r.where_in_app) ? `<a href="${esc(r.where_in_app)}">Where it is met</a>` : ""}</div></li>`).join("") ||
       '<li class="dz-req none"><p class="muted">No requirement matches. Clear a filter to see more.</p></li>';

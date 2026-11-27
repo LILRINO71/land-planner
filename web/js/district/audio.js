@@ -32,15 +32,15 @@ export function mount(slot, ctx, parts) {
   slot.innerHTML = `<div class="dz-audio" role="region" aria-label="Spoken briefing">
     <b>Briefing</b>
     <button type="button" class="btn small primary" data-play>Play</button>
-    <button type="button" class="btn small" data-stop disabled>Stop</button>
+    <button type="button" class="btn small" data-stop hidden>Stop</button>
     <label class="field inline"><span>Speed</span><select data-speed>${SPEEDS.map((s) => `<option value="${s}"${s === speed ? " selected" : ""}>${s}x</option>`).join("")}</select></label>
     <span class="dz-status" role="status" aria-live="polite"></span>
-    <span class="dz-audio-end"><a href="${ctx.link(["tool", "ask"])}">Ask the package</a></span>
-    <details class="calm-fold dz-transcript"><summary>Show the written briefing</summary><div class="calm-fold-body">${paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></details></div>`;
+    <details class="calm-fold dz-transcript"><summary>Show the written briefing</summary><div class="calm-fold-body">${paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></details>
+    <span class="dz-audio-end"><a href="${ctx.link(["tool", "ask"])}">Ask the package</a></span></div>`;
   const box = slot.firstElementChild, play = box.querySelector("[data-play]"), stop = box.querySelector("[data-stop]"), status = box.querySelector(".dz-status");
   const paint = () => {
     play.textContent = state === "playing" ? "Pause" : state === "paused" ? "Resume" : "Play";
-    stop.disabled = state === "stopped";
+    stop.hidden = state === "stopped";
     box.classList.toggle("speaking", state === "playing");
     status.textContent = state === "stopped" ? "" : `Part ${Math.min(i + 1, paras.length)} of ${paras.length}`;
   };

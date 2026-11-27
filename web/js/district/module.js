@@ -129,12 +129,19 @@ const chartBox = (spec, k) => `<div class="dz-chart-box" data-chart="${k}"></div
 
 // ---------------------------------------------------------------- questions and answers, one at a time
 
+// the figures a text cites: the first few as buttons, the rest behind one fold
+const CITES_SHOWN = 4;
+function citeChips(ids, look) {
+  const chip = (id) => { const f = look.assumptions[id]; return `<button type="button" class="dz-cite" data-fig="${esc(id)}">${esc(f ? `${f.label}: ${figureWords(f).main}` : id)}</button>`; };
+  const list = ids || [];
+  if (list.length <= CITES_SHOWN + 1) return list.map(chip).join("");
+  const rest = list.slice(CITES_SHOWN);
+  return list.slice(0, CITES_SHOWN).map(chip).join("") +
+    `<details class="calm-fold dz-cites-more"><summary>Show ${rest.length} more ${rest.length === 1 ? "figure" : "figures"}</summary><div class="calm-fold-body">${rest.map(chip).join("")}</div></details>`;
+}
 function qaHtml(s, i, look) {
   const items = s.items || [], it = items[i] || {}, a = leadOf(it.answer || "");
-  const cites = (it.cites || []).map((id) => {
-    const f = look.assumptions[id];
-    return `<button type="button" class="dz-cite" data-fig="${esc(id)}">${esc(f ? `${f.label}: ${figureWords(f).main}` : id)}</button>`;
-  }).join("");
+  const cites = citeChips(it.cites, look);
   return `<div class="dz-qa-main" aria-live="polite">
       <p class="dz-qa-count">Question ${i + 1} of ${items.length}</p>
       <h3 class="dz-qa-q" tabindex="-1">${esc(it.question || "")}</h3>
@@ -183,6 +190,7 @@ export async function render(el, ctx, moduleId, alive) {
     return { c, f, id: ids[0] || "", ids };
   });
   const tables = (m.tables || []).map((t) => ({ t, ...entityTable(t, content, look) })).filter((x) => x.rows.length);
+  const pageTags = new Set((m.source_tags || []).map(norm));
   const narratives = sections.filter((s) => s.kind === "narrative"), sTables = sections.filter((s) => s.kind === "table" && (s.rows || []).length);
   const qas = sections.filter((s) => s.kind === "qa" && (s.items || []).length);
 
@@ -215,7 +223,7 @@ export async function render(el, ctx, moduleId, alive) {
         <b class="dz-kpi-value${size}" data-count="${esc(main)}"${w.exact ? ` title="${esc(w.exact)}"` : ""}>${esc(main)}</b>
         ${aside ? `<span class="dz-kpi-aside">${esc(aside)}</span>` : ""}
         ${desc ? `<span class="dz-kpi-desc">${esc(desc)}</span>` : ""}
-        <span class="dz-kpi-foot">${sourceTags(c.source_tags)}${f && f.conflict ? '<span class="dz-chip warn">Sources disagree</span>' : ""}${f && f.status === "Superseded" ? '<span class="dz-chip warn">Superseded</span>' : ""}<span class="dz-kpi-id">${esc(ids.join(", "))}</span></span>
+        <span class="dz-kpi-foot">${sourceTags((c.source_tags || []).filter((t) => !pageTags.has(norm(t))))}${f && f.conflict ? '<span class="dz-chip warn">Sources disagree</span>' : ""}${f && f.status === "Superseded" ? '<span class="dz-chip warn">Superseded</span>' : ""}<span class="dz-kpi-id">${esc(ids.join(", "))}</span></span>
       </button>`;
     }).join("")}</div>` : ""}
     ${narratives.map((s) => narrativeHtml(s, look)).join("")}
@@ -247,7 +255,7 @@ export async function render(el, ctx, moduleId, alive) {
   const qaIndex = new Map(qas.map((s) => [s.id, 0]));
   if (qas.length) parts.push(["questions", qas.length === 1 ? (qas[0].heading || "Questions") : "Questions and answers", qas.map((s) => `
     <section class="dz-block dz-qa" data-qa="${esc(s.id)}">
-      <div class="dz-block-head"><h2>${esc(s.heading || "Questions and answers")}</h2><span class="muted">${s.items.length} ${s.items.length === 1 ? "question" : "questions"}</span></div>
+      <div class="dz-block-head"><h2>${esc(s.heading || "Questions and answers")}</h2>${(s.heading || "").includes(`(${s.items.length})`) ? "" : `<span class="muted">${s.items.length} ${s.items.length === 1 ? "question" : "questions"}</span>`}</div>
       <div class="dz-qa-grid"><div class="dz-qa-cur">${qaHtml(s, 0, look)}</div>
         <nav class="dz-qa-side" aria-label="All questions">${fold("qa-" + s.id, `All ${s.items.length} questions`, `<div data-qa-list>${qaListHtml(s, 0)}</div>`, openFolds, "dz-qa-fold")}</nav></div>
     </section>`).join("")]);
@@ -345,10 +353,7 @@ function narrativeHtml(s, look) {
 function citesLine(s, look) {
   const c = s.cites || [];
   if (!c.length) return s.ai_assisted ? '<p class="fine">AI-assisted text that cites no register entry.</p>' : "";
-  return `<div class="dz-cites"><span>${s.ai_assisted ? "AI-assisted; cites" : "Figures it cites"}</span>${c.map((id) => {
-    const f = look.assumptions[id];
-    return `<button type="button" class="dz-cite" data-fig="${esc(id)}">${esc(f ? `${f.label}: ${figureWords(f).main}` : id)}</button>`;
-  }).join("")}</div>`;
+  return `<div class="dz-cites"><span>${s.ai_assisted ? "AI-assisted; cites" : "Figures it cites"}</span>${citeChips(c, look)}</div>`;
 }
 function emptySentence(m, ctx) {
   if (ctx.viewAs) return `For this audience the ${m.label || m.id} page has nothing to show: its figures are not shared with them.`;

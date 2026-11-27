@@ -1,7 +1,7 @@
 // The data area: the assumptions register, import, compare, documents, map layers, data sources, notes and checks.
 // One part at a time (the sub-navigation at the top), each answering first with its headline.
 import { esc, isNum, n0, nFix, valueIn, figureWords, tableHtml, wireTables, panel, say, chip, when, day, fieldWords, cell, lookupsOf } from "./ui.js";
-import { viewBar, wireViewBar, DATA_PARTS, forget } from "./router.js";
+import { viewBar, wireViewBar, DATA_PARTS, forget, notForRole, canEdit, versionsOf } from "./router.js";
 import { openFigure } from "./figure.js";
 import { exportButtons, wireExports } from "./exports.js";
 import { debounce, loading, toast } from "../util.js";
@@ -17,6 +17,9 @@ const fileOf = (form) => { const f = form.querySelector("input[type=file]"); ret
 
 export async function render(el, ctx, part, alive) {
   const parts = DATA_PARTS.filter((d) => !d[2] || ctx.can[d[2]]);
+  // a part this role lacks, reached by its address, says so (the sidebar uses the same rule)
+  const asked = DATA_PARTS.find((d) => d[0] === part);
+  if (asked && !parts.includes(asked)) { notForRole(el, ctx, asked[1]); return; }
   const cur = parts.find((p) => p[0] === part) || parts[0];
   el.innerHTML = `<header class="page-head"><p class="kicker">${esc(ctx.project.name || "")} · Data</p><h1>${esc(cur[1])}</h1></header>
     <nav class="dz-sub-nav" aria-label="Data area">${parts.map(([id, w]) => `<a href="${ctx.link(["data", id])}"${id === cur[0] ? ' class="on" aria-current="page"' : ""}>${esc(w)}</a>`).join("")}</nav>
@@ -32,7 +35,7 @@ export async function render(el, ctx, part, alive) {
 
 async function register(box, ctx) {
   const all = (ctx.content.entities || {}).assumptions || [];
-  const editable = ctx.can["dataset.edit"] && !ctx.viewAs;
+  const editable = canEdit(ctx, ctx.datasetMeta);
   const st = { q: "", status: "", prov: "", conflict: "" };
   box.innerHTML = `${viewBar(ctx, { exports: exportButtons(ctx, { entity: "assumptions" }) })}
     <p class="lead">${all.length} figures in the register${all.filter((a) => a.conflict).length ? `, ${all.filter((a) => a.conflict).length} with sources that disagree` : ""}.
@@ -51,13 +54,13 @@ async function register(box, ctx) {
       (!st.conflict || (st.conflict === "yes") === !!a.conflict) && (!q || [a.id, a.label, a.source_doc, a.source_model, a.owner].join(" ").toLowerCase().includes(q)));
     shown.textContent = rows.length === all.length ? `Showing all ${all.length}.` : `Showing ${rows.length} of ${all.length}.`;
     const columns = [{ label: "Id" }, { label: "Figure" }, { label: "Value", num: true }, { label: "Status" }, { label: "Provenance" }, { label: "Source" }, { label: "As of" }, { label: "" }];
-    list.innerHTML = rows.length ? tableHtml({ caption: "Assumptions register", foldAfter: 25, columns, rows: rows.map((a) => {
+    list.innerHTML = rows.length ? tableHtml({ caption: "Assumptions register", foldAfter: 25, cls: "dz-reg", columns, rows: rows.map((a) => {
       const w = figureWords(a);
       return [{ html: `<button type="button" class="link" data-fig="${esc(a.id)}"><code>${esc(a.id)}</code></button>`, sort: a.id },
         { html: esc(a.label) + (a.conflict ? ' <span class="dz-chip warn">Sources disagree</span>' : ""), sort: a.label },
         { html: esc(w.main) + (w.aside ? `<small>${esc(w.aside)}</small>` : ""), sort: isNum(a.value) ? Number(a.value) : "" },
         { html: esc(a.status || ""), sort: a.status }, { html: `<small>${esc(a.provenance || "")}</small>`, sort: a.provenance },
-        { html: `<small>${esc([a.source_doc, a.source_model].filter(Boolean).join(" · "))}</small>`, sort: a.source_doc },
+        { html: `<small title="${esc([a.source_doc, a.source_model].filter(Boolean).join(" · "))}">${esc([a.source_doc, a.source_model].filter(Boolean).join(" · "))}</small>`, sort: a.source_doc },
         { html: esc(day(a.as_of)), sort: a.as_of || "" },
         { html: `<span class="dz-row">${editable ? `<button type="button" class="btn small" data-edit="${esc(a.id)}">Edit</button>` : ""}${ctx.can["revisions.read"] ? `<button type="button" class="btn small" data-hist="${esc(a.id)}">History</button>` : ""}</span>`, sort: "" }];
     }) }) : '<div class="card dz-calm"><p>No figure matches. Clear a filter to see more.</p></div>';
@@ -174,7 +177,7 @@ function showPreview(out, pv, ctx, targets) {
       ${(r.missing_columns || []).length ? `<p>Columns missing: ${r.missing_columns.map((c) => chip(c, "warn")).join(" ")}</p>` : ""}
       ${(r.rejected || []).length ? `<details class="calm-fold" open><summary>Why ${r.rejected.length} ${r.rejected.length === 1 ? "row was" : "rows were"} refused</summary><div class="calm-fold-body">${tableHtml({ caption: "Refused rows", columns: [{ label: "Row", num: true }, { label: "Why" }],
         rows: r.rejected.map((x) => [{ html: esc(x.row), sort: x.row }, { html: esc((x.errors || []).join("; ")), sort: "" }]) })}</div></details>` : ""}
-      ${(r.sample || []).length ? `<details class="calm-fold"><summary>Show the first ${r.sample.length} clean rows</summary><div class="calm-fold-body">${sampleTable(name, r.sample)}</div></details>` : ""}`).join("")}
+      ${(r.sample || []).length ? `<details class="calm-fold"><summary>${r.sample.length === 1 ? "Show the clean row" : `Show the first ${r.sample.length} clean rows`}</summary><div class="calm-fold-body">${sampleTable(name, r.sample)}</div></details>` : ""}`).join("")}
     ${pv.can_commit ? `<form class="dz-form" data-commit style="margin-top:18px;border-top:1px solid var(--line-soft);padding-top:14px">
       <h2>3. Commit</h2>
       <div class="dz-grid2"><label class="field"><span>Put it into</span><select name="target">${opts(targets)}</select></label>
@@ -217,16 +220,30 @@ async function compare(box, ctx, alive) {
   const q = Object.fromEntries((location.hash.split("?")[1] || "").split("&").filter(Boolean).map((kv) => kv.split("=").map(decodeURIComponent)));
   const others = ctx.datasets.filter((d) => d.id !== "baseline");
   const thr = (ctx.project.settings && ctx.project.settings.compare_threshold_pct) || 10;
-  const st = { base: "baseline", base_version: "published", other: q.other || (others[0] && others[0].id) || "baseline", other_version: "draft", threshold: thr };
+  const byId = (id) => ctx.datasets.find((d) => d.id === id);
+  // the versions of one dataset this role can open, short words for the picker
+  const vOpts = (id) => versionsOf(ctx, byId(id)).map(([v, w]) => [v, w.replace(/ \(latest, v\d+\)$/, "").replace(/ \(working copy\)$/, "")]);
+  const pick = (id, want) => { const vs = vOpts(id).map((x) => x[0]); return vs.includes(want) ? want : vs[0] || "published"; };
+  const baseId = byId("baseline") ? "baseline" : (ctx.datasets[0] && ctx.datasets[0].id) || "baseline";
+  const otherId = q.other && byId(q.other) ? q.other : (others[0] && others[0].id) || baseId;
+  const st = { base: baseId, base_version: pick(baseId, "published"), other: otherId, other_version: pick(otherId, "draft"), threshold: thr };
+  if (st.other === st.base && st.other_version === st.base_version) st.base_version = pick(baseId, vOpts(baseId).map((x) => x[0]).find((v) => v !== st.other_version) || st.base_version);
   const dsOpts = ctx.datasets.map((d) => [d.id, d.label || d.id]);
   box.innerHTML = `<form class="card filters dz-filters" data-cmp>
       <label class="field"><span>Compare</span><select name="base">${opts(dsOpts, st.base)}</select></label>
-      <label class="field"><span>Its version</span><select name="base_version">${opts([["published", "Published"], ["draft", "Draft"]], st.base_version)}</select></label>
+      <label class="field"><span>Its version</span><select name="base_version">${opts(vOpts(st.base), st.base_version)}</select></label>
       <label class="field"><span>With</span><select name="other">${opts(dsOpts, st.other)}</select></label>
-      <label class="field"><span>Its version</span><select name="other_version">${opts([["draft", "Draft"], ["published", "Published"]], st.other_version)}</select></label>
+      <label class="field"><span>Its version</span><select name="other_version">${opts(vOpts(st.other), st.other_version)}</select></label>
       <label class="field"><span>Flag changes above (%)</span><input name="threshold" type="number" min="0" max="1000" step="1" value="${esc(st.threshold)}" style="width:110px"></label>
       <button class="btn primary" type="submit">Compare</button></form><div data-out></div>`;
   const form = box.querySelector("[data-cmp]"), out = box.querySelector("[data-out]");
+  // a new dataset offers only its own readable versions
+  form.addEventListener("change", (e) => {
+    const n = e.target.name === "base" ? "base_version" : e.target.name === "other" ? "other_version" : "";
+    if (!n) return;
+    const sel = form.elements[n], want = sel.value;
+    sel.innerHTML = opts(vOpts(e.target.value), pick(e.target.value, want));
+  });
   const run = async () => {
     const f = new FormData(form); Object.keys(st).forEach((k) => { st[k] = f.get(k); });
     out.innerHTML = loading("Comparing…");
@@ -241,8 +258,11 @@ async function compare(box, ctx, alive) {
         rows: list.map((x) => [{ html: esc(fieldWords(x.ent)), sort: x.ent }, { html: x.ent === "assumptions" ? `<button type="button" class="link" data-fig="${esc(x.id)}">${esc(x.id)}</button>` : esc(x.id), sort: x.id },
           { html: esc(fieldWords(x.field)), sort: x.field }, { html: esc(fmt(x.base)), sort: isNum(x.base) ? x.base : "" }, { html: esc(fmt(x.other)), sort: isNum(x.other) ? x.other : "" },
           { html: x.change_pct === null || x.change_pct === undefined ? (isNum(x.change) ? "from zero" : "changed") : `<span class="${x.change_pct >= 0 ? "dz-diff-up" : "dz-diff-down"}">${x.change_pct >= 0 ? "+" : ""}${nFix(x.change_pct, 1)}%</span>`, sort: isNum(x.change_pct) ? Math.abs(x.change_pct) : 1e9 }]) });
-      out.innerHTML = `<p class="lead"><b>${n0(c.flagged || flagged.length)}</b> ${flagged.length === 1 ? "change is" : "changes are"} above ${esc(c.threshold_pct ?? st.threshold)}%, out of ${n0(c.changed || changed.length)} changed ${changed.length === 1 ? "value" : "values"}${adds.length ? `, ${adds.length} added` : ""}${gone.length ? `, ${gone.length} removed` : ""}.</p>
-        ${flagged.length ? `<section class="dz-block"><h2>Above the threshold</h2>${tbl(flagged, "Changes above the threshold")}</section>` : '<div class="card dz-calm"><p>No change is above the threshold.</p></div>'}
+      const same = !changed.length && !adds.length && !gone.length;
+      const thrWords = esc(c.threshold_pct ?? st.threshold);
+      out.innerHTML = same ? `<div class="card dz-calm" role="status"><h2>No differences</h2><p>Every value is the same in both. Pick another dataset or version above to compare.</p></div>`
+        : `<p class="lead">${changed.length ? `<b>${n0(c.flagged || flagged.length)}</b> of ${n0(c.changed || changed.length)} changed ${changed.length === 1 ? "value moves" : "values move"} more than ${thrWords}%` : "No value changed"}${adds.length ? `; ${n0(adds.length)} ${adds.length === 1 ? "record" : "records"} added` : ""}${gone.length ? `; ${n0(gone.length)} ${gone.length === 1 ? "record" : "records"} removed` : ""}.</p>
+        ${flagged.length ? `<section class="dz-block"><h2>Above the threshold</h2>${tbl(flagged, "Changes above the threshold")}</section>` : changed.length ? `<div class="card dz-calm"><p>None of the changes moves more than ${thrWords}%. They are listed below.</p></div>` : ""}
         ${rest.length ? `<details class="calm-fold"><summary>Show the ${rest.length} smaller ${rest.length === 1 ? "change" : "changes"}</summary><div class="calm-fold-body">${tbl(rest, "Smaller changes")}</div></details>` : ""}
         ${adds.length ? `<details class="calm-fold"><summary>Show the ${adds.length} added ${adds.length === 1 ? "record" : "records"}</summary><div class="calm-fold-body"><ul class="plain">${adds.map(([e, id]) => `<li>${esc(fieldWords(e))}: ${esc(id)}</li>`).join("")}</ul></div></details>` : ""}
         ${gone.length ? `<details class="calm-fold"><summary>Show the ${gone.length} removed ${gone.length === 1 ? "record" : "records"}</summary><div class="calm-fold-body"><ul class="plain">${gone.map(([e, id]) => `<li>${esc(fieldWords(e))}: ${esc(id)}</li>`).join("")}</ul></div></details>` : ""}`;

@@ -101,10 +101,13 @@ export function missingHtml(resp, { title = "What the package does not give yet"
     ${fold("miss-start", "Show the starting figures used", `<ul class="tl-mini">${g.starting.map((x) => `<li>${esc(cap(x.label))}: <b>${esc(x.value)}</b> <code>${esc(x.id)}</code></li>`).join("")}</ul>`, open)}</li>`);
   if (!items.length) return "";
   const n = (resp.missing || []).length;
-  return `<section class="tl-missing" aria-labelledby="tl-miss-h">
-    <h2 id="tl-miss-h">${esc(title)}</h2>
+  // the answer comes first: one line says how much is missing, the list waits behind a fold
+  const key = "miss-all-" + title.toLowerCase().replace(/[^a-z]+/g, "-").slice(0, 30), hid = "tl-" + key;
+  const list = `<ul class="tl-missing-list">${items.join("")}</ul>`;
+  return `<section class="tl-missing" aria-labelledby="${hid}">
+    <h2 id="${hid}">${esc(title)}</h2>
     <p class="tl-missing-intro">${intro ? esc(intro) : `The calculation runs on what the package holds. ${n === 1 ? "One input is" : n + " inputs are"} not there yet; nothing is guessed in their place.`}</p>
-    <ul class="tl-missing-list">${items.join("")}</ul></section>`;
+    ${items.length > 1 ? fold(key, "Show what is missing", list, open, "tl-missing-fold") : list}</section>`;
 }
 
 // ---------------------------------------------------------------- what an audience does not see
