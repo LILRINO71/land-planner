@@ -3,7 +3,7 @@
 // or not known yet, with what each needs).
 import {
   esc, isNum, nFix, fold, compute, page, leadHtml, missingHtml, hiddenHtml, isOutside, disclaimerHtml, calmBox, smallTable, seg, wireSegKeys,
-  num, usd, usdM, pct, int, ratio, NK, entities, useLabel, phaseLabel, guarded, loadingHtml, inputSpec, sum,
+  num, usd, usdM, pct, int, ratio, noun, NK, entities, useLabel, phaseLabel, guarded, loadingHtml, inputSpec, sum,
 } from "./common.js";
 
 const CASES = [["low", "Low"], ["base", "Base"], ["high", "High"]];
@@ -53,13 +53,13 @@ function draw(el, ctx, resp) {
   if (base && isNum(base.metrics.units_total)) {
     const t = lbh.table || {};
     lead = leadHtml({
-      sentence: `The base case delivers ${num(reg, int(base.metrics.units_total) + " homes", { label: "Homes, base case", value: int(base.metrics.units_total), how: [lbh.formula || ""] })}${t.rlv_total_usd && !outside && isNum(t.rlv_total_usd.low) && isNum(t.rlv_total_usd.high) ? `; residual land value runs from ${num(reg, usdM(t.rlv_total_usd.low), { label: "Residual land value, low case", value: usd(t.rlv_total_usd.low), how: [lbh.formula || ""] })} in the low case to ${num(reg, usdM(t.rlv_total_usd.high), { label: "Residual land value, high case", value: usd(t.rlv_total_usd.high), how: [lbh.formula || ""] })} in the high case` : ""}.`,
+      sentence: `The base case delivers ${num(reg, int(base.metrics.units_total) + " " + noun(base.metrics.units_total, "home", "homes"), { label: "Homes, base case", value: int(base.metrics.units_total), how: [lbh.formula || ""] })}${t.rlv_total_usd && !outside && isNum(t.rlv_total_usd.low) && isNum(t.rlv_total_usd.high) ? `; residual land value runs from ${num(reg, usdM(t.rlv_total_usd.low), { label: "Residual land value, low case", value: usd(t.rlv_total_usd.low), how: [lbh.formula || ""] })} in the low case to ${num(reg, usdM(t.rlv_total_usd.high), { label: "Residual land value, high case", value: usd(t.rlv_total_usd.high), how: [lbh.formula || ""] })} in the high case` : ""}.`,
       big: int(base.metrics.units_total), bigLabel: "Homes, base case", bigSrc: reg.add({ label: "Homes, base case", value: int(base.metrics.units_total), how: [lbh.formula || ""] }),
       aside: `${nPhases} ${nPhases === 1 ? "phase" : "phases"} in the package. The low and high cases move rents, costs, cap rates and required returns together.`,
     });
   } else if (lines.length) {
     lead = leadHtml({
-      sentence: `The package lays the program out in ${nPhases} ${nPhases === 1 ? "phase" : "phases"}: ${homes ? `<b>${esc(int(homes))} homes</b>` : ""}${homes && sf ? " and " : ""}${sf ? `<b>${esc(int(sf))} SF</b> of buildings` : ""}${ac ? ` on ${esc(nFix(ac, 1))} acres` : ""} in the base case, as the phases state them.`,
+      sentence: `The package lays the program out in ${nPhases} ${nPhases === 1 ? "phase" : "phases"}: ${homes ? `<b>${esc(int(homes))} ${noun(homes, "home", "homes")}</b>` : ""}${homes && sf ? " and " : ""}${sf ? `<b>${esc(int(sf))} SF</b> of buildings` : ""}${ac ? ` on ${esc(nFix(ac, 1))} acres` : ""} in the base case, as the phases state them.`,
       big: homes ? int(homes) : sf ? int(sf) : "", bigLabel: homes ? "Homes in the phased base case" : "Building SF in the phased base case",
       aside: "The full buildout is shown on its own: it is the whole plan, not a phase added to the others.",
     });

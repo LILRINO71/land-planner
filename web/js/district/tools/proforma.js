@@ -3,7 +3,7 @@
 // Y"; and the one-at-a-time sensitivity tornado.
 import {
   esc, isNum, nFix, fold, compute, page, leadHtml, missingHtml, hiddenHtml, isOutside, disclaimerHtml, calmBox, smallTable, seg, wireSegKeys,
-  num, usd, usdM, pct, ratio, int, NK, entities, guarded, loadingHtml, inputSpec, useLabel,
+  num, usd, usdM, pct, ratio, int, noun, NK, entities, guarded, loadingHtml, inputSpec, useLabel,
 } from "./common.js";
 
 const METRICS = [["irr_pct", "IRR"], ["yoc_pct", "Yield on cost"], ["npv_usd", "NPV"], ["equity_multiple", "Equity multiple"]];
@@ -51,7 +51,7 @@ function draw(el, ctx, resp, state, rerun) {
   const ft = (full && full.totals) || {}, fy = (full && full.yield_on_cost) || {}, fi = (full && full.irr) || {};
   const modelled = [full].concat(phases).some((ph) => ph && ph.totals && ["total_cost_incl_land_usd", "stabilized_noi_usd_yr", "net_sales_revenue_usd"].some((k) => Number(ph.totals[k]) > 0));
   if (!modelled) {
-    lead = leadHtml({ sentence: phases.length ? `The ${phases.length} phases are laid out, but their returns cannot be worked out yet: the package gives no development costs or income for their uses.` : "Phase returns cannot be worked out yet: the package does not hold the finance inputs they need.", aside: "The list below says what is missing. Nothing is guessed in its place." });
+    lead = leadHtml({ sentence: phases.length ? `${phases.length === 1 ? "The one phase is" : `The ${phases.length} phases are`} laid out, but ${phases.length === 1 ? "its returns cannot" : "their returns cannot"} be worked out yet: the package gives no development costs or income for their uses.` : "Phase returns cannot be worked out yet: the package does not hold the finance inputs they need.", aside: "The list below says what is missing. Nothing is guessed in its place." });
   } else if (!outside && isNum(fy.yoc_pct)) {
     const meets = fy.meets_hurdle;
     lead = leadHtml({
@@ -100,7 +100,7 @@ function draw(el, ctx, resp, state, rerun) {
     const a = (phases[0] && phases[0].assumptions) || {};
     return `<div class="tl-cards">${full ? phaseCard(full, "Full buildout", true) : ""}${phases.map((ph) => phaseCard(ph, ph.label || "Phase " + ph.phase_id, false)).join("")}</div>
       ${lines}
-      <p class="fine">Settings used: build ${esc(a.build_years ?? NK)} years, lease-up ${esc(a.lease_up_months ?? NK)} months, held ${esc(a.hold_years ?? NK)} years after stabilisation, NOI growth ${esc(pct(a.noi_growth_pct, 1))} a year, discount rate ${esc(pct(a.discount_rate_pct, 1))}.</p>`;
+      <p class="fine">Settings used: build ${esc(a.build_years ?? NK)} ${noun(a.build_years, "year", "years")}, lease-up ${esc(a.lease_up_months ?? NK)} ${noun(a.lease_up_months, "month", "months")}, held ${esc(a.hold_years ?? NK)} ${noun(a.hold_years, "year", "years")} after stabilisation, NOI growth ${esc(pct(a.noi_growth_pct, 1))} a year, discount rate ${esc(pct(a.discount_rate_pct, 1))}.</p>`;
   };
 
   // ---- part 2: the dated cash flow

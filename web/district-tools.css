@@ -204,8 +204,6 @@
 @media(prefers-reduced-motion:reduce){body:not(.motion-on) .tl-range-dot{transition:none}}
 .tl-sub{font-size:16.5px;margin:20px 0 8px}
 .tl-box h3 small{font:400 12.5px "Segoe UI",system-ui,sans-serif}
-/* a chart's hidden screen-reader table is absolutely placed; keep it from widening the page on a phone */
-.tl-chart{position:relative;overflow:hidden}
 .tl-table tr.flag th[scope=row]{background:#fff4e6}
 .tl-table tr.total th[scope=row]{background:#faf8f2}
 .tl-table th[scope=row] .link{white-space:nowrap}

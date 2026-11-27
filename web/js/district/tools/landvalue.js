@@ -3,7 +3,7 @@
 // calculation, not an appraisal.
 import {
   esc, isNum, nFix, fold, compute, page, leadHtml, missingHtml, hiddenHtml, isOutside, disclaimerHtml, calmBox, smallTable, seg, wireSegKeys,
-  num, usd, usdM, pct, acres, int, NK, SF_PER_ACRE, rowOf, useLabel, entities, inputSpec, inputValue, debounce, guarded, loadingHtml, problemHtml,
+  num, usd, usdM, pct, acres, int, plural, noun, NK, SF_PER_ACRE, rowOf, useLabel, entities, inputSpec, inputValue, debounce, guarded, loadingHtml, problemHtml,
 } from "./common.js";
 
 const SCN = [["low", "Low"], ["base", "Base"], ["high", "High"]];
@@ -120,15 +120,15 @@ function draw(el, ctx, resp, state, rerun) {
   const total = src && src.totals_usd ? src.totals_usd.base : null;
   let lead;
   if (blocks.length && stated) {
-    const both = comp && isNum(comp.difference_pct);
+    const both = comp && comp.compared > 0 && isNum(comp.difference_pct);
     const allSpec = { label: "All blocks at their stated prices", value: usd(blocksTotal), how: ["Each block: stated price per net SF x its net SF; a range is priced at its middle."], inputs: blockInputs };
     lead = leadHtml({
-      sentence: `The ${blocks.length} blocks the package prices add up to ${num(reg, usdM(blocksTotal), allSpec)} at their stated prices.${both ? ` Priced both ways, the stated prices are ${num(reg, pct(Math.abs(comp.difference_pct), 0), { label: "Stated against residual, in total", value: usd(comp.difference_usd), how: [comp.note || "", `Stated ${usd(comp.stated_total_usd)} against residual ${usd(comp.residual_total_usd)} for the ${comp.compared} pieces priced both ways.`] })} ${comp.difference_pct < 0 ? "below" : "above"} the residual value the land use library supports.` : ""}`,
+      sentence: `${blocks.length === 1 ? "The one block" : `The ${blocks.length} blocks`} the package prices ${blocks.length === 1 ? "adds" : "add"} up to ${num(reg, usdM(blocksTotal), allSpec)} at their stated prices.${both ? ` Priced both ways, the stated prices are ${num(reg, pct(Math.abs(comp.difference_pct), 0), { label: "Stated against residual, in total", value: usd(comp.difference_usd), how: [comp.note || "", `Stated ${usd(comp.stated_total_usd)} against residual ${usd(comp.residual_total_usd)} for the ${plural(comp.compared, "piece")} priced both ways.`] })} ${comp.difference_pct < 0 ? "below" : "above"} the residual value the land use library supports.` : ""}`,
       big: usdM(blocksTotal), bigLabel: "All blocks, stated prices", bigSrc: reg.add(allSpec),
       aside: "An economic calculation, not an appraisal. A stated price is the package's own; the residual is what a buyer could pay and still earn the required return.",
     });
   } else if (uses.length && !hasRlv) {
-    lead = leadHtml({ sentence: `What each of the ${uses.length} uses is worth once built, and what it costs to build, for one net acre.`,
+    lead = leadHtml({ sentence: `What ${uses.length === 1 ? "the one use is" : `each of the ${uses.length} uses is`} worth once built, and what it costs to build, for one net acre.`,
       aside: "Residual land value (what the land itself is worth to a buyer) is kept to the internal view. An economic calculation, not an appraisal." });
   } else if (!uses.length && !items.length) {
     lead = leadHtml({ sentence: "Land value cannot be worked out yet: the package does not hold the finance inputs it needs.", aside: "The list below says what is missing. As soon as the package has them, this screen fills in by itself." });
@@ -164,7 +164,7 @@ function draw(el, ctx, resp, state, rerun) {
       const cell = (s) => num(reg, perWords(v(s), state.measure), { label: `${u.label}, ${s} case, ${measureWords(state.measure, state.sfBasis)}`, value: perWords(v(s), state.measure), how: (byUse.formula || []).concat([scenarioNote(byUse)]), inputs: useInputs(ctx, resp, u.id) }, s === state.scenario ? "on" : "");
       const b = sc.base || {};
       return `<li class="tl-use">
-        <div class="tl-use-head"><b>${esc(u.label)}</b>${b.feasible_now === false ? '<span class="dz-chip warn">Not feasible in the base case</span>' : ""}${b.cost_is_partial ? `<span class="dz-chip gold">${b.cost_unknown_items} cost items not known</span>` : ""}</div>
+        <div class="tl-use-head"><b>${esc(u.label)}</b>${b.feasible_now === false ? '<span class="dz-chip warn">Not feasible in the base case</span>' : ""}${b.cost_is_partial ? `<span class="dz-chip gold">${plural(b.cost_unknown_items, "cost item")} not known</span>` : ""}</div>
         ${rangeBar(v("low"), v("base"), v("high"), scale)}
         <div class="tl-range-nums"><span>Low ${cell("low")}</span><span class="b">Base ${cell("base")}</span><span>High ${cell("high")}</span></div>
         ${b.why ? `<p class="fine">${esc(b.why)}</p>` : ""}</li>`;
@@ -215,8 +215,8 @@ function draw(el, ctx, resp, state, rerun) {
     const parcelsBoth = comp ? (comp.units || []).filter((u) => u.kind === "parcel") : [];
     return `<p class="tl-note">The pieces the package sells or keeps; a block can cut across parcels. The difference is the stated price against the residual estimate.</p>
       ${smallTable([{ label: "Block" }, { label: "Net", num: true }, { label: "Stated price per net SF", num: true }, { label: "Stated price", num: true }, { label: "Residual estimate", num: true }, { label: "Difference", num: true }], rows, "Blocks")}
-      ${comp && !comp.compared ? `<p class="tl-note">None of the blocks can be priced both ways yet: a residual estimate needs the finance library for its use (density, revenue, cost line items and cap rate).</p>` : ""}
-      ${comp && comp.compared ? `<p class="tl-total">Priced both ways (${esc(int(comp.compared))} pieces): stated <b>${esc(usdM(comp.stated_total_usd))}</b> against residual <b>${esc(usdM(comp.residual_total_usd))}</b>. ${esc(comp.note || "")}</p>` : ""}
+      ${comp && !(comp.compared > 0) ? `<p class="tl-note">The residual basis has no figures yet for these blocks: a residual estimate needs the finance library for its use (density, revenue, cost line items and cap rate).</p>` : ""}
+      ${comp && comp.compared > 0 ? `<p class="tl-total">Priced both ways (${esc(plural(int(comp.compared), "piece"))}): stated <b>${esc(usdM(comp.stated_total_usd))}</b> against residual <b>${esc(usdM(comp.residual_total_usd))}</b>. ${esc(comp.note || "")}</p>` : ""}
       ${parcelsBoth.length ? fold("lv-parcel-both", "Show parcels with a stated target price", smallTable([{ label: "Parcel" }, { label: "Stated", num: true }, { label: "Residual", num: true }, { label: "Difference", num: true }],
         parcelsBoth.map((u) => [esc(parcelLabelOf(ctx, u.id)), esc(usdM(u.stated_usd)), esc(usdM(u.residual_usd)), esc(isNum(u.difference_pct) ? nFix(u.difference_pct, 0) + "%" : "-")]), "Parcels priced both ways"), P.openFolds) : ""}`;
   };

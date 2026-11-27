@@ -76,8 +76,8 @@ function clip(s, chars) { s = String(s); return s.length > chars ? s.slice(0, Ma
 
 // the hidden table a screen reader reads instead of the picture
 function srTable(title, head, rows) {
-  return `<table class="dc-sr"><caption>${esc(title)}</caption><thead><tr>${head.map((h) => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>` +
-    rows.map((r) => `<tr>${r.map((c, i) => (i ? `<td>${esc(c)}</td>` : `<th scope="row">${esc(c)}</th>`)).join("")}</tr>`).join("") + "</tbody></table>";
+  return `<div class="dc-sr-box"><table><caption>${esc(title)}</caption><thead><tr>${head.map((h) => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>` +
+    rows.map((r) => `<tr>${r.map((c, i) => (i ? `<td>${esc(c)}</td>` : `<th scope="row">${esc(c)}</th>`)).join("")}</tr>`).join("") + "</tbody></table></div>";
 }
 function legend(names) {
   return `<p class="dc-legend" aria-hidden="true">${names.map((nm, i) => `<span><i style="background:${colourAt(i)}"></i>${esc(nm)}</span>`).join("")}</p>`;

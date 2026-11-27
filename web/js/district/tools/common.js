@@ -22,7 +22,10 @@ export function usdM(v) {
 }
 export const usdSf = (v) => (isNum(v) ? (Number(v) < 0 ? "-$" : "$") + nFix(Math.abs(Number(v)), 2) + "/SF" : NK);
 export const pct = (v, d = 1) => (isNum(v) ? nFix(Number(v), d) + "%" : NK);
-export const acres = (v) => (isNum(v) ? nFix(Number(v), Number(v) >= 100 ? 0 : 1) + " acres" : NK);
+export const acres = (v) => { if (!isNum(v)) return NK; const t = nFix(Number(v), Number(v) >= 100 ? 0 : 1); return t + (Number(t) === 1 ? " acre" : " acres"); };
+// the noun that goes with a count: noun(1, "parcel") = "parcel", noun(2, "parcel") = "parcels"; plural() keeps the count
+export const noun = (n, one, many = one + "s") => (Number(n) === 1 ? one : many);
+export const plural = (n, one, many) => `${n} ${noun(n, one, many)}`;
 export const int = (v) => (isNum(v) ? n0(Number(v), 0) : NK);
 export const ratio = (v) => (isNum(v) ? nFix(Number(v), 2) + "x" : NK);
 export const sum = (list) => list.reduce((t, v) => t + (isNum(v) ? Number(v) : 0), 0);

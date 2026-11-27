@@ -262,6 +262,53 @@ class Inputs:
         return out
 
 
+_SNAKE = re.compile(r"(?<![A-Za-z0-9])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![A-Za-z0-9])")
+_ALONE_IN_BRACKETS = re.compile(r"\s*\(\s*" + _SNAKE.pattern + r"\s*\)")
+_WORD_FOR = {"pct": "percent", "usd": "dollars", "sf": "square feet", "ac": "acres", "apns": "parcel numbers"}
+
+
+def _field_words():
+    """{field name: plain words} from the schema's field descriptions, where a short plain one exists."""
+    out = {}
+    for ent in ENTITIES.values():
+        for name, f in ent["fields"].items():
+            d = str(f.get("desc") or "").strip()
+            if d and not d.lower().startswith(("compute:", "the id of", "short id")) and len(d) <= 48 and "," not in d:
+                out.setdefault(name, d[:1].lower() + d[1:])
+    return out
+
+
+def plain(text, _words_for={}):
+    """A sentence without raw field names: a name standing alone in brackets is dropped (the words before it already
+    say it); any other snake_case name is written in plain words (the schema's description of the field when it
+    has a short one, else the name with spaces)."""
+    if not isinstance(text, str):
+        return text
+    if not _words_for:
+        _words_for.update(_field_words())
+    text = _ALONE_IN_BRACKETS.sub("", text)
+
+    def say(m):
+        name = m.group(0)
+        if name in _words_for:
+            return _words_for[name]
+        return " ".join(_WORD_FOR.get(w, w) for w in name.split("_"))
+    return _SNAKE.sub(say, text)
+
+
+def _plain_whys(obj):
+    """The same, for every `why` sentence anywhere inside a result."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "why" and isinstance(v, str):
+                obj[k] = plain(v)
+            else:
+                _plain_whys(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            _plain_whys(v)
+
+
 def _words(issue):
     if isinstance(issue, dict):
         return " ".join(str(v) for k, v in issue.items() if k in ("use", "why", "issue", "message", "text") and v) or \
@@ -430,7 +477,7 @@ def _price_basis(inp, tiers, basis):
     return out
 
 
-def _sale_parcels(inp, prices):
+def _sale_parcels(inp, prices, say=True):
     stubs = {}
     for it in inp.rows("infrastructure"):
         if it.get("parcel"):
@@ -439,7 +486,8 @@ def _sale_parcels(inp, prices):
     out = []
     for p in inp.rows("parcels"):
         if prices.get(p.get("id")) is None:
-            inp._miss(f"Parcel {p.get('id')} has no price on the chosen basis, so it is left out of the sale plan.")
+            if say:
+                inp._miss(f"Parcel {p.get('id')} has no price on the chosen basis, so it is left out of the sale plan.")
             continue
         out.append({"id": p.get("id"), "name": p.get("label"), "gross_price_usd": prices[p["id"]],
                     "net_ac": p.get("net_acres") or p.get("acres"),
@@ -470,14 +518,15 @@ def _sale_blocks(inp, priced):
     return out
 
 
-def sale_units(inp, basis, price_basis="target_market"):
-    """(units, kind): blocks when the dataset has them and the basis is stated, else parcels."""
+def sale_units(inp, basis, price_basis="target_market", say=True):
+    """(units, kind): blocks when the dataset has them and the basis is stated, else parcels. `say` False keeps the
+    parcels left out of the plan quiet (a side calculation while the plan itself runs on blocks)."""
     if basis == "stated" and inp.rows("blocks"):
         priced = [(b, block_price(inp, b)) for b in inp.rows("blocks")]
         return _sale_blocks(inp, priced), "blocks"
     lv, _ = t_landvalue(inp, {"basis": basis})
     tier = "target_market" if basis == "stated" else price_basis
-    return _sale_parcels(inp, _price_basis(inp, lv["pricing_tiers"], tier)), "parcels"
+    return _sale_parcels(inp, _price_basis(inp, lv["pricing_tiers"], tier), say), "parcels"
 
 
 def _rates(inp):
@@ -567,7 +616,7 @@ def t_proceeds(inp, options):
               "capital_plan": plan, "targets": targets}
     if has_stated and inp.rows("land_uses"):
         other = "residual" if basis == "stated" else "stated"
-        o_units, o_kind = sale_units(inp, other, price_basis)
+        o_units, o_kind = sale_units(inp, other, price_basis, say=kind != "blocks")
         o_fall = F.waterfall_for_parcels(o_units, **rates) if o_units else {}
         here = {"basis": basis, "sold_as": kind, "gross_usd": (waterfall or {}).get("gross_total_usd"),
                 "net_usd": (waterfall or {}).get("net_total_usd")}
@@ -925,7 +974,9 @@ def run(tool, content, options=None, reconcile_content=None):
         raise Problem(404, "not-found", f"There is no compute tool “{str(tool)[:30]}”. The tools are: {', '.join(TOOLS)}.")
     inp = Inputs(reconcile_content if tool == "reconcile" and reconcile_content is not None else content)
     result, formula = RUN[tool](inp, check_options(tool, options or {}))
-    return {"tool": tool, "inputs_used": inp.used, "result": result, "formula": formula, "missing": inp.missing,
+    _plain_whys(result)
+    missing = list(dict.fromkeys(plain(m) for m in inp.missing))
+    return {"tool": tool, "inputs_used": inp.used, "result": result, "formula": formula, "missing": missing,
             "disclaimer": F.DISCLAIMER}
 
 

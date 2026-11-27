@@ -1,7 +1,7 @@
 // Papers vs. city record: each of the project's parcels as the package states it (acres, zoning) beside the city's
 // live record from the app's own city routes, every difference flagged, with a way into the app's land pages and the
 // forecast of all the parcels together.
-import { esc, isNum, nFix, fold, page, leadHtml, calmBox, NK, entities, useLabel, guarded, loadingHtml, smallTable } from "./common.js";
+import { esc, isNum, nFix, fold, plural, noun, page, leadHtml, calmBox, NK, entities, useLabel, guarded, loadingHtml, smallTable } from "./common.js";
 import { land, city as cityInfo } from "../../api.js";
 
 const digits = (s) => String(s || "").replace(/\D/g, "");
@@ -58,12 +58,12 @@ function draw(el, ctx, layer, cityName) {
     const waiting = papers.length - done.length;
     return leadHtml({
       kicker: "The answer",
-      sentence: waiting ? `Reading ${esc(where)}'s record for ${papers.length} parcels… ${done.length} read so far.` : differ.length
-        ? `<b>${differ.length} of ${papers.length} parcels</b> differ between the package and ${esc(where)}'s record${differ.some((x) => x.diff.zoning) ? "; zoning differs on " + differ.filter((x) => x.diff.zoning).length : ""}.`
-        : `All ${papers.length} parcels match ${esc(where)}'s record on acres and zoning.`,
+      sentence: waiting ? `Reading ${esc(where)}'s record for ${plural(papers.length, "parcel")}… ${done.length} read so far.` : differ.length
+        ? `<b>${differ.length} of ${plural(papers.length, "parcel")}</b> ${noun(differ.length, "differs", "differ")} between the package and ${esc(where)}'s record${differ.some((x) => x.diff.zoning) ? "; zoning differs on " + differ.filter((x) => x.diff.zoning).length : ""}.`
+        : `${papers.length === 1 ? "The parcel matches" : papers.length === 2 ? "Both parcels match" : `All ${papers.length} parcels match`} ${esc(where)}'s record on acres and zoning.`,
       big: waiting ? "" : String(differ.length), bigLabel: waiting ? "" : differ.length === 1 ? "parcel differs" : "parcels differ",
       aside: `The package's figures beside the city's live parcel record. Acres within ${ACRE_TOLERANCE} of an acre count as the same.`,
-      chips: `<a class="btn small primary" href="${esc(forecast)}">Forecast all ${papers.length} parcels together</a>`,
+      chips: `<a class="btn small primary" href="${esc(forecast)}">${papers.length === 1 ? "Forecast this parcel" : `Forecast all ${papers.length} parcels together`}</a>`,
     });
   };
   const rowHtml = (x) => {

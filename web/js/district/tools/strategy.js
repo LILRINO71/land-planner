@@ -3,7 +3,7 @@
 // plan (max cash, balanced, max retention) against the targets as a timeline; and retained land over time.
 import {
   esc, isNum, nFix, fold, compute, page, leadHtml, missingHtml, hiddenHtml, isOutside, disclaimerHtml, calmBox, smallTable, seg, wireSegKeys,
-  num, usd, usdM, pct, acres, int, NK, pieceLabel as parcelLabel, useLabel, guarded, loadingHtml, inputSpec,
+  num, usd, usdM, pct, acres, int, noun, NK, pieceLabel as parcelLabel, useLabel, guarded, loadingHtml, inputSpec,
 } from "./common.js";
 import { basesOf } from "./landvalue.js";
 
@@ -190,7 +190,7 @@ function draw(el, ctx, st, pr, state, rerun) {
     }
     if (pace && (pace.events || []).length) {
       const a = pace.assumptions || {};
-      html += `<h3 class="tl-sub">Paced releases: ${esc(acres(a.release_acres))} every ${esc(a.every_years)} years</h3>
+      html += `<h3 class="tl-sub">Paced releases: ${esc(acres(a.release_acres))} every ${esc(a.every_years)} ${noun(a.every_years, "year", "years")}</h3>
         <p class="tl-note">Net from the releases ${num(reg, usdM(pace.total_net_proceeds_usd), { label: "Paced releases, net proceeds", value: usd(pace.total_net_proceeds_usd), how: pace.formula || [] })}; ${esc(acres(pace.acres_left))} left worth ${esc(usdM(pace.value_left_usd))}. Together ${esc(usdM(pace.total_wealth_usd))}, not discounted.</p>
         ${fold("st-pace", "Show each release", smallTable([{ label: "Year" }, { label: "Acres sold", num: true }, { label: "Price per acre", num: true }, { label: "Net", num: true }, { label: "Acres left", num: true }], pace.events.map((e) => [esc("Year " + e.year), esc(nFix(e.acres_sold, 1)), esc(usd(e.price_per_ac_usd)), esc(usdM(e.net_usd)), esc(nFix(e.acres_left, 1))]), "Paced releases"), P.openFolds)}`;
     } else if (rv) html += `<p class="fine">Paced releases need the acres released in each tranche and the years between them (STR-RELEASE-ACRES, STR-RELEASE-EVERY-YEARS).</p>`;

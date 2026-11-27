@@ -2,6 +2,9 @@
 
 /* ---- screen-reader only */
 .dc-sr,.dc-sr-cap{position:absolute!important;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+/* a chart's hidden table: its box is 1px and clips what is inside, so it can never widen a page; the table inside is real */
+.dc-sr-box{position:absolute!important;left:0;top:0;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:normal!important;contain:strict}
+.dc-sr-box table{white-space:normal}
 
 /* ---- charts (charts.js) */
 .dc-chart{width:100%;min-width:0}

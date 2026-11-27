@@ -1,7 +1,7 @@
 // Map and trade area: the project's GIS layers on the aerial photo (each layer switched on and off), parcels
 // coloured by zoning, use or phase with a legend and a popup, and straight-line distance rings around the site.
 // Rings are distances, not drive times.
-import { esc, isNum, nFix, fold, page, leadHtml, calmBox, seg, wireSegKeys, acres, NK, entities, useLabel, phaseLabel, guarded, loadingHtml } from "./common.js";
+import { esc, isNum, nFix, fold, plural, noun, page, leadHtml, calmBox, seg, wireSegKeys, acres, NK, entities, useLabel, phaseLabel, guarded, loadingHtml } from "./common.js";
 import { createMap } from "../../maps.js";
 
 const PALETTE = ["#f2b632", "#4fb3a9", "#e07b53", "#8fb5e8", "#c58fd6", "#9ccc65", "#f48fb1", "#ffd54f", "#80cbc4", "#bcaaa4", "#90a4ae", "#ffab91"];
@@ -62,7 +62,7 @@ function draw(el, ctx, layers) {
   const state = { by: "zoning", rings: new Set(), custom: "" };
 
   const lead = ok.length
-    ? leadHtml({ sentence: parcelFeatures.length ? `${parcelFeatures.length} parcels on ${esc(nFix(totalAc, 1))} acres, on the aerial photo with ${ok.length} ${ok.length === 1 ? "layer" : "layers"} from the package.` : `${ok.length} ${ok.length === 1 ? "layer" : "layers"} from the package on the aerial photo.`,
+    ? leadHtml({ sentence: parcelFeatures.length ? `${plural(parcelFeatures.length, "parcel")} on ${esc(acres(totalAc))}, on the aerial photo with ${ok.length} ${ok.length === 1 ? "layer" : "layers"} from the package.` : `${ok.length} ${ok.length === 1 ? "layer" : "layers"} from the package on the aerial photo.`,
       big: parcelFeatures.length ? nFix(totalAc, 1) : "", bigLabel: parcelFeatures.length ? "Acres in the parcels layer" : "", aside: "Click a parcel for its facts. Switch layers on and off on the right; add distance rings to see what lies within a few miles." })
     : leadHtml({ sentence: layers.length ? "The map layers this view can see have no shapes to draw yet." : `The package has no map layers${ctx.viewAs ? " shared with this audience" : ""} yet.`, aside: "An administrator adds them under Data, Map layers (GeoJSON or a zipped shapefile)." });
   if (!ok.length) {
@@ -80,7 +80,7 @@ function draw(el, ctx, layers) {
       <p class="fine">These are straight-line distance rings, not drive times. Drive-time trade areas need a consultant's study or an Esri licence.</p></section>
     ${corridor ? corridorBox(ctx, corridor) : ""}
   </div>`;
-  const list = parcelFeatures.length ? fold("map-list", `List the ${parcelFeatures.length} parcels`, `<ul class="tl-mini">${parcelFeatures.map((f, i) => { const x = factsOf(ctx, f); return `<li><button type="button" class="link" data-zoom="${i}">${esc(x.apn || x.label || "Parcel " + (i + 1))}</button> ${esc(x.label && x.apn ? x.label : "")} · ${esc(acres(x.acres))} · ${esc(x.zoning || NK)}</li>`; }).join("")}</ul>`, P.openFolds) : "";
+  const list = parcelFeatures.length ? fold("map-list", parcelFeatures.length === 1 ? "Show the parcel" : `List the ${parcelFeatures.length} parcels`, `<ul class="tl-mini">${parcelFeatures.map((f, i) => { const x = factsOf(ctx, f); return `<li><button type="button" class="link" data-zoom="${i}">${esc(x.apn || x.label || "Parcel " + (i + 1))}</button> ${esc(x.label && x.apn ? x.label : "")} · ${esc(acres(x.acres))} · ${esc(x.zoning || NK)}</li>`; }).join("")}</ul>`, P.openFolds) : "";
   P.set({ lead, parts: [["map", "Map", `<div class="tl-map-wrap"><div><div class="map-frame"><div class="map tl-map" role="region" aria-label="Map of the project"></div></div>${list}</div>${side}</div>`]] });
   wireSegKeys(el);
 

@@ -3,7 +3,7 @@
 // the EIFD-style increment) from the rates the package gives.
 import {
   esc, isNum, nFix, fold, compute, page, leadHtml, missingHtml, hiddenHtml, isOutside, disclaimerHtml, calmBox, smallTable,
-  num, usd, usdM, int, NK, phaseLabel, useLabel, guarded, loadingHtml, inputSpec,
+  num, usd, usdM, int, plural, noun, NK, phaseLabel, useLabel, guarded, loadingHtml, inputSpec,
 } from "./common.js";
 
 const PAYERS = [["owner", "Owner"], ["builder", "Builders"], ["city", "City"], ["district_financing", "District financing"], ["not_known", "Payer not known"]];
@@ -36,7 +36,7 @@ function draw(el, ctx, fu, fi) {
     let gapWords = "";
     if (s && isNum(s.peak_gap_usd)) gapWords = s.peak_gap_usd > 0 ? ` At its worst the owner is short ${num(reg, usdM(s.peak_gap_usd), { label: "Peak funding gap", value: usd(s.peak_gap_usd), how: gap.formula || [] })} (${esc(s.peak_gap_period)}) before land sales catch up${s.peak_gap_is_lower_bound ? ", and more once the missing costs are known" : ""}.` : " Land sales cover the owner's share in every year.";
     lead = leadHtml({
-      sentence: `Infrastructure adds up to ${num(reg, usdM(total.known_usd), regSpec("Infrastructure, known cost", usd(total.known_usd)))} across ${items.length} items${unknown ? `, and <b>${esc(noCost(unknown))}</b>: the total is a floor, not the full cost` : ""}.${gapWords}`,
+      sentence: `Infrastructure adds up to ${num(reg, usdM(total.known_usd), regSpec("Infrastructure, known cost", usd(total.known_usd)))} across ${plural(items.length, "item")}${unknown ? `, and <b>${esc(noCost(unknown))}</b>: the total is a floor, not the full cost` : ""}.${gapWords}`,
       big: usdM(total.known_usd), bigLabel: unknown ? `Known cost; ${noCost(unknown)}` : "Infrastructure, all items", bigSrc: reg.add(regSpec("Infrastructure, known cost", usd(total.known_usd))),
       aside: "A cost the package does not give is counted as not known. It is never added as zero.",
     });
@@ -60,11 +60,11 @@ function draw(el, ctx, fu, fi) {
       esc(isNum(i.due_period) ? String(i.due_period) : "-"),
       i.cost_known ? num(reg, usd(i.cost_usd), (() => { const row = (ctx.content.entities.infrastructure || []).find((x) => x.id === i.code); return row && row.assumption ? { label: i.name, value: usd(i.cost_usd), figure: row.assumption } : regSpec(i.name, usd(i.cost_usd), [i.note || ""]); })()) : '<span class="dz-chip gold">No cost yet</span>'] }));
     return `${unknown ? `<p class="tl-flag"><span><b>${esc(noCost(unknown))}.</b> ${unknown === 1 ? "It is" : "They are"} counted, not added as zero: every total below is what is known so far.</span></p>` : ""}
-      ${(regi.items_with_unknown_payer || 0) ? `<p class="tl-note">${esc(int(regi.items_with_unknown_payer))} items do not say who pays; they are shown as "Payer not known".</p>` : ""}
+      ${(regi.items_with_unknown_payer || 0) ? `<p class="tl-note">${esc(int(regi.items_with_unknown_payer))} ${noun(regi.items_with_unknown_payer, "item does", "items do")} not say who pays; ${noun(regi.items_with_unknown_payer, "it is", "they are")} shown as "Payer not known".</p>` : ""}
       ${P.chart("stacked", { labels, series, unit: "usd", title: "Known cost by phase and payer (dollars)" })}
       <div class="tl-grid2">${smallTable([{ label: "Who pays" }, { label: "Items", num: true }, { label: "Known cost", num: true }, { label: "Not known" }], byPayer, "By payer")}
       ${smallTable([{ label: "Phase" }, { label: "Items", num: true }, { label: "Known cost", num: true }, { label: "Not known" }], byPhase, "By phase")}</div>
-      ${fold("fu-items", `Show all ${items.length} items`, smallTable([{ label: "Item" }, { label: "Phase" }, { label: "Who pays" }, { label: "Due", num: true }, { label: "Cost", num: true }], list, "Infrastructure items"), P.openFolds)}`;
+      ${fold("fu-items", items.length === 1 ? "Show the item" : `Show all ${items.length} items`, smallTable([{ label: "Item" }, { label: "Phase" }, { label: "Who pays" }, { label: "Due", num: true }, { label: "Cost", num: true }], list, "Infrastructure items"), P.openFolds)}`;
   };
 
   // ---- part 2: the funding gap against land sales

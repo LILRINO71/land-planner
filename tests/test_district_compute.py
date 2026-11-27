@@ -219,6 +219,25 @@ class Blocks(Base):
         self.assertEqual(self.compute("proceeds", "viewer_city", "POST",
                                       {"records": {"blocks": [{"id": "B-1", "price_per_sf": 99}]}})[0], 403)
 
+    def test_parcels_are_not_named_as_left_out_when_the_plan_runs_on_blocks(self):
+        from landplanner.district import sample
+        from landplanner.district.store import normal_content
+        import copy
+        c = normal_content(copy.deepcopy(sample.content()))
+        c["entities"]["land_uses"] = [u for u in c["entities"]["land_uses"] if u["id"] not in ("res-mf", "res-sfd")]
+        for x in c["entities"]["parcels"]:
+            x.pop("target_price", None)
+        left_out = lambda a: [m for m in a["missing"] if "left out of the sale plan" in m]          # noqa: E731
+        on_blocks = compute.run("proceeds", c)
+        self.assertEqual(on_blocks["result"]["sold_as"], "blocks")
+        self.assertEqual(left_out(on_blocks), [])
+        self.assertEqual(left_out(compute.run("funding", c)), [])
+        on_parcels = compute.run("proceeds", c, {"basis": "residual"})
+        self.assertEqual(on_parcels["result"]["sold_as"], "parcels")
+        self.assertTrue(left_out(on_parcels), "a plan that really runs on parcels still names the unpriced ones")
+        c["entities"]["blocks"] = []
+        self.assertTrue(left_out(compute.run("proceeds", c)))
+
     def test_asking_for_stated_prices_where_there_are_none_falls_back_and_says_so(self):
         from landplanner.district import sample
         from landplanner.district.store import normal_content
@@ -232,6 +251,46 @@ class Blocks(Base):
         self.assertTrue(any("residual basis was used" in m for m in a["missing"]))
         self.assertNotIn("by_basis", a["result"])
         self.assertEqual(compute.run("landvalue", c)["result"]["basis_used"], "residual")
+
+
+class PlainWords(Base):
+    SNAKE = compute._SNAKE
+
+    def sentences(self, obj, out=None):
+        out = [] if out is None else out
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "why" and isinstance(v, str):
+                    out.append(v)
+                else:
+                    self.sentences(v, out)
+        elif isinstance(obj, list):
+            for v in obj:
+                self.sentences(v, out)
+        return out
+
+    def test_no_missing_or_why_sentence_shows_a_field_name(self):
+        seen = 0
+        for tool in compute.TOOLS:
+            for role in ("administrator", "viewer_city"):
+                b = self.compute(tool, role)[1]
+                for text in b["missing"] + self.sentences(b["result"]):
+                    seen += 1
+                    self.assertIsNone(self.SNAKE.search(text), (tool, text))
+        self.assertGreater(seen, 0, "the sample's ground lease sentences are checked")
+        text = " ".join(self.sentences(self.compute("strategy")[1]["result"]))
+        self.assertIn("A ground lease needs a rent yield on land value.", text)
+
+    def test_missing_sentences_of_a_bare_dataset_are_plain_too(self):
+        a = self.t["administrator"]
+        self.api.call("POST", "/api/districts/projects", token=a, body={"id": "bare-district", "name": "Bare District"})
+        for tool in compute.TOOLS:
+            r = self.api.handle("GET", f"/api/districts/projects/bare-district/compute/{tool}",
+                                {"version": ["draft"]}, {"Cookie": f"lp_district={a}"}, b"")
+            for m in strict(r.body.decode("utf-8"))["missing"]:
+                self.assertIsNone(self.SNAKE.search(m), (tool, m))
+        self.assertEqual(compute.plain("Parcel PA-1 has no cost_items (its cost basis), see FIN-NET-TO-GROSS-PCT."),
+                         "Parcel PA-1 has no cost items (its cost basis), see FIN-NET-TO-GROSS-PCT.")
 
 
 class WhatIf(Base):
