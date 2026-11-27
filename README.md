@@ -238,6 +238,41 @@ tables and the working are one click away ("Show ..."). Nothing was removed: pri
 everything open. The small movements (a part easing in, a chart drawing once) can be turned off with the Motion
 switch, which the presentation shares.
 
+## Districts: a whole development's market package
+
+The **Districts** section (sidebar) holds one master-planned development at a time with its complete market
+intelligence package: the program, market figures, competitors, parcels and sale blocks, an assumptions register,
+infrastructure, risks, narrative and question-and-answer pages, documents, map layers and a requirements checklist.
+Everything is data, so a new project or a consultant's new figures need no code change. The built-in **Sample
+District** uses invented numbers; a real project is opened from a project file (Admin > Project file) and stays in
+your own `data` folder.
+
+- **Every number traces to its source.** Click any figure to see its register entry: value and unit, status
+  (baseline, consultant, legacy assumption, superseded), source class (verified fact, ownership input, consultant
+  input, market assumption, calculated, requires validation ...), document and page, date, owner, confidence,
+  conflicts with other documents, what uses it, and notes. Where documents disagree, both figures are kept and the
+  difference is shown with its explanation.
+- **Who sees what.** Sign in by name and passcode, or with Google once the owner sets a Google client id. Five
+  roles (administrator, analyst, consultant, partner, city), a confidentiality acknowledgement, an idle timeout,
+  and an audit log that shows if it was tampered with. The city view never receives returns, parcel land values,
+  price floors, sale pricing, buyer types or keep-versus-sell plans: they are removed on the server, not hidden
+  on the page. Administrators can "View as" any audience to check.
+- **Tools.** Map and distance rings; phases and scenarios with phase triggers; land value and pricing (residual
+  land value by use and parcel, four price tiers, the package's stated block prices beside it); phase returns
+  (cost, income, value, yield on cost, IRR, break-evens, sensitivity); hold, sell, partner or lease, with sale
+  proceeds after costs and a plan against cash targets; infrastructure and funding (unknown costs stay unknown,
+  never zero); papers versus the city's own parcel record; and a search of the whole package. These are economic
+  calculations under stated assumptions, not appraisals.
+- **Data.** Import CSV or Excel against published templates (checked before anything is saved; a consultant's
+  figures land beside the baseline, never over it), compare baseline and submission with a change threshold,
+  drafts and published versions with roll-back, a revision log, document library with versions, backups.
+- **Outputs.** Any page as a PDF and any table as Excel, marked confidential with the as-of date and the
+  audience's disclaimer. An audio briefing on every page.
+
+The data layout and every route are in [docs/district-data-contract.md](docs/district-data-contract.md); the
+calculations in [docs/district-finance.md](docs/district-finance.md). It runs on this computer only (no hosting),
+so partners and city staff sign in on the same machine until it is hosted with HTTPS.
+
 ## What it cannot tell you yet
 
 - The shops and offices that exist today (no public list), so the forecast shows what growth adds, not whether the
@@ -282,4 +317,7 @@ owner, his engineer and the city's planners.
 10. One part at a time on the Forecast and Plan pages; the city's state housing target; the one-page summary. *(done)*
 11. The city's zone-by-zone table of allowed uses, on the Zoning page and in the Plan. *(done)*
 12. A second city (Temecula), with the shared sources moved out so a third city is one file. *(done)*
-13. Next: real quotes from the owner; Temecula's own table of allowed uses; what each specific plan allows.
+13. Districts: a whole development's market package with provenance, roles, the city view, imports, exports,
+    the finance engine and eight tools. *(done)*
+14. Next: real quotes from the owner; the consultant's market study loaded through Import; hosting with HTTPS
+    so partners and the city can sign in from their own computers; Temecula's own table of allowed uses.
