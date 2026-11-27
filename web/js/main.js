@@ -9,7 +9,9 @@ import * as landView from "./views/land.js";
 import * as forecastView from "./views/forecast.js";
 import * as presentView from "./views/present.js";
 import * as handoutView from "./views/handout.js";
+import * as districtView from "./district/router.js";
 
+const DISTRICTS_ICON = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 21V10l5-3v14M9 21V4l7 3v14M16 21v-9l4 2v7M12 9v.01M12 12v.01M12 15v.01"/></svg>';
 const main = document.getElementById("main"), side = document.getElementById("side");
 let visit = 0, leaving = [], lastCity = null, openLand = null;
 
@@ -29,6 +31,8 @@ function parse() {
   const [first, a] = raw;
   if (first === "lands") return { name: "lands", city: a || null };
   if (first === "my-lands") return { name: "my-lands" };
+  // #/districts/...: the district workspace, which reads the rest of the address itself
+  if (first === "districts") return { name: "districts", rest: raw.slice(1) };
   // #/land/menifee/372100001/zoning (an empty or lettered parcel number is kept in `bad`)
   if (first === "land" && a) {
     const given = raw[2] === undefined ? "" : raw[2], apn = tidy(given), page = raw[3] || "overview";
@@ -55,7 +59,9 @@ function drawSide(route) {
       ${item("#/cities", "cities", "Cities")}
       ${item("#/lands" + (lastCity ? "/" + lastCity : ""), "lands", "Lands")}
       ${item("#/my-lands", "my-lands", "My lands", count ? `<i class="badge">${count}</i>` : "")}
+      <a href="#/districts" class="nav${route.name === "districts" ? " on" : ""}"${route.name === "districts" ? ' aria-current="page"' : ""}>${DISTRICTS_ICON}<span>Districts</span></a>
     </nav>`;
+  if (route.name === "districts") { side.innerHTML = html + districtView.side(route); return; }
   if (openLand) {
     const base = `#/land/${esc(openLand.city)}/${esc(openLand.apn)}`;
     const forecastOn = route.name === "forecast" && route.apns.length === 1 && route.apns[0] === openLand.apn && route.city === openLand.city;
@@ -107,13 +113,13 @@ async function show() {
   }
   if (route.name === "forecast" || route.name === "present" || route.name === "handout") lastCity = route.city;
   document.body.classList.toggle("presenting", route.name === "present");
-  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast", present: "Presentation", handout: "One-page summary" }[route.name] + " · Land Planner";
+  document.title = { cities: "Cities", lands: "Lands", "my-lands": "My lands", land: "Land", forecast: "Forecast", present: "Presentation", handout: "One-page summary", districts: "Districts" }[route.name] + " · Land Planner";
   drawSide(route);
   main.scrollTop = 0;
   window.scrollTo(0, 0);
   main.className = "main " + route.name;
   if (route.bad && route.bad.length) { notAParcel(route); return; }
-  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView, present: presentView, handout: handoutView }[route.name];
+  const view = { cities: citiesView, lands: landsView, "my-lands": myLandsView, land: landView, forecast: forecastView, present: presentView, handout: handoutView, districts: districtView }[route.name];
   try {
     await view.render(main, route, alive);
   } catch (e) {
