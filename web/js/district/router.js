@@ -20,17 +20,25 @@ export const DATA_PARTS = [["register", "Assumptions register", null], ["import"
   ["notes", "Notes", "notes.read"], ["checks", "Checks", "checks"]];
 export const ADMIN_PARTS = [["users", "Users"], ["audit", "Audit log"], ["settings", "Settings"], ["backups", "Backups"],
   ["file", "Project file"], ["publish", "Publish and roll back"]];
-const GROUPS = ["Overview", "Market", "Program", "Land strategy", "Advisory"];
+const GROUPS = ["Overview", "Market", "Program", "Land strategy", "Advisory", "Context"];
+// the module's own `group` (as modules.json writes it) and the sidebar heading it goes under
+const GROUP_CODES = { overview: "Overview", market: "Market", program: "Program", "land-strategy": "Land strategy", land_strategy: "Land strategy",
+  advisory: "Advisory", context: "Context", corridor: "Context", data: "Data", requirements: "Requirements" };
 const AUDIENCES = [["internal", "Internal"], ["partner", "Partner"], ["city", "City"], ["consultant", "Consultant"]];
 
 // which sidebar group a data-defined page sits in: its own `group`, else what its id and name say
-function groupOf(m) {
-  if (m.group && GROUPS.includes(m.group)) return m.group;
+export function groupOf(m) {
+  if (m.group) {
+    const g = GROUP_CODES[String(m.group).toLowerCase()] || GROUPS.find((x) => x.toLowerCase() === String(m.group).toLowerCase());
+    if (g) return g;
+  }
   const s = (m.id + " " + (m.label || "")).toLowerCase();
-  if (/overview|summary|dashboard/.test(s)) return "Overview";
+  if (/overview|summary|dashboard|cockpit/.test(s)) return "Overview";
+  if (/advis/.test(s)) return "Advisory";
+  if (/corridor|scope|rfp|conflict|open.items|context/.test(s)) return "Context";
   if (/trade|demograph|segment|market|demand|spend|competit|supply|comps?\b/.test(s)) return "Market";
   if (/parcel|land|dispos|residual|rlv|acquisit|entitle/.test(s)) return "Land strategy";
-  if (/advis|question|recommend|return|risk|fiscal|impact|strategy|econom|finance/.test(s)) return "Advisory";
+  if (/question|recommend|return|risk|fiscal|impact|strategy|econom|finance/.test(s)) return "Advisory";
   return "Program";
 }
 
@@ -81,8 +89,9 @@ export function side(route) {
       html += group(g, nav.modules.filter((m) => groupOf(m) === g).map((m) => item(link([nav.id, "m", m.id]), m.label || m.id, here === "m/" + m.id)));
     });
     html += group("Tools", TOOLS.map(([id, label]) => item(link([nav.id, "tool", id]), label, here === "tool/" + id)));
-    html += group("Data", DATA_PARTS.filter((d) => !d[2] || nav.can[d[2]]).map(([id, label]) => item(link([nav.id, "data", id]), label, here === "data/" + id)));
-    html += group("Requirements", [item(link([nav.id, "requirements"]), "Requirements checklist", here === "requirements")]);
+    const modsIn = (g) => nav.modules.filter((m) => groupOf(m) === g).map((m) => item(link([nav.id, "m", m.id]), m.label || m.id, here === "m/" + m.id));
+    html += group("Data", modsIn("Data").concat(DATA_PARTS.filter((d) => !d[2] || nav.can[d[2]]).map(([id, label]) => item(link([nav.id, "data", id]), label, here === "data/" + id))));
+    html += group("Requirements", [item(link([nav.id, "requirements"]), "Requirements checklist", here === "requirements")].concat(modsIn("Requirements")));
     if (nav.can["users.manage"]) html += group("Admin", ADMIN_PARTS.map(([id, label]) => item(link([nav.id, "admin", id]), label, here === "admin/" + id)));
     html += `<a class="nav sub dz-all" href="#/districts"><span>All projects</span></a></div>`;
   }

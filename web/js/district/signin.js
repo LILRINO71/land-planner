@@ -6,12 +6,13 @@ import { esc, say } from "./ui.js";
 const GENERIC = { title: "Land Planner", subtitle: "District workspace", badge: "Private workspace", notice: "Authorized access only",
   location: "", footer: "" };
 
+// the lines on the sign-in card: the server's `landing` (a project's branding) when it gives them, else the app's own
 function landingLines(info) {
-  const l = Object.assign({}, GENERIC, (info && info.landing) || {});
+  const given = info && info.landing && typeof info.landing === "object" ? info.landing : null;
+  const l = Object.assign({}, GENERIC, given || {});
   const year = new Date().getFullYear();
-  const foot = []
-    .concat(l.footer ? (Array.isArray(l.footer) ? l.footer : [l.footer]) : [])
-    .concat([`© ${year} ${l.copyright || (info && info.landing && info.landing.title) || "Land Planner"}`, "Confidential workspace", "Role-based access"]);
+  const own = given && given.footer ? [].concat(given.footer).flatMap((x) => String(x).split(/\s+[·•|]\s+/)) : ["Confidential workspace", "Role-based access"];
+  const foot = [`© ${year} ${(given && (given.copyright || given.owner)) || "Land Planner"}`].concat(own);
   return { ...l, foot: [...new Set(foot.filter(Boolean))] };
 }
 

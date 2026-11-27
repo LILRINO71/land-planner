@@ -2,7 +2,7 @@
 // (narrative, table, banner, questions and answers) and the reconciliations that belong to it. Every page of every
 // project is drawn by this one file, so a new module needs no code.
 import { esc, has, isNum, n0, nFix, figureWords, countable, fieldWords, cell, lookupsOf, planWords, tableHtml, wireTables, sourceTags, leadOf, valueIn } from "./ui.js";
-import { viewBar, wireViewBar } from "./router.js";
+import { viewBar, wireViewBar, groupOf } from "./router.js";
 import { openFigure } from "./figure.js";
 import { exportButtons, wireExports } from "./exports.js";
 import { chapters, fold, watchFolds, watchMotion, printEverything, countUp } from "../calm.js";
@@ -138,7 +138,7 @@ function qaHtml(s, i, look) {
   return `<div class="dz-qa-main" aria-live="polite">
       <p class="dz-qa-count">Question ${i + 1} of ${items.length}</p>
       <h3 class="dz-qa-q" tabindex="-1">${esc(it.question || "")}</h3>
-      ${it.answer ? `<p class="dz-qa-lead">${esc(a.lead)}</p>${a.rest ? `<div class="dz-qa-rest">${esc(a.rest).split(/\n{2,}/).map((x) => `<p>${x.replace(/\n/g, "<br>")}</p>`).join("")}</div>` : ""}`
+      ${it.answer ? `<p class="dz-qa-lead${a.lead.length > 220 ? " long" : ""}">${esc(a.lead)}</p>${a.rest ? `<div class="dz-qa-rest">${esc(a.rest).split(/\n{2,}/).map((x) => `<p>${x.replace(/\n/g, "<br>")}</p>`).join("")}</div>` : ""}`
         : '<p class="dz-qa-lead muted">Not answered in the documents yet.</p>'}
       ${cites ? `<div class="dz-cites"><span>Figures it cites</span>${cites}</div>` : ""}
       <div class="dz-qa-nav"><button type="button" class="btn" data-qa-step="-1"${i ? "" : " disabled"}>Previous</button><button type="button" class="btn primary" data-qa-step="1"${i < items.length - 1 ? "" : " disabled"}>Next question</button></div>
@@ -165,14 +165,29 @@ export async function render(el, ctx, moduleId, alive) {
   }
   const content = ctx.content, look = lookupsOf(content);
   const sections = ((content.entities || {}).sections || []).filter((s) => s.module === m.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const banners = [m.banner].concat(sections.filter((s) => s.kind === "banner").map((s) => s.body)).filter(Boolean);
-  const cards = (m.cards || []).map((c) => ({ c, f: look.assumptions[c.assumption] }));
+  // a banner section shows only when it says something the module's own banner does not
+  const banners = [];
+  [m.banner].concat(sections.filter((s) => s.kind === "banner").map((s) => s.body)).forEach((b) => {
+    if (b && !banners.some((x) => same(x, b))) banners.push(b);
+  });
+  // a card cites one register entry, or two (the low and high ends of a range)
+  const cards = (m.cards || []).map((c) => {
+    const ids = (c.assumptions && c.assumptions.length ? c.assumptions : [c.assumption]).filter(Boolean);
+    const figs = ids.map((id) => look.assumptions[id]).filter(Boolean);
+    let f = figs[0];
+    if (figs.length >= 2) {
+      const lo = figs[0], hi = figs[figs.length - 1], end = (x, k) => (isNum(x.value) ? x.value : x[k]);
+      f = { ...lo, label: c.label || lo.label, value: null, value_low: end(lo, "value_low"), value_high: end(hi, "value_high"),
+        value_text: lo.value_text && hi.value_text && lo.value_text !== hi.value_text ? "" : lo.value_text || "", conflict: figs.some((x) => x.conflict) };
+    }
+    return { c, f, id: ids[0] || "", ids };
+  });
   const tables = (m.tables || []).map((t) => ({ t, ...entityTable(t, content, look) })).filter((x) => x.rows.length);
   const narratives = sections.filter((s) => s.kind === "narrative"), sTables = sections.filter((s) => s.kind === "table" && (s.rows || []).length);
   const qas = sections.filter((s) => s.kind === "qa" && (s.items || []).length);
 
   // reconciliations about the figures this page shows
-  const cited = new Set(cards.map((x) => x.c.assumption).concat(sections.flatMap((s) => s.cites || [])));
+  const cited = new Set(cards.flatMap((x) => x.ids).concat(sections.flatMap((s) => s.cites || [])));
   let recs = ((content.entities || {}).reconciliations || []).filter((r) => cited.has(r.total) || (r.parts || []).some((p) => cited.has(p)));
   let recon = recs.map((r) => localReconciliation(r, content, look));
   if (recs.length && ctx.can.checks) {
@@ -190,14 +205,17 @@ export async function render(el, ctx, moduleId, alive) {
   // chapter 1: the lead
   const lead = cards.length || narratives.length || recon.length;
   if (lead) parts.push(["glance", "At a glance", `
-    ${cards.length ? `<div class="dz-kpis">${cards.map(({ c, f }) => {
-      const w = figureWords(f, c.format);
-      return `<button type="button" class="dz-kpi" data-fig="${esc(c.assumption)}" aria-label="${esc(c.label)}: ${esc(w.main)}. Where this number comes from">
-        <span class="dz-kpi-label">${esc(c.label || (f && f.label) || c.assumption)}</span>
-        <b class="dz-kpi-value" data-count="${esc(w.main)}">${esc(w.main)}</b>
-        ${w.aside ? `<span class="dz-kpi-aside">${esc(w.aside)}</span>` : ""}
-        ${c.description ? `<span class="dz-kpi-desc">${esc(c.description)}</span>` : ""}
-        <span class="dz-kpi-foot">${sourceTags(c.source_tags)}${f && f.conflict ? '<span class="dz-chip warn">Sources disagree</span>' : ""}${f && f.status === "Superseded" ? '<span class="dz-chip warn">Superseded</span>' : ""}<span class="dz-kpi-id">${esc(c.assumption || "")}</span></span>
+    ${cards.length ? `<div class="dz-kpis">${cards.map(({ c, f, id, ids }) => {
+      const w = figureWords(f, c.format, { compact: true });
+      const main = glue(w.main), aside = w.aside && !same(w.aside, w.main) ? w.aside : "";
+      const desc = c.description && !same(c.description, w.main) && !same(c.description, aside) ? c.description : "";
+      const size = main.length > 22 ? " xlong" : main.length > 15 ? " long" : "";
+      return `<button type="button" class="dz-kpi" data-fig="${esc(id)}" aria-label="${esc(c.label)}: ${esc(w.main)}. Where this number comes from">
+        <span class="dz-kpi-label">${esc(c.label || (f && f.label) || id)}</span>
+        <b class="dz-kpi-value${size}" data-count="${esc(main)}"${w.exact ? ` title="${esc(w.exact)}"` : ""}>${esc(main)}</b>
+        ${aside ? `<span class="dz-kpi-aside">${esc(aside)}</span>` : ""}
+        ${desc ? `<span class="dz-kpi-desc">${esc(desc)}</span>` : ""}
+        <span class="dz-kpi-foot">${sourceTags(c.source_tags)}${f && f.conflict ? '<span class="dz-chip warn">Sources disagree</span>' : ""}${f && f.status === "Superseded" ? '<span class="dz-chip warn">Superseded</span>' : ""}<span class="dz-kpi-id">${esc(ids.join(", "))}</span></span>
       </button>`;
     }).join("")}</div>` : ""}
     ${narratives.map((s) => narrativeHtml(s, look)).join("")}
@@ -216,7 +234,15 @@ export async function render(el, ctx, moduleId, alive) {
       ${tableHtml({ columns: st.columns, rows: st.cells, caption: s.heading || "Table" })}
       ${citesLine(s, look)}</section>`;
   }));
-  if (tableBlocks.length) parts.push(["figures", "Tables and charts", tableBlocks.join("")]);
+  // many tables: the first few stand open, the rest wait behind their own heading
+  const OPEN_TABLES = 3;
+  const blocksHtml = tableBlocks.map((html, i) => {
+    if (tableBlocks.length <= OPEN_TABLES + 1 || i < OPEN_TABLES) return html;
+    const head = /<h2>([\s\S]*?)<\/h2>/.exec(html), n = (html.match(/<tr/g) || []).length - 1;
+    const words = head ? head[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'") : "Table";
+    return `<div class="dz-block dz-block-later">${fold("tb-" + i, `${words}${n > 0 ? ` (${n} ${n === 1 ? "row" : "rows"})` : ""}`, html.replace(/<h2>[\s\S]*?<\/h2>/, ""), openFolds)}</div>`;
+  });
+  if (tableBlocks.length) parts.push(["figures", "Tables and charts", (tableBlocks.length > OPEN_TABLES + 1 ? `<p class="dz-shown">${tableBlocks.length} tables. The first ${OPEN_TABLES} are open; open any other by its name.</p>` : "") + blocksHtml.join("")]);
   // chapter 3: questions
   const qaIndex = new Map(qas.map((s) => [s.id, 0]));
   if (qas.length) parts.push(["questions", qas.length === 1 ? (qas[0].heading || "Questions") : "Questions and answers", qas.map((s) => `
@@ -226,7 +252,7 @@ export async function render(el, ctx, moduleId, alive) {
         <nav class="dz-qa-side" aria-label="All questions">${fold("qa-" + s.id, `All ${s.items.length} questions`, `<div data-qa-list>${qaListHtml(s, 0)}</div>`, openFolds, "dz-qa-fold")}</nav></div>
     </section>`).join("")]);
 
-  const group = (m.group || "");
+  const group = groupOf(m);
   const empty = !parts.length;
   el.innerHTML = `<header class="page-head dz-head">
       <p class="kicker">${esc(ctx.project.name || "")}${group ? " · " + esc(group) : ""}</p>
@@ -243,7 +269,7 @@ export async function render(el, ctx, moduleId, alive) {
       ${parts.map(([id, words, html]) => `<div class="dz-part" data-part="${id}">${parts.length > 1 ? `<h2 class="dz-part-title">${esc(words)}</h2>` : ""}${html}</div>`).join("")}
       ${parts.length > 1 ? '<div data-calm-pager></div>' : ""}
     </div>
-    ${m.footer || (ctx.project.branding && ctx.project.branding.model_label) ? `<p class="fine foot dz-foot">${esc(m.footer || ctx.project.branding.model_label)}</p>` : ""}`;
+    ${m.footer ? `<p class="fine foot dz-foot">${esc(m.footer)}</p>` : ""}`;
 
   wireViewBar(el, ctx);
   wireTables(el);
@@ -304,6 +330,12 @@ export async function render(el, ctx, moduleId, alive) {
     if (alive()) audio.mount(el.querySelector(".dz-audio-slot"), ctx, { module: m, cards, banners, narratives, alive });
   } catch (e) { /* no briefing bar */ }
 }
+
+// two texts that say the same thing (case, spaces, dashes and punctuation aside)
+const norm = (t) => String(t || "").toLowerCase().replace(/[–—-]/g, "-").replace(/[^a-z0-9$%+.-]+/g, "");
+function same(a, b) { return !!a && !!b && norm(a) === norm(b); }
+// a number and its unit never part at the end of a line
+function glue(t) { return String(t).replace(/ (SF|acres|units|keys|homes|people|households|jobs|years|months|miles)\b/g, " $1").replace(/ to /g, " to "); }
 
 function narrativeHtml(s, look) {
   const t = leadOf(s.body || "");

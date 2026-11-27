@@ -40,11 +40,20 @@ export function rentAside(v, unit) {
   return "";
 }
 function millions(v, unit) {
-  const m = Number(v) / 1e6, d = Math.abs(m) >= 100 ? 0 : Math.abs(m) >= 10 ? 1 : 2;
+  const m = Number(v) / 1e6, d = Math.abs(m) >= 1000 ? 0 : Math.abs(m) >= 10 ? 1 : 2;
   return (m < 0 ? "-$" : "$") + nFix(Math.abs(m), d) + "M" + (unit === "usd_per_yr" ? "/yr" : moneyParts(v, unit));
 }
 // a figure (an assumption record) shown the way a card asks: { main, aside }
-export function figureWords(fig, format) {
+export function figureWords(fig, format, opts = {}) {
+  const w = figureWordsRaw(fig, format);
+  // on a card, large dollar amounts read as $12.6M/yr; the exact amount stays in the panel and on hover
+  if (opts.compact && fig && isNum(fig.value) && Math.abs(Number(fig.value)) >= 1e6 && String(fig.unit || "").startsWith("usd") &&
+      !/per_sf|per_acre|per_unit|per_night/.test(fig.unit) && ["", "usd", "usd_m", "int", "number"].includes(format || "")) {
+    return { main: millions(fig.value, fig.unit), aside: w.aside, exact: valueIn(fig.value, fig.unit) };
+  }
+  return w;
+}
+function figureWordsRaw(fig, format) {
   if (!fig) return { main: NOT_GIVEN, aside: "" };
   const unit = fig.unit, f = format || "";
   const range = () => {
@@ -83,7 +92,7 @@ export function figureWords(fig, format) {
 // a number ready for counting up: the leading number in the words and how to rewrite it
 export function countable(words) {
   const m = /^(-?\$?)([\d,]+(?:\.\d+)?)(.*)$/.exec(words);
-  if (!m || / to /.test(words)) return null;
+  if (!m || /\sto\s/.test(words)) return null;
   const value = Number(m[2].replace(/,/g, "")), d = (m[2].split(".")[1] || "").length;
   return { value, format: (x) => m[1] + nFix(x, d) + m[3] };
 }
@@ -229,7 +238,7 @@ export function say(el, text, kind = "") {
   el.textContent = text;
 }
 export const chip = (text, cls = "") => `<span class="dz-chip${cls ? " " + cls : ""}">${esc(text)}</span>`;
-export const sourceTags = (tags) => (tags || []).filter(Boolean).map((t) => `<span class="dz-src">${esc(t)}</span>`).join("");
+export const sourceTags = (tags) => (tags || []).filter(Boolean).map((t) => `<span class="dz-src" title="${esc(t)}">${esc(t)}</span>`).join("");
 export function when(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -244,7 +253,7 @@ export function day(iso) {
 // the first sentence of a text, and the rest
 export function leadOf(text) {
   const s = String(text || "").trim();
-  const m = /^(.+?[.!?])(\s+)(?=[A-Z0-9"“(])/.exec(s);
+  const m = /^(.+?[.!?])(\s+)(?=[A-Z0-9"“(\[])/.exec(s);
   return m ? { lead: m[1], rest: s.slice(m[0].length) } : { lead: s, rest: "" };
 }
 export { formatValue };
