@@ -6,6 +6,7 @@ Nothing is saved: a what-if (POST) changes a copy of the content in memory. The 
 audience on the way out by api.py (filter_answer below, then access.scrub).
 """
 import copy
+import re
 
 from . import Problem
 from . import finance as F
@@ -18,8 +19,10 @@ TOOLS = ("landvalue", "proceeds", "proforma", "strategy", "scenarios", "funding"
 
 # What each part of a tool's result is about. An audience that denies a tag never receives that part.
 RESULT_TAGS = {
-    "landvalue": {"by_parcel": {"rlv_parcel"}, "pricing_tiers": {"price_floor", "disposition"}},
-    "proceeds": {"waterfall": {"disposition"}, "capital_plan": {"disposition"}, "targets": {"disposition"}},
+    "landvalue": {"by_parcel": {"rlv_parcel"}, "pricing_tiers": {"price_floor", "disposition"},
+                  "blocks": {"price_floor", "disposition"}, "comparison": {"rlv_parcel", "disposition"}},
+    "proceeds": {"waterfall": {"disposition"}, "capital_plan": {"disposition"}, "targets": {"disposition"},
+                 "stated_plan": {"disposition"}, "by_basis": {"disposition"}},
     "proforma": {"break_even": {"returns"}, "tornado": {"returns"}},
     "strategy": {"decisions": {"returns", "disposition"}, "conflicts": {"disposition"},
                  "retained_value": {"disposition"}, "paced_releases": {"disposition"},
@@ -78,7 +81,10 @@ CONVENTIONS = {
 PREFIXES = {"FISCAL-JOBS-PER-1000SF-": "jobs per 1,000 SF", "FISCAL-SALES-PER-SF-": "taxable sales per SF per year",
             "SCN-UNITS-": "a named unit-count scenario"}
 
-OPTIONS = {"proceeds": {"price_basis": ("target_market", "minimum_recommended", "upside_stretch", "economic_cost_floor")},
+BASIS = ("stated", "residual")
+OPTIONS = {"landvalue": {"basis": BASIS}, "strategy": {"basis": BASIS},
+           "proceeds": {"basis": BASIS,
+                        "price_basis": ("target_market", "minimum_recommended", "upside_stretch", "economic_cost_floor")},
            "proforma": {"tornado_metric": ("irr_pct", "yoc_pct", "npv_usd", "rlv_total_usd", "equity_multiple")}}
 
 
@@ -275,8 +281,80 @@ def _formula(*parts):
 
 # ---------------------------------------------------------------- the tools
 
+SF_PER_AC = 43560.0
+_ID_IN_TEXT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\-]{0,62}[A-Za-z0-9]")
+
+
+def basis_for(inp, options):
+    """('stated' or 'residual', whether stated prices exist). Stated: blocks' $/SF or parcels' target prices."""
+    stated = bool(inp.rows("blocks")) or any(finite(p.get("target_price")) for p in inp.rows("parcels"))
+    asked = options.get("basis")
+    if asked == "stated" and not stated:
+        inp._miss("No block has a stated price and no parcel has a target_price, so the residual basis was used.")
+        return "residual", stated
+    return asked or ("stated" if stated else "residual"), stated
+
+
+def _cite(inp, entity, row):
+    """Assumptions a row names in its cites, or by id in its note: they count as inputs used."""
+    ids = list(row.get("cites") or [])
+    ids += [w for w in _ID_IN_TEXT.findall(str(row.get("note") or "")) if w in inp.reg]
+    for aid in dict.fromkeys(ids):
+        if aid in inp.reg:
+            inp.num(aid, default=None)
+        else:
+            inp._miss(f"{entity} {row.get('id')} cites {aid}, which is not in the register.")
+
+
+def block_price(inp, b):
+    """A block's stated price: net acres x 43,560 x $/SF (the middle of the range when only a range is given)."""
+    net = inp.field("blocks", b, "net_acres")
+    lo, mid, hi = (inp.field("blocks", b, k) for k in ("price_per_sf_low", "price_per_sf", "price_per_sf_high"))
+    _cite(inp, "Block", b)
+    how = "stated price per SF"
+    if not finite(mid) and finite(lo) and finite(hi):
+        mid, how = (lo + hi) / 2.0, "the middle of the stated range"
+    sf = net * SF_PER_AC if finite(net) else None
+    if sf is None or not finite(mid):
+        inp._miss(f"Block {b.get('id')} has no stated price per SF (or no net acres), so it is not priced.")
+    usd = (lambda per: round(per * sf, 2) if finite(per) and sf is not None else None)
+    return {"id": b.get("id"), "name": b.get("name"), "net_acres": net, "net_sf": sf, "price_per_sf": mid,
+            "gross_price_usd": usd(mid), "low_usd": usd(lo), "high_usd": usd(hi), "price_from": how,
+            "phase": b.get("phase"), "close_month": inp.field("blocks", b, "close_month"), "intent": b.get("intent"),
+            "core": bool(b.get("core")), "apns": list(b.get("apns") or [])}
+
+
+def _residual_per_net_ac(by_parcel):
+    """{parcel id or APN: (base residual per net acre, net acres)} from residual_land_value_by_parcel."""
+    out = {}
+    for r in (by_parcel or {}).get("parcels", []):
+        chosen = ((r.get("uses") or {}).get(r.get("totalled_use")) or {}).get("base") or {}
+        per = chosen.get("rlv_per_net_ac_usd")
+        if finite(per):
+            out[r.get("id")] = (per, r.get("net_ac") or 0.0)
+    return out
+
+
+def _block_residual(inp, block, per_ac):
+    """Residual estimate for a block: its net acres x the acre-weighted residual per net acre of its parcels."""
+    apn_to_id = {p.get("apn"): p.get("id") for p in inp.rows("parcels")}
+    found = [per_ac[k] for k in (apn_to_id.get(a, a) for a in block["apns"]) if k in per_ac]
+    weight = sum(w for _, w in found)
+    if not found or not weight or not finite(block.get("net_acres")):
+        return None
+    return round(block["net_acres"] * sum(v * w for v, w in found) / weight, 2)
+
+
+def _diff(stated, residual):
+    if not finite(stated) or not finite(residual):
+        return {"difference_usd": None, "difference_pct": None}
+    d = stated - residual
+    return {"difference_usd": round(d, 2), "difference_pct": round(d / abs(residual) * 100, 4) if residual else None}
+
+
 def t_landvalue(inp, options):
-    lib = inp.library()
+    basis, has_stated = basis_for(inp, options)
+    lib = inp.library() if inp.rows("land_uses") or not has_stated else {}
     n2g = inp.num("FIN-NET-TO-GROSS-PCT")
     by_use = F.residual_land_value_by_use(lib, net_to_gross_pct=n2g) if lib else None
     parcels = inp.finance_parcels()
@@ -298,16 +376,49 @@ def t_landvalue(inp, options):
         chosen = (r.get("uses") or {}).get(r.get("totalled_use")) or {}
         base = (chosen.get("base") or {}).get("rlv_usd")
         high = (chosen.get("high") or {}).get("rlv_usd")
+        stated = inp.field("parcels", p, "target_price") if basis == "stated" else None
         parcel = {"id": p.get("id"), "gross_ac": p.get("acres"), "net_ac": r.get("net_ac") or p.get("net_acres"),
                   "cost_items": costs.get(p.get("id"), {}),
                   "strategic_score": inp.field("parcels", p, "strategic_score")}
-        tiers.append({"parcel": p.get("id"), "use": r.get("totalled_use"),
+        tiers.append({"parcel": p.get("id"), "use": r.get("totalled_use"), "basis": "stated" if stated else "residual",
+                      "residual_base_usd": base,
                       **F.pricing_tiers(parcel, base, high, sponsor_hurdle_pct=hurdle, strategic_premium_pct=premium,
-                                        target_pct_of_rlv=target_pct, upside_pct=upside)})
-    result = {"by_use": by_use, "by_parcel": by_parcel, "pricing_tiers": tiers}
+                                        target_pct_of_rlv=target_pct, upside_pct=upside,
+                                        target_price_usd=stated if finite(stated) else None)})
+    per_ac = _residual_per_net_ac(by_parcel)
+    blocks = []
+    for b in inp.rows("blocks"):
+        row = block_price(inp, b)
+        row["residual_estimate_usd"] = _block_residual(inp, row, per_ac)
+        row.update(_diff(row["gross_price_usd"], row["residual_estimate_usd"]))
+        blocks.append(row)
+    result = {"basis_used": basis, "by_use": by_use, "by_parcel": by_parcel, "pricing_tiers": tiers}
+    if blocks:
+        result["blocks"] = blocks
+    comparison = None
+    if has_stated and by_parcel:
+        units = []
+        for b in blocks:
+            units.append({"kind": "block", "id": b["id"], "stated_usd": b["gross_price_usd"],
+                          "residual_usd": b["residual_estimate_usd"], **_diff(b["gross_price_usd"],
+                                                                               b["residual_estimate_usd"])})
+        for tr in tiers:
+            p = next((x for x in inp.rows("parcels") if x.get("id") == tr["parcel"]), {})
+            if finite(p.get("target_price")):
+                units.append({"kind": "parcel", "id": tr["parcel"], "stated_usd": p["target_price"],
+                              "residual_usd": tr["residual_base_usd"], **_diff(p["target_price"], tr["residual_base_usd"])})
+        priced = [u for u in units if finite(u["stated_usd"]) and finite(u["residual_usd"])]
+        st, rs = sum(u["stated_usd"] for u in priced), sum(u["residual_usd"] for u in priced)
+        comparison = {"units": units, "stated_total_usd": round(st, 2), "residual_total_usd": round(rs, 2),
+                      **_diff(st, rs), "compared": len(priced), "not_compared": len(units) - len(priced),
+                      "note": "Totals add only the units priced both ways."}
+        result["comparison"] = comparison
     formula = _formula((by_use or {}).get("formula"), "Pricing tiers: cost floor = the parcel's cost items; minimum = "
-                       "floor x (1 + sponsor hurdle) + strategic premium; target = base residual x target percent; "
-                       "upside = high residual.")
+                       "floor x (1 + sponsor hurdle) + strategic premium; target = the parcel's stated target_price "
+                       "(stated basis) or base residual x target percent (residual basis); upside = high residual.",
+                       "Block stated price = net acres x 43,560 x price per SF (the middle of the range when only "
+                       "a range is stated). Residual estimate of a block = its net acres x the acre-weighted base "
+                       "residual per net acre of the parcels it lies in." if blocks else None)
     return result, formula
 
 
@@ -338,31 +449,140 @@ def _sale_parcels(inp, prices):
                     "strategic_score": inp.field("parcels", p, "strategic_score"),
                     "close_month": inp.field("parcels", p, "close_month"),
                     "must_keep": bool(p.get("must_keep")), "critical": bool(p.get("critical")),
-                    "do_not_sell_until_month": inp.field("parcels", p, "do_not_sell_until_month")})
+                    "do_not_sell_until_month": inp.field("parcels", p, "do_not_sell_until_month"),
+                    "phase": p.get("phase"), "intent": {"ground lease": "ground_lease"}.get(p.get("hold_sell"),
+                                                                                           p.get("hold_sell"))})
     return out
 
 
+def _sale_blocks(inp, priced):
+    """Blocks as sale pieces. A stub that is not known stays not known (the net is then an upper bound)."""
+    out = []
+    for b, row in priced:
+        if not finite(row["gross_price_usd"]):
+            continue
+        stub = inp.field("blocks", b, "stub_cost_usd")
+        out.append({"id": b.get("id"), "name": b.get("name"), "gross_price_usd": row["gross_price_usd"],
+                    "net_ac": row["net_acres"], "infrastructure_stubs": [{"name": "stub", "amount_usd": stub}],
+                    "strategic_score": inp.field("blocks", b, "strategic_score"), "close_month": row["close_month"],
+                    "critical": bool(b.get("core")), "must_keep": False, "phase": b.get("phase"),
+                    "intent": b.get("intent")})
+    return out
+
+
+def sale_units(inp, basis, price_basis="target_market"):
+    """(units, kind): blocks when the dataset has them and the basis is stated, else parcels."""
+    if basis == "stated" and inp.rows("blocks"):
+        priced = [(b, block_price(inp, b)) for b in inp.rows("blocks")]
+        return _sale_blocks(inp, priced), "blocks"
+    lv, _ = t_landvalue(inp, {"basis": basis})
+    tier = "target_market" if basis == "stated" else price_basis
+    return _sale_parcels(inp, _price_basis(inp, lv["pricing_tiers"], tier)), "parcels"
+
+
+def _rates(inp):
+    return {"brokerage_pct": inp.num("FIN-BROKERAGE-PCT"), "closing_cost_pct": inp.num("FIN-CLOSING-PCT"),
+            "transfer_tax_pct": inp.num("FIN-TRANSFER-TAX-PCT"), "recording_fee_usd": inp.num("FIN-RECORDING-FEE-USD")}
+
+
+def _targets(inp):
+    rows = sorted(inp.rows("capital_targets"), key=lambda x: x.get("month") or 0)
+    out, running = [], 0.0
+    cumulative = all(t.get("cumulative", True) is not False for t in rows)
+    for t in rows:
+        amount = inp.field("capital_targets", t, "amount_usd")
+        running = amount if cumulative else running + (amount or 0)
+        out.append({"label": t.get("label"), "month": inp.field("capital_targets", t, "month"), "amount_usd": amount,
+                    "cumulative_target_usd": running})
+    return out, cumulative
+
+
+def stated_plan(inp, units, waterfall, targets):
+    """The plan as stated: the units whose intent is sell, by phase and cumulative by close month, against the
+    capital targets. Kept units (hold, JV, ground lease, hold and develop) are counted as kept acres."""
+    net = {w.get("id"): w for w in (waterfall or {}).get("parcels", [])}
+    sold = [u for u in units if u.get("intent") == "sell"]
+    kept = [u for u in units if u.get("intent") != "sell"]
+    by_phase, months, upper = {}, {}, False
+    for u in sold:
+        w = net.get(u["id"]) or {}
+        n, g = w.get("net_cash_proceeds_usd"), u["gross_price_usd"]
+        upper = upper or bool(w.get("net_proceeds_is_upper_bound"))
+        ph = by_phase.setdefault(str(u.get("phase") or "none"), {"phase": u.get("phase"), "units": [], "net_acres": 0.0,
+                                                                  "gross_usd": 0.0, "net_usd": 0.0})
+        ph["units"].append(u["id"])
+        ph["net_acres"] += float(u.get("net_ac") or 0)
+        ph["gross_usd"] += g
+        ph["net_usd"] += n or 0.0
+        if finite(u.get("close_month")):
+            m = months.setdefault(int(u["close_month"]), {"month": int(u["close_month"]), "units": [], "gross_usd": 0.0,
+                                                           "net_usd": 0.0})
+            m["units"].append(u["id"])
+            m["gross_usd"] += g
+            m["net_usd"] += n or 0.0
+        else:
+            inp._miss(f"{u['id']} has no close_month, so it is left out of the timeline.")
+    timeline, cg, cn = [], 0.0, 0.0
+    for m in sorted(months):
+        cg += months[m]["gross_usd"]
+        cn += months[m]["net_usd"]
+        timeline.append({**months[m], "cumulative_gross_usd": round(cg, 2), "cumulative_net_usd": round(cn, 2)})
+    against = []
+    for tg in targets:
+        upto = [r for r in timeline if r["month"] <= (tg["month"] or 0)]
+        got = upto[-1]["cumulative_net_usd"] if upto else 0.0
+        gross = upto[-1]["cumulative_gross_usd"] if upto else 0.0
+        want = tg["cumulative_target_usd"]
+        against.append({**tg, "cumulative_gross_usd": gross, "cumulative_net_usd": got,
+                        "met": None if want is None else got >= want,
+                        "shortfall_usd": None if want is None else round(max(0.0, want - got), 2),
+                        "net_is_upper_bound": upper})
+    return {"sold": [u["id"] for u in sold], "kept": [u["id"] for u in kept],
+            "net_acres_sold": round(sum(float(u.get("net_ac") or 0) for u in sold), 4),
+            "net_acres_kept": round(sum(float(u.get("net_ac") or 0) for u in kept), 4),
+            "gross_usd": round(sum(u["gross_price_usd"] for u in sold), 2),
+            "net_usd": round(sum((net.get(u["id"]) or {}).get("net_cash_proceeds_usd") or 0.0 for u in sold), 2),
+            "net_is_upper_bound": upper,
+            "unknown_stubs": sum(1 for u in sold for s in u.get("infrastructure_stubs") or [] if s.get("amount_usd") is None),
+            "by_phase": [{**v, "net_acres": round(v["net_acres"], 4), "gross_usd": round(v["gross_usd"], 2),
+                          "net_usd": round(v["net_usd"], 2)} for v in by_phase.values()],
+            "by_close_month": timeline, "against_targets": against}
+
+
 def t_proceeds(inp, options):
-    basis = options.get("price_basis") or "target_market"
-    tiers_result, _ = t_landvalue(inp, {})
-    prices = _price_basis(inp, tiers_result["pricing_tiers"], basis)
-    rates = {"brokerage_pct": inp.num("FIN-BROKERAGE-PCT"), "closing_cost_pct": inp.num("FIN-CLOSING-PCT"),
-             "transfer_tax_pct": inp.num("FIN-TRANSFER-TAX-PCT"), "recording_fee_usd": inp.num("FIN-RECORDING-FEE-USD")}
-    parcels = _sale_parcels(inp, prices)
-    waterfall = F.waterfall_for_parcels(parcels, **rates) if parcels else None
-    targets = []
-    for t in inp.rows("capital_targets"):
-        targets.append({"month": inp.field("capital_targets", t, "month"),
-                        "amount_usd": inp.field("capital_targets", t, "amount_usd"), "label": t.get("label")})
+    basis, has_stated = basis_for(inp, options)
+    price_basis = options.get("price_basis") or "target_market"
+    rates = _rates(inp)
+    units, kind = sale_units(inp, basis, price_basis)
+    waterfall = F.waterfall_for_parcels(units, **rates) if units else None
+    targets, cumulative = _targets(inp)
     if not targets:
         inp._miss("There are no capital_targets (cash needed by month), so the capital target solver was not run.")
-    cumulative = all(t.get("cumulative", True) is not False for t in inp.rows("capital_targets"))
-    plan = F.solve_capital_targets(parcels, targets, targets_are_cumulative=cumulative,
+    plan = F.solve_capital_targets(units, [{"month": t["month"], "amount_usd": t["amount_usd"]} for t in targets],
+                                   targets_are_cumulative=cumulative,
                                    critical_threshold=inp.num("FIN-CRITICAL-THRESHOLD"), **rates) \
-        if parcels and targets else None
-    result = {"price_basis": basis, "waterfall": waterfall, "capital_plan": plan, "targets": targets}
-    return result, _formula("Gross price per parcel = its " + basis.replace("_", " ") + " price from the landvalue tool.",
-                            (waterfall or {}).get("formula"), (plan or {}).get("formula"))
+        if units and targets else None
+    result = {"basis_used": basis, "sold_as": kind, "price_basis": price_basis if basis == "residual" else "stated",
+              "waterfall": waterfall, "stated_plan": stated_plan(inp, units, waterfall, targets),
+              "capital_plan": plan, "targets": targets}
+    if has_stated and inp.rows("land_uses"):
+        other = "residual" if basis == "stated" else "stated"
+        o_units, o_kind = sale_units(inp, other, price_basis)
+        o_fall = F.waterfall_for_parcels(o_units, **rates) if o_units else {}
+        here = {"basis": basis, "sold_as": kind, "gross_usd": (waterfall or {}).get("gross_total_usd"),
+                "net_usd": (waterfall or {}).get("net_total_usd")}
+        there = {"basis": other, "sold_as": o_kind, "gross_usd": o_fall.get("gross_total_usd"),
+                 "net_usd": o_fall.get("net_total_usd")}
+        st, rs = (here, there) if basis == "stated" else (there, here)
+        result["by_basis"] = {"stated": st, "residual": rs, **_diff(st["gross_usd"], rs["gross_usd"]),
+                              "note": "Gross totals on each basis; the difference is stated minus residual."}
+    what = "each block's stated price (net acres x 43,560 x price per SF)" if kind == "blocks" else (
+        "each parcel's stated target_price" if basis == "stated" else
+        "each parcel's " + price_basis.replace("_", " ") + " price from the landvalue tool")
+    return result, _formula(f"Gross price = {what}.", (waterfall or {}).get("formula"),
+                            "Stated plan: the pieces whose intent is sell, added up by phase and by close month "
+                            "against the capital targets; a stub not known leaves the net an upper bound.",
+                            (plan or {}).get("formula"))
 
 
 def t_proforma(inp, options):
@@ -388,25 +608,55 @@ def t_proforma(inp, options):
 
 
 def t_strategy(inp, options):
+    basis, _ = basis_for(inp, options)
     assumptions = {"discount_rate_pct": inp.num("STR-DISCOUNT-RATE-PCT"),
                    "appreciation_pct": inp.num("STR-APPRECIATION-PCT"),
                    "sale_cost_pct": inp.num("STR-SALE-COST-PCT"),
                    "critical_threshold": inp.num("FIN-CRITICAL-THRESHOLD")}
-    parcels = []
-    for p in inp.rows("parcels"):
-        row = {"id": p.get("id"), "name": p.get("label"), "net_ac": p.get("net_acres") or p.get("acres"),
-               "land_value_usd": inp.field("parcels", p, "land_value_usd"),
-               "strategic_score": inp.field("parcels", p, "strategic_score"),
-               "critical": bool(p.get("critical")), "must_keep": bool(p.get("must_keep")),
-               "do_not_sell_until_month": inp.field("parcels", p, "do_not_sell_until_month")}
-        if p.get("strategic_scores"):
-            row["strategic_scores"] = inp.field("parcels", p, "strategic_scores")
-        extra = inp.field("parcels", p, "strategy_inputs") or {}
-        if isinstance(extra, dict):
-            row.update(copy.deepcopy(extra))
-        if row["land_value_usd"] is None:
-            inp._miss(f"Parcel {p.get('id')} has no land_value_usd, so its strategies cannot be compared.")
-        parcels.append(row)
+    lv = None
+    if basis == "residual" or not inp.rows("blocks"):
+        lv, _ = t_landvalue(inp, {"basis": basis})
+    rows = []
+    if inp.rows("blocks"):
+        if lv is None:
+            per_ac = {}
+        else:
+            per_ac = _residual_per_net_ac(lv.get("by_parcel"))
+        for b in inp.rows("blocks"):
+            priced = block_price(inp, b)
+            value = priced["gross_price_usd"] if basis == "stated" else _block_residual(inp, priced, per_ac)
+            row = {"id": b.get("id"), "name": b.get("name"), "net_ac": priced["net_acres"], "land_value_usd": value,
+                   "strategic_score": inp.field("blocks", b, "strategic_score"), "critical": bool(b.get("core")),
+                   "must_keep": False}
+            extra = inp.field("blocks", b, "strategy_inputs") or {}
+            if isinstance(extra, dict):
+                row.update(copy.deepcopy(extra))
+            if value is None:
+                inp._miss(f"Block {b.get('id')} has no value on the {basis} basis, so its strategies cannot be compared.")
+            rows.append(row)
+        kind = "blocks"
+    else:
+        tiers = {t["parcel"]: t for t in (lv or {}).get("pricing_tiers", [])}
+        for p in inp.rows("parcels"):
+            value = inp.field("parcels", p, "land_value_usd")
+            if value is None and basis == "stated":
+                value = inp.field("parcels", p, "target_price")
+            if value is None and basis == "residual":
+                value = (tiers.get(p.get("id")) or {}).get("residual_base_usd")
+            row = {"id": p.get("id"), "name": p.get("label"), "net_ac": p.get("net_acres") or p.get("acres"),
+                   "land_value_usd": value, "strategic_score": inp.field("parcels", p, "strategic_score"),
+                   "critical": bool(p.get("critical")), "must_keep": bool(p.get("must_keep")),
+                   "do_not_sell_until_month": inp.field("parcels", p, "do_not_sell_until_month")}
+            if p.get("strategic_scores"):
+                row["strategic_scores"] = inp.field("parcels", p, "strategic_scores")
+            extra = inp.field("parcels", p, "strategy_inputs") or {}
+            if isinstance(extra, dict):
+                row.update(copy.deepcopy(extra))
+            if row["land_value_usd"] is None:
+                inp._miss(f"Parcel {p.get('id')} has no land value, so its strategies cannot be compared.")
+            rows.append(row)
+        kind = "parcels"
+    parcels = rows
     decisions = F.decide_parcels(parcels, assumptions) if parcels else None
     recs = {d.get("id"): d.get("guarded_recommendation") or d.get("recommended_strategy")
             for d in (decisions or {}).get("parcels", [])} if decisions else {}
@@ -425,10 +675,11 @@ def t_strategy(inp, options):
                                       appreciation_pct=assumptions["appreciation_pct"], placemaking_lift_pct=lift or 0.0,
                                       lift_year=int(lift_year or 1), min_core_acres=inp.num("STR-MIN-CORE-ACRES") or 0.0,
                                       sale_cost_pct=assumptions["sale_cost_pct"])
-    result = {"decisions": decisions, "conflicts": conflicts, "retained_value": retained, "paced_releases": paced,
-              "retained_parcels": [p["id"] for p in kept]}
-    return result, _formula((decisions or {}).get("formula"), (retained or {}).get("formula"),
-                            (paced or {}).get("formula"))
+    result = {"basis_used": basis, "decided_for": kind, "decisions": decisions, "conflicts": conflicts,
+              "retained_value": retained, "paced_releases": paced, "retained_parcels": [p["id"] for p in kept]}
+    return result, _formula(f"Land value of each {kind[:-1]} = " + (
+        "its stated price" if basis == "stated" else "its residual land value") + ".",
+        (decisions or {}).get("formula"), (retained or {}).get("formula"), (paced or {}).get("formula"))
 
 
 def t_scenarios(inp, options):
@@ -489,22 +740,20 @@ def t_funding(inp, options):
     if not items:
         inp._miss("There are no infrastructure items.")
     register = F.infrastructure_register(items, period_unit="year") if items else None
-    tiers_result, _ = t_landvalue(inp, {})
-    prices = _price_basis(inp, tiers_result["pricing_tiers"], "target_market")
     a = inp.pro_forma_assumptions()
     base_year = a.get("base_year")
     years = sorted({int(i["due_period"]) for i in items if finite(i.get("due_period"))})
     proceeds = {}
-    if base_year:
-        for p in _sale_parcels(inp, prices):
-            if finite(p.get("close_month")):
-                y = int(base_year + (p["close_month"] - 1) // 12)
-                w = F.gross_to_net_waterfall(p["gross_price_usd"], p.get("net_ac"),
-                                             brokerage_pct=inp.num("FIN-BROKERAGE-PCT"),
-                                             closing_cost_pct=inp.num("FIN-CLOSING-PCT"),
-                                             transfer_tax_pct=inp.num("FIN-TRANSFER-TAX-PCT"))
-                if finite(w.get("net_cash_proceeds_usd")):
-                    proceeds[y] = proceeds.get(y, 0.0) + w["net_cash_proceeds_usd"]
+    basis, _ = basis_for(inp, {})
+    units, _kind = sale_units(inp, basis)
+    selling = [u for u in units if u.get("intent") == "sell"] if any(u.get("intent") for u in units) else units
+    if base_year and selling:
+        fall = {w.get("id"): w for w in F.waterfall_for_parcels(selling, **_rates(inp)).get("parcels", [])}
+        for u in selling:
+            net = (fall.get(u["id"]) or {}).get("net_cash_proceeds_usd")
+            if finite(u.get("close_month")) and finite(net):
+                y = int(base_year + (u["close_month"] - 1) // 12)
+                proceeds[y] = proceeds.get(y, 0.0) + net
                 years.append(y)
     periods = sorted(set(years))
     gap = F.infrastructure_funding_gap(items, periods, proceeds, period_unit="year") if items and periods else None
@@ -512,8 +761,8 @@ def t_funding(inp, options):
         inp._miss("No infrastructure item has a due year, so the funding gap cannot be laid out by period.")
     result = {"register": register, "funding_gap": gap, "unknown_cost_items": sum(1 for i in items if i["cost_usd"] is None)}
     return result, _formula((register or {}).get("formula"), (gap or {}).get("formula"),
-                            "Land sale proceeds by year: each parcel's target price through the gross-to-net "
-                            "waterfall, in the year its close_month falls.")
+                            "Land sale proceeds by year: each piece sold (blocks with intent sell, else parcels) "
+                            "through the gross-to-net waterfall, in the year its close_month falls.")
 
 
 def t_fiscal(inp, options):

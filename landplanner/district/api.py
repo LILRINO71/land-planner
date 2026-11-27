@@ -792,6 +792,8 @@ class DistrictAPI:
         options = b.get("options")
         if options is None:
             options = {k: _q(q, k) for k in K.OPTIONS.get(tool, {}) if _q(q, k)}
+        if b.get("basis") and isinstance(options, dict):
+            options = {**options, "basis": b["basis"]}
         answer = K.run(tool, content, options,
                        reconcile_content=A.filter_content(content, audience) if deny else content)
         answer = A.scrub(K.filter_answer(answer, audience), audience)

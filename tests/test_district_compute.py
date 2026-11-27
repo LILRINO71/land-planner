@@ -18,7 +18,8 @@ from landplanner.district.schema import AUDIENCE_DENY  # noqa: E402
 access.ITERATIONS = 1000
 P = "/api/districts/projects/sample-district"
 CITY_DENY = AUDIENCE_DENY["city"]
-HIDDEN_FROM_CITY = {"landvalue": ["by_parcel", "pricing_tiers"], "proceeds": ["capital_plan", "targets", "waterfall"],
+HIDDEN_FROM_CITY = {"landvalue": ["blocks", "by_parcel", "comparison", "pricing_tiers"],
+                    "proceeds": ["by_basis", "capital_plan", "stated_plan", "targets", "waterfall"],
                     "proforma": ["break_even", "tornado"],
                     "strategy": ["conflicts", "decisions", "paced_releases", "retained_parcels", "retained_value"],
                     "scenarios": [], "funding": ["funding_gap"], "fiscal": [], "reconcile": []}
@@ -108,7 +109,7 @@ class EveryTool(Base):
         pf = self.compute("proforma")[1]["result"]["full_buildout"]
         self.assertTrue(pf["irr"]["converged"])
         self.assertIsNotNone(pf["equity_multiple"])
-        plan = self.compute("proceeds")[1]["result"]["capital_plan"]["strategies"]
+        plan = self.compute("proceeds", basis="residual")[1]["result"]["capital_plan"]["strategies"]
         self.assertEqual(set(plan), {"max_cash", "balanced", "max_retention"})
         self.assertNotIn("PA-1", [p["id"] for p in plan["max_retention"]["picks"]], "a critical asset is kept")
         st = self.compute("strategy")[1]["result"]
@@ -124,13 +125,113 @@ class EveryTool(Base):
         self.assertEqual(rec["rec-gla"]["difference"], 10000.0)
 
     def test_options_and_unknown_tools(self):
-        a = self.compute("proceeds", price_basis="minimum_recommended")[1]["result"]
-        b = self.compute("proceeds")[1]["result"]
+        a = self.compute("proceeds", basis="residual", price_basis="minimum_recommended")[1]["result"]
+        b = self.compute("proceeds", basis="residual")[1]["result"]
         self.assertLess(a["waterfall"]["gross_total_usd"], b["waterfall"]["gross_total_usd"])
         self.assertEqual(self.compute("proceeds", price_basis="whatever")[0], 400)
         self.assertEqual(self.compute("nonsense")[0], 404)
         s, body = self.compute("proforma", method="POST", body={"options": {"tornado_metric": "yoc_pct"}})
         self.assertEqual((s, body["result"]["tornado"]["metric"]), (200, "yoc_pct"))
+
+
+class Blocks(Base):
+    """The four invented sample blocks: B-1 10 ac at $25/SF (stub $250,000), B-2 30 ac at $15-20/SF (stub not
+    known), both sold; B-3 8 ac at $40/SF held (core); B-4 12 ac at $20/SF in a JV."""
+    RATE = 0.03 + 0.0075 + 0.001                     # brokerage 3%, closing 0.75%, transfer tax 0.1% (sample register)
+
+    def test_stated_basis_proceeds_are_the_hand_sum(self):
+        s, b = self.compute("proceeds")
+        r = b["result"]
+        self.assertEqual((s, r["basis_used"], r["sold_as"]), (200, "stated", "blocks"))
+        b1_gross, b2_gross = 10 * 43560 * 25, 30 * 43560 * 17.5          # B-2 at the middle of its range
+        b1_net = b1_gross * (1 - self.RATE) - 1000 - 250000               # less the recording fee and its stub
+        b2_net = b2_gross * (1 - self.RATE) - 1000                        # its stub is not known: not taken off
+        plan = r["stated_plan"]
+        self.assertEqual((plan["sold"], plan["kept"]), (["B-1", "B-2"], ["B-3", "B-4"]))
+        self.assertEqual((plan["net_acres_sold"], plan["net_acres_kept"]), (40.0, 20.0))
+        self.assertAlmostEqual(plan["gross_usd"], b1_gross + b2_gross, places=2)
+        self.assertAlmostEqual(plan["net_usd"], b1_net + b2_net, places=2)
+        month18, month48 = plan["against_targets"]
+        self.assertAlmostEqual(month18["cumulative_net_usd"], b1_net + b2_net, places=2)
+        self.assertTrue(month18["met"])
+        self.assertFalse(month48["met"])
+        self.assertAlmostEqual(month48["shortfall_usd"], 35000000 - (b1_net + b2_net), places=2)
+        self.assertEqual([x["phase"] for x in plan["by_phase"]], ["1"])
+        self.assertEqual([m["month"] for m in plan["by_close_month"]], [12, 15])
+
+    def test_an_unknown_stub_stays_unknown_in_the_totals(self):
+        r = self.compute("proceeds")[1]["result"]
+        self.assertTrue(r["stated_plan"]["net_is_upper_bound"])
+        self.assertEqual(r["stated_plan"]["unknown_stubs"], 1)
+        self.assertEqual(r["waterfall"]["unknown_deductions"], 1)
+        self.assertTrue(r["waterfall"]["net_total_is_upper_bound"])
+        s, b = self.compute("proceeds", method="POST", body={"records": {"blocks": [{"id": "B-2", "stub_cost_usd": 0}]}})
+        self.assertEqual(s, 200, b)
+        self.assertFalse(b["result"]["stated_plan"]["net_is_upper_bound"])
+
+    def test_both_bases_side_by_side_when_both_exist(self):
+        lv = self.compute("landvalue")[1]["result"]
+        self.assertEqual(lv["basis_used"], "stated")
+        units = {u["id"]: u for u in lv["comparison"]["units"]}
+        self.assertEqual(set(units), {"B-1", "B-2", "B-3", "B-4", "PA-1", "PA-2"})    # blocks, and parcel target prices
+        b1 = units["B-1"]
+        self.assertEqual(b1["stated_usd"], 10 * 43560 * 25)
+        self.assertAlmostEqual(b1["difference_usd"], b1["stated_usd"] - b1["residual_usd"], places=2)
+        self.assertEqual(units["PA-1"]["stated_usd"], 12000000)
+        tiers = {x["parcel"]: x for x in lv["pricing_tiers"]}
+        self.assertEqual(tiers["PA-1"]["tiers"]["target_market"]["price_usd"], 12000000.0, "the stated target price")
+        by = self.compute("proceeds")[1]["result"]["by_basis"]
+        self.assertEqual((by["stated"]["sold_as"], by["residual"]["sold_as"]), ("blocks", "parcels"))
+        self.assertAlmostEqual(by["difference_usd"], by["stated"]["gross_usd"] - by["residual"]["gross_usd"], places=2)
+        res = self.compute("landvalue", basis="residual")[1]["result"]
+        self.assertEqual(res["basis_used"], "residual")
+        self.assertNotEqual({x["parcel"]: x for x in res["pricing_tiers"]}["PA-1"]["tiers"]["target_market"]["price_usd"],
+                            12000000.0)
+
+    def test_core_blocks_are_kept_by_max_retention_and_flagged_when_sold(self):
+        plan = self.compute("proceeds")[1]["result"]["capital_plan"]["strategies"]
+        self.assertNotIn("B-3", [x["id"] for x in plan["max_retention"]["picks"]])
+        for name, s in plan.items():
+            sold_core = [c["parcel_id"] for c in s["critical_asset_conflicts"]]
+            self.assertEqual("B-3" in [x["id"] for x in s["picks"]], "B-3" in sold_core, name)
+        self.assertIn("B-3", [x["id"] for x in plan["max_cash"]["picks"]], "the sample shows a flagged sale")
+
+    def test_strategy_decides_per_block_and_inputs_cite_the_blocks_and_their_assumptions(self):
+        st = self.compute("strategy")[1]
+        self.assertEqual(st["result"]["decided_for"], "blocks")
+        self.assertEqual([d["id"] for d in st["result"]["decisions"]["parcels"]], ["B-1", "B-2", "B-3", "B-4"])
+        used = self.compute("proceeds")[1]["inputs_used"]
+        fields = {u.get("field") for u in used} | {u.get("assumption_id") for u in used}
+        self.assertTrue({"blocks/B-1/price_per_sf", "blocks/B-2/price_per_sf_low", "A-RET-RENT", "A-RES-UNITS"} <= fields)
+
+    def test_the_city_never_sees_block_prices_or_proceeds(self):
+        content = self.api.call("GET", P + "/datasets/baseline", token=self.t["viewer_city"])[1]["content"]
+        blocks = content["entities"]["blocks"]
+        self.assertEqual(len(blocks), 4)
+        for b in blocks:
+            self.assertFalse({"price_per_sf", "price_per_sf_low", "price_per_sf_high", "close_month",
+                              "strategy_inputs"} & set(b), b)
+        figures = {float(10 * 43560 * 25), 30 * 43560 * 17.5}
+        for tool in ("landvalue", "proceeds", "strategy", "funding"):
+            city = self.compute(tool, "viewer_city")[1]
+            self.assertFalse(figures & numbers(city), tool)
+            self.assertFalse([u for u in city["inputs_used"] if "price_per_sf" in str(u.get("field"))], tool)
+        self.assertEqual(self.compute("proceeds", "viewer_city", "POST",
+                                      {"records": {"blocks": [{"id": "B-1", "price_per_sf": 99}]}})[0], 403)
+
+    def test_asking_for_stated_prices_where_there_are_none_falls_back_and_says_so(self):
+        from landplanner.district import sample
+        from landplanner.district.store import normal_content
+        import copy
+        c = normal_content(copy.deepcopy(sample.content()))          # never change the module's own lists
+        c["entities"]["blocks"] = []
+        for x in c["entities"]["parcels"]:
+            x.pop("target_price", None)
+        a = compute.run("proceeds", c, {"basis": "stated"})
+        self.assertEqual((a["result"]["basis_used"], a["result"]["sold_as"]), ("residual", "parcels"))
+        self.assertTrue(any("residual basis was used" in m for m in a["missing"]))
+        self.assertNotIn("by_basis", a["result"])
+        self.assertEqual(compute.run("landvalue", c)["result"]["basis_used"], "residual")
 
 
 class WhatIf(Base):

@@ -411,6 +411,35 @@ Id made from module, heading when a row has no id.
 | city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
 | note | text |  |  |  |  |  | a short note |
 
+### `blocks` (Block (a sale piece))
+
+Id made from name when a row has no id.
+
+| field | type | unit | required | range | choices | tags | description |
+|---|---|---|---|---|---|---|---|
+| id | text |  | yes |  |  |  | short id (B-1, ...) |
+| name | text |  | yes |  |  |  | the block's name |
+| apns | refs |  |  |  |  |  | the parcels it lies in (parcel ids or APNs); a block may cut across them |
+| net_acres | number | acres | yes | 0 to 1,000,000 |  |  | net acres sold or kept |
+| gross_acres | number | acres |  | 0 to 1,000,000 |  |  | gross acres |
+| price_per_sf_low | number | usd_per_sf |  | 0 to 100,000 |  | price_floor, disposition | the low end of the stated price per net SF |
+| price_per_sf | number | usd_per_sf |  | 0 to 100,000 |  | disposition | the stated price per net SF (empty with a range: the middle of the range) |
+| price_per_sf_high | number | usd_per_sf |  | 0 to 100,000 |  | disposition | the high end of the stated price per net SF |
+| phase | text |  |  |  |  |  | the id of a Phase |
+| close_month | integer | months |  | 0 to 600 |  | disposition | month the sale closes (cash in) |
+| buyer_type | text |  |  |  |  |  | the kind of buyer |
+| intent | choice |  |  |  | sell, hold, jv, ground_lease, hold_develop |  | sell, hold, jv, ground_lease or hold_develop |
+| core | bool |  |  |  |  |  | a strategic core block: never sold by the max-retention plan, flagged when sold |
+| strategic_score | number |  |  | 0 to 100 |  |  | its strategic score, 0-100 |
+| stub_cost_usd | number | usd |  | 0 to 100,000,000,000 |  |  | infrastructure stub paid from the sale; leave empty when not known, 0 when none |
+| use | text |  |  |  |  |  | the id of a Use |
+| cites | refs |  |  |  |  |  | the Assumption ids its price comes from |
+| strategy_inputs | json |  |  |  |  | returns, disposition | {sale, develop, jv, ground_lease} for the hold/sell/JV/lease comparison |
+| provenance | choice |  |  |  | VERIFIED PROJECT FACT, CURRENT OWNERSHIP INPUT, CONSULTANT INPUT, ESRI / ARCGIS DATA, OWNERSHIP ASSUMPTION, MARKET ASSUMPTION, CALCULATED, REQUIRES VALIDATION, HISTORICAL / SUPERSEDED |  | where its price comes from |
+| tags | list |  |  |  |  |  | sensitivity tags for the whole row (returns, rlv_parcel, price_floor, disposition) |
+| city_safe | bool |  |  |  |  |  | an administrator's word that this row may go to the city view although its words sound sensitive |
+| note | text |  |  |  |  |  | a short note |
+
 ### `land_uses` (LandUse (finance library))
 
 Id made from label when a row has no id.
@@ -761,8 +790,14 @@ role may call them (viewers on the versions they can read). The answer:
 - **What-if (POST).** Nothing is saved. `assumptions` is `{id: number}` (an existing register entry, or a convention id
   below); `records` is `{entity: [{id, field: value}]}` merged into existing rows and checked like an edit. A viewer can
   change only what their own view shows. `what_if` lists what was changed; those inputs carry `"what_if": true`.
+- **Price basis.** `landvalue`, `proceeds` and `strategy` take `basis` = `stated` or `residual`. Stated is a price the
+  package states: a block's price per net SF x its net SF, or a parcel's `target_price`. Residual is the residual land
+  value worked out from the land use library. The default is `stated` when the dataset has blocks or parcel target
+  prices, else `residual`; `stated` asked for where there is none falls back to residual and says so in `missing`.
+  When both exist the answer also gives both side by side with the difference (`landvalue.comparison`,
+  `proceeds.by_basis`). With blocks, the stated basis sells and decides **blocks**, not parcels.
 - **Options.** `proceeds`: `price_basis` = `target_market` (default), `minimum_recommended`, `upside_stretch` or
-  `economic_cost_floor`. `proforma`: `tornado_metric` = `irr_pct` (default), `yoc_pct`, `npv_usd`, `rlv_total_usd` or
+  `economic_cost_floor` (which pricing tier prices a parcel on the residual basis). `proforma`: `tornado_metric` = `irr_pct` (default), `yoc_pct`, `npv_usd`, `rlv_total_usd` or
   `equity_multiple`. On a GET they are query parameters.
 - **Audience.** The answer is filtered on the server: result parts tagged in `compute.RESULT_TAGS` are removed for an
   audience that denies the tag (listed in `hidden_parts`), inputs whose tags it denies are removed, and `access.scrub`
@@ -779,6 +814,7 @@ role may call them (viewers on the versions they can read). The answer:
 | parcels | `parcels`: acres, net_acres (else `FIN-NET-TO-GROSS-PCT`), use, candidate_uses, strategic_score(s), critical, must_keep, close_month, do_not_sell_until_month, seller_note_usd, debt_release_usd, land_value_usd, strategy_inputs |
 | phases | `phases` (land_cost_usd, start_offset_years, the two triggers) with the base-case `program_lines` of each phase (units, else keys, else sf, else acres). The `full` phase is the whole buildout, not a phase of its own. Uses in the groups open space, civic, infrastructure and parks are left out quietly |
 | infrastructure stubs | `infrastructure` rows with `parcel`; payer and due year from `payer` and `due_period` |
+| blocks (sale pieces across APNs) | `blocks`: net_acres, price_per_sf (or the middle of price_per_sf_low and _high), phase, close_month, intent, core (never sold by max retention, flagged when a plan sells it), strategic_score, stub_cost_usd (empty = not known: the net is then an upper bound; write 0 for none), strategy_inputs. Each block's `cites`, and any register id named in its `note`, are listed in `inputs_used` |
 | capital targets | `capital_targets` (month, amount_usd, cumulative) |
 | everything else | assumptions by id, below |
 
@@ -834,13 +870,24 @@ use's group in capitals (`RETAIL`, `OFFICE`, `HOSPITALITY`).
 
 | tool | result | example POST body |
 |---|---|---|
-| `landvalue` | `by_use` (residual per use and low/base/high: per net acre, gross acre, net SF), `by_parcel` (per parcel and candidate use), `pricing_tiers` (per parcel: cost floor, minimum recommended, target, upside) | `{"assumptions": {"FIN-TARGET-PCT-OF-RLV": 90}, "records": {"land_uses": [{"id": "ret-shops", "rent_per_sf_yr": 44}]}}` |
-| `proceeds` | `price_basis`, `waterfall` (gross-to-net per parcel and totals), `capital_plan` (max cash, balanced, max retention against the targets), `targets` | `{"options": {"price_basis": "minimum_recommended"}, "assumptions": {"FIN-BROKERAGE-PCT": 2.5}}` |
+| `landvalue` | `basis_used`, `by_use` (residual per use and low/base/high: per net acre, gross acre, net SF), `by_parcel` (per parcel and candidate use), `pricing_tiers` (per parcel: cost floor, minimum recommended, target = the stated target_price on the stated basis, upside), `blocks` (stated price, low, high, residual estimate and difference per block), `comparison` (stated against residual, per block and parcel, and in total) | `{"assumptions": {"FIN-TARGET-PCT-OF-RLV": 90}, "records": {"land_uses": [{"id": "ret-shops", "rent_per_sf_yr": 44}]}}` |
+| `proceeds` | `basis_used`, `sold_as` (blocks or parcels), `price_basis`, `waterfall` (gross-to-net per piece and totals), `stated_plan` (the pieces whose intent is sell: acres sold and kept, by phase, cumulative by close month against each capital target, `net_is_upper_bound`, `unknown_stubs`), `capital_plan` (max cash, balanced, max retention against the targets), `targets`, `by_basis` | `{"options": {"price_basis": "minimum_recommended"}, "assumptions": {"FIN-BROKERAGE-PCT": 2.5}}` |
 | `proforma` | `phases`, `full_buildout` (totals, yield on cost, IRR with `converged`, equity multiple, NPV, cash flows), `break_even` (per driver the program has), `tornado` | `{"options": {"tornado_metric": "yoc_pct"}, "assumptions": {"PF-HURDLE-IRR-PCT": 18}}` |
-| `strategy` | `decisions` (hold, sell, JV, ground lease per parcel: NPVs, scores, guarded recommendation), `conflicts` (critical assets), `retained_value` (land kept, over 15 years), `paced_releases`, `retained_parcels` | `{"assumptions": {"STR-APPRECIATION-PCT": 4, "STR-RELEASE-ACRES": 4}}` |
+| `strategy` | `basis_used`, `decided_for` (blocks or parcels), `decisions` (hold, sell, JV, ground lease per block or parcel: NPVs, scores, guarded recommendation), `conflicts` (critical assets), `retained_value` (land kept, over 15 years), `paced_releases`, `retained_parcels` | `{"assumptions": {"STR-APPRECIATION-PCT": 4, "STR-RELEASE-ACRES": 4}}` |
 | `scenarios` | `low_base_high` (headline metrics side by side and against the base), `unit_scenarios` (one per `SCN-UNITS-<n>`), `absorption` (homes by year), `phase_triggers` (each phase's triggers met, not met or not known) | `{"assumptions": {"SCN-ABSORPTION-UNITS-PER-YEAR": 150, "SCN-PRELEASING-PCT": 65}}` |
 | `funding` | `register` (infrastructure totals by phase and payer, with the count of costs not known), `funding_gap` (owner cost against land-sale proceeds by year), `unknown_cost_items` | `{"records": {"infrastructure": [{"id": "inf-water", "cost_usd": 2000000}]}}` |
 | `fiscal` | `impact` (jobs, output, sales, property and hotel tax by phase), `eifd` (increment by year) | `{"assumptions": {"FISCAL-SALES-TAX-PCT": 1.5, "EIFD-PARTICIPATING-SHARE-PCT": 30}}` |
 | `reconcile` | `reconciliations` (each rule's difference, explanation and the engine's own check), `all_explained` | `{"assumptions": {"A-RET-CAT-TOTAL": 175000}}` |
+
+A blocks example (POST `/compute/proceeds`): try a price for one block and a stub for another, without saving:
+
+```json
+{"basis": "stated",
+ "records": {"blocks": [{"id": "B-1", "price_per_sf": 28}, {"id": "B-2", "stub_cost_usd": 400000}]},
+ "assumptions": {"FIN-BROKERAGE-PCT": 2.5}}
+```
+
+(`basis` may also be given in `options`; on a GET it is `?basis=stated`.) The city never receives block prices,
+close months, stated-plan proceeds or the side-by-side comparison.
 
 Every compute call is in the audit log (`compute`, with the tool, dataset, version, audience and what-if changes).

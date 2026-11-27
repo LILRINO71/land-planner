@@ -339,6 +339,27 @@ CAPITAL_TARGETS = [
     {"id": "t-phase2", "label": "Phase 2 infrastructure", "month": 48, "amount_usd": 35000000, "cumulative": True},
 ]
 
+# sale pieces that cut across the parcels, each with a stated price per net SF (invented)
+BLOCKS = [
+    {"id": "B-1", "name": "Main street retail pads", "apns": ["PA-1"], "net_acres": 10, "gross_acres": 12,
+     "price_per_sf": 25, "phase": "1", "close_month": 12, "buyer_type": "retail developer", "intent": "sell",
+     "strategic_score": 60, "stub_cost_usd": 250000, "use": "ret-shops", "cites": ["A-RET-RENT"],
+     "provenance": "OWNERSHIP ASSUMPTION"},
+    {"id": "B-2", "name": "North homes", "apns": ["PA-2"], "net_acres": 30, "gross_acres": 36, "price_per_sf_low": 15,
+     "price_per_sf_high": 20, "phase": "1", "close_month": 15, "buyer_type": "home builder", "intent": "sell",
+     "strategic_score": 30, "use": "res-sfd", "note": "Range from the sample broker call; homes count A-RES-UNITS.",
+     "provenance": "MARKET ASSUMPTION"},
+    {"id": "B-3", "name": "Town center core", "apns": ["PA-1", "PA-4"], "net_acres": 8, "gross_acres": 9,
+     "price_per_sf": 40, "phase": "2", "close_month": 30, "intent": "hold", "core": True, "strategic_score": 90,
+     "stub_cost_usd": 0, "use": "ret-restaurant", "provenance": "OWNERSHIP ASSUMPTION"},
+    {"id": "B-4", "name": "Apartment site", "apns": ["PA-3"], "net_acres": 12, "gross_acres": 14, "price_per_sf": 20,
+     "phase": "2", "close_month": 36, "buyer_type": "apartment developer", "intent": "jv", "strategic_score": 55,
+     "stub_cost_usd": 0, "use": "res-mf", "provenance": "OWNERSHIP ASSUMPTION",
+     "strategy_inputs": {"sale": {"sale_year": 3, "sale_cost_pct": 4},
+                         "jv": {"cash_out_pct": 25, "project_cost_usd": 90000000, "stabilized_noi_usd": 6000000,
+                                "exit_cap_pct": 5.5}}},
+]
+
 _PARCEL_FINANCE = {
     "PA-1": {"candidate_uses": ["ret-shops", "office"], "strategic_score": 85, "critical": True, "close_month": 12,
              "land_value_usd": 12000000, "strategy_inputs": {
@@ -450,7 +471,7 @@ def content():
         "parcels": PARCELS, "assumptions": ASSUMPTIONS, "deliverables": DELIVERABLES, "infrastructure": INFRA,
         "risks": RISKS, "comps": COMPS, "data_sources": SOURCES, "requirements": REQUIREMENTS, "sections": SECTIONS,
         "reconciliations": RECONCILIATIONS, "land_uses": LAND_USES, "cost_items": COST_ITEMS,
-        "capital_targets": CAPITAL_TARGETS}}
+        "capital_targets": CAPITAL_TARGETS, "blocks": BLOCKS}}
 
 
 GIS = {"type": "FeatureCollection", "features": [
