@@ -589,7 +589,20 @@ never receives; today only `city` denies `returns`, `rlv_parcel`, `price_floor` 
    value`, `price floor`, `disposition`, ...) even when untagged, unless an administrator set `city_safe`;
 4. a card, reconciliation or table row that cites a removed assumption, and a table column tagged in `column_tags`;
 5. in free-form objects (site facts, GIS properties, computed results) any key named like a denied subject
-   (`irr`, `rlv_per_acre`, `price_floor`, `target_price`, `yield_on_cost`, ...).
+   (`irr`, `rlv_per_acre`, `price_floor`, `target_price`, `yield_on_cost`, ...);
+6. free text: a record's `note` never goes, and any other text field (or table row, or section item) whose words
+   name a denied subject is left out, unless an administrator set `city_safe` on the record.
+
+Outside the internal audience (consultant, partner, city), whatever the tags:
+
+- the project's `site` facts and a GIS layer's properties go by an **allow-list** of public facts (acres, parcels
+  and APNs, zoning and plan designations, the place; never a key that also names a price, a basis, a target, the
+  retained core, releases or a mandate). Sharing a layer may name its own list: `{"audiences", "public_properties":
+  [names]}` (an empty list sends geometry only);
+- a dataset's meta is `{id, kind, label, owner, current, created_at, published: [{version, at, from_version}]}`
+  (no publish notes or who did what), and other people's document upload notes are left out;
+- notes are those on a dataset the caller can open (a note with no dataset is on the baseline); a note can only be
+  written or answered there.
 
 An administrator or analyst may add `?audience=city` (or `partner`, `consultant`) to any read or export to see
 exactly what that audience would get; a viewer cannot widen theirs.
@@ -597,17 +610,28 @@ exactly what that audience would get; a viewer cannot widen theirs.
 ## 6. Signing in
 
 - **Name and passcode.** `POST /api/districts/session {"method": "passcode", "name", "passcode"}`. Passcodes are kept
-  as PBKDF2-SHA256 with a salt per user. Five wrong tries in 15 minutes lock that name for 15 minutes.
+  as PBKDF2-SHA256 with a salt per user. Five wrong tries for a name from one address in 15 minutes hold that name
+  back for that address for 15 minutes (another address still signs in, so nobody can lock someone else out); 20
+  wrong tries from one address other than this computer, for any names, hold that address back; 100 for one name
+  from everyone together hold the name back. Behind a reverse proxy everyone comes from this computer's address, so
+  there a name is held back for everyone after five wrong tries, as before. A name is cut to 80 characters before it is used or logged; an unknown name costs the same
+  passcode work as a known one. A wrong current passcode when changing it counts as a wrong try; a change ends the
+  user's other sessions.
 - **Google.** When `google_client_id` is set in `data/district-settings.json`, the page gets a Google ID token
   (Google Identity Services) and sends `{"method": "google", "id_token"}`. The server checks it with
   `https://oauth2.googleapis.com/tokeninfo` (audience = the client id, issuer Google, e-mail verified, not
   expired) and the e-mail must belong to an ACTIVE user in the directory; otherwise it is refused with a clear
   message and logged. With no client id the answer is `501 google-not-set-up` (the owner creates the client id in
   Google Cloud; nothing is faked).
-- **First run.** While the directory is empty, the first person to sign in (either way) becomes the administrator,
-  and the Sample District is installed so the workspace is not empty.
-- **Session.** A cookie `lp_district` (HttpOnly, SameSite=Strict, Path=/api/districts; in network mode Path=/api
-  and Secure) that ends after `idle_minutes` (default 30) without a request, 12 hours after sign-in however busy,
+- **First run.** While the directory is empty and nobody was ever made administrator here, the first person to sign
+  in (either way) on the computer that runs the app (address and Host both this computer) becomes the administrator,
+  and the Sample District is installed so the workspace is not empty. It is checked and written under one lock, so
+  only one person becomes administrator. `bootstrapped_at` in `district-settings.json` records it: after that, an
+  empty, missing or damaged `district-users.json` is `500 unreadable` (restore it from a copy), never a new first
+  run. `bootstrap` in `GET /api/districts` is true only for a caller on this computer.
+- **Session.** A cookie (HttpOnly, SameSite=Strict) named `lp_district_<port>` on plain HTTP (cookies do not keep
+  ports apart, so two copies of the app on one computer would otherwise sign each other out), Path=/api/districts
+  (in network mode Path=/api), and `__Host-lp_district` on HTTPS (Secure, Path=/). It ends after `idle_minutes` (default 30) without a request, 12 hours after sign-in however busy,
   at sign-out, when an administrator ends it, or when the user is turned off, removed, or given another role or
   passcode. Sessions are kept in `data/district-sessions.json` and survive a restart: the file holds the SHA-256
   of each token, never the token, with the user, the times and the address it signed in from. The "last used"
@@ -646,8 +670,12 @@ exactly what that audience would get; a viewer cannot widen theirs.
   `google-not-set-up` (501), `google-unreachable` (502).
 - Every request is also checked by the app's server, on 127.0.0.1 too: the Host header must be one of the
   server's own names or addresses (127.0.0.1, localhost, ::1; in network mode also this computer's name and
-  network addresses, `--name` and `--public-url` hosts), else `403 not-local` (DNS rebinding). A POST or DELETE
-  whose Origin or Referer is sent must be the server's own origin (scheme, host and port), else `403 not-local`.
+  network addresses, `--name` and `--public-url` hosts), else `403 not-local` (DNS rebinding). Every POST and
+  DELETE must carry an Origin that is the server's own origin (scheme, host and port), or, with no Origin,
+  `Sec-Fetch-Site: same-origin`; a `Sec-Fetch-Site` of `same-site` or `cross-site`, or a Referer from elsewhere, is
+  refused too (`403 not-local`). Scripts send `Origin: http://127.0.0.1:<port>`. A district POST with no body still
+  needs `Content-Type: application/json` (or the file type) or the header `X-Land-Planner: 1`, which the app's pages
+  send, else `415`. Two Content-Length headers are refused (400).
 - Each connection has its own thread and a 30-second limit on silence (TLS handshake, headers, body). A body sent
   with Transfer-Encoding is refused (411); a Content-Length over the route's limit is refused (413) before any of
   it is read. At most 128 connections are served at once (`--max-connections`); one more is answered at once with
@@ -712,13 +740,13 @@ POST   /api/districts/projects/<p>/imports              import     raw CSV or XL
 POST   /api/districts/projects/<p>/imports/<i>/commit   import     {target:"baseline"|"consultant"|"<dataset id>", mode:"merge"|"replace", label?, reason?} -> {dataset, imported:{entity:n}}
 
 GET    /api/districts/projects/<p>/documents            documents.read  {documents}
-POST   /api/districts/projects/<p>/documents            documents.upload raw file, ?name= &title= &task= &document=<id, for a new version> &note= -> {document}
+POST   /api/districts/projects/<p>/documents            documents.upload raw file, ?name= &title= &task= &document=<id, for a new version (the team, or the document's own uploader)> &note= -> {document} (a consultant's upload is internal, and seen by its uploader)
 POST   /api/districts/projects/<p>/documents/<doc>/share admin     {audiences:[...]} -> {document}
 GET    /api/districts/projects/<p>/documents/<doc>/<version|latest>  documents.read  the file
 
 GET    /api/districts/projects/<p>/gis                  gis.read   {layers}
 POST   /api/districts/projects/<p>/gis                  gis.upload raw .geojson/.json or zipped shapefile, ?name= &kind=trade_area|competitors|parcels|other &label= -> {layer, warnings}
-POST   /api/districts/projects/<p>/gis/<layer>/share    admin      {audiences:[...]} -> {layer} (new layers are internal + consultant)
+POST   /api/districts/projects/<p>/gis/<layer>/share    admin      {audiences:[...], public_properties?:[...]} -> {layer} (the team's new layers are internal + consultant; a consultant's own upload is internal, and seen by its uploader)
 GET    /api/districts/projects/<p>/gis/<layer>          gis.read   a GeoJSON FeatureCollection (properties filtered for the audience)
 DELETE /api/districts/projects/<p>/gis/<layer>          gis.remove {removed:true} (the file is kept, the layer is hidden)
 
@@ -755,7 +783,10 @@ Shapes used above:
   hash}`. Actions: `sign-in`, `sign-out`, `session-expired`, `nda`, `denied`, `user-add`, `user-change`,
   `user-remove`, `settings`, `project-create`, `project-edit`, `modules`, `dataset-create`, `edit`, `publish`,
   `rollback`, `import-preview`, `import`, `upload-document`, `share-document`, `download-document`, `upload-gis`,
-  `remove-gis`, `share-gis`, `compute`, `note`, `export`, `backup`, `restore`, `package-export`, `package-import`, `sample`.
+  `remove-gis`, `share-gis`, `compute`, `note`, `export`, `backup`, `restore`, `package-export`, `package-import`, `sample`,
+  `read` (a consultant's or viewer's read of a dataset, a figure or a map layer, at most once per ten minutes for the
+  same thing). A refused change to the last administrator is logged as `user-change` or `user-remove`, outcome
+  `denied`. Strings in an entry's detail are cut to 500 characters, lists to 100 items.
 - **revision**: `{seq, at, user, name, dataset, entity, id, field, oldValue, newValue, reason, classification, prev,
   hash}`. `classification` is the record's provenance class (or the one given with the edit).
 

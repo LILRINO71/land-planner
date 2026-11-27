@@ -56,8 +56,13 @@ class Served(unittest.TestCase):
         self.addCleanup(server.shutdown)
         return server
 
-    def ask(self, method, path, body=None, headers=None, server=None):
+    def ask(self, method, path, body=None, headers=None, server=None, origin=True):
+        """origin: a POST or DELETE carries this server's own Origin, as a browser on its pages sends it (False:
+        none, to try what a request without one gets)."""
         port = (server or self.server).server_address[1]
+        if origin and method in ("POST", "DELETE") and "Origin" not in (headers or {}):
+            scheme = "https" if self.https else "http"
+            headers = {**(headers or {}), "Origin": f"{scheme}://127.0.0.1:{port}"}
         if self.client_tls:
             c = http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=self.client_tls)
         else:
@@ -163,7 +168,8 @@ class OriginGuard(Served):
             headers["Origin"] = origin
         if referer is not None:
             headers["Referer"] = referer
-        return self.ask(method, path, {"city": "nowhere", "apn": "1"} if method == "POST" else None, headers)
+        return self.ask(method, path, {"city": "nowhere", "apn": "1"} if method == "POST" else None, headers,
+                        origin=False)
 
     def test_a_change_from_another_origin_is_refused(self):
         other = self.port + 1 if self.port < 65535 else self.port - 1
@@ -181,10 +187,19 @@ class OriginGuard(Served):
                          403)
 
     def test_a_change_from_the_servers_own_pages_goes_through(self):
-        for origin in (None, self.own(), f"http://localhost:{self.port}", f"http://[::1]:{self.port}"):
-            s, b, _ = self.change(origin, referer=None if origin is None else origin + "/#/lands")
+        for origin in (self.own(), f"http://localhost:{self.port}", f"http://[::1]:{self.port}"):
+            s, b, _ = self.change(origin, referer=origin + "/#/lands")
             self.assertNotEqual(s, 403, (origin, b))
             self.assertNotEqual(s, 401, origin)
+        # with no Origin, the browser's Sec-Fetch-Site must say same-origin; with neither the change is refused
+        s, b, _ = self.ask("POST", "/api/my-lands", {"city": "nowhere", "apn": "1"}, {"Sec-Fetch-Site": "same-origin"},
+                           origin=False)
+        self.assertNotEqual(s, 403, b)
+        for headers in ({}, {"Sec-Fetch-Site": "same-site"}, {"Sec-Fetch-Site": "cross-site"},
+                        {"Origin": self.own(), "Sec-Fetch-Site": "same-site"}):
+            self.assertEqual(self.ask("POST", "/api/my-lands", {"city": "nowhere", "apn": "1"}, headers,
+                                      origin=False)[0], 403, headers)
+        self.assertEqual(self.ask("DELETE", "/api/districts/session", origin=False)[0], 403)
         s, b, _ = self.ask("POST", "/api/districts/session", {"method": "passcode", "name": "Owner",
                                                               "passcode": "owner-pass-1"}, {"Origin": self.own()})
         self.assertEqual(s, 200, b)
@@ -194,6 +209,13 @@ class OriginGuard(Served):
 
     def test_a_public_url_from_a_reverse_proxy_may_send_changes(self):
         proxied = self.serve(public_urls=["https://planner.example.org"])
+        # the first sign-in (which makes the administrator) is on this computer, not through the proxy
+        s, b, _ = self.ask("POST", "/api/districts/session", {"method": "passcode", "name": "Owner",
+                                                              "passcode": "owner-pass-1"},
+                           {"Host": "planner.example.org", "Origin": "https://planner.example.org"}, server=proxied)
+        self.assertEqual((s, b["error"]["code"]), (403, "first-run-here"))
+        self.assertEqual(self.ask("POST", "/api/districts/session", {"method": "passcode", "name": "Owner",
+                                                                     "passcode": "owner-pass-1"}, server=proxied)[0], 200)
         s, _, _ = self.ask("POST", "/api/districts/session", {"method": "passcode", "name": "Owner",
                                                               "passcode": "owner-pass-1"},
                            {"Host": "planner.example.org", "Origin": "https://planner.example.org"}, server=proxied)
@@ -214,6 +236,7 @@ class LocalhostUnchanged(Served):
         self.assertNotIn(self.ask("POST", "/api/my-lands", {"city": "nowhere", "apn": "1"})[0], (401, 403))
         _, cookie = self.sign_in("Owner", "owner-pass-1")
         self.assertEqual(cookie.split("; ")[1:], ["HttpOnly", "SameSite=Strict", "Path=/api/districts"])
+        self.assertTrue(cookie.startswith(f"lp_district_{self.port}="), "the port is in the name on plain HTTP")
 
 
 # ---------------------------------------------------------------- network mode
@@ -261,6 +284,8 @@ class NetworkMode(Served):
         self.server.shutdown()
         self.server.server_close()
         again = self.serve(require_sign_in=True)
+        # the cookie's name holds the port; the app starts again on the same port, here a new one, so it is renamed
+        admin = {"Cookie": f"lp_district_{again.server_address[1]}=" + admin["Cookie"].split("=", 1)[1]}
         self.assertEqual(self.ask("GET", "/api/cities", headers=admin, server=again)[0], 200)
         self.assertEqual(self.ask("GET", "/api/districts/projects", headers=admin, server=again)[0], 200)
         kept = (Path(self.folder.name) / "district-sessions.json").read_text(encoding="utf-8")
@@ -282,7 +307,8 @@ class Https(Served):
         self.assertIn(c.sock.version(), ("TLSv1.2", "TLSv1.3"))
         c.close()
         _, cookie = self.sign_in("Owner", "owner-pass-1")
-        self.assertEqual(cookie.split("; ")[1:], ["HttpOnly", "SameSite=Strict", "Path=/api", "Secure"])
+        self.assertEqual(cookie.split("; ")[1:], ["HttpOnly", "SameSite=Strict", "Path=/", "Secure"])
+        self.assertTrue(cookie.startswith("__Host-lp_district="), "only this origin can set or read it")
 
     def test_old_tls_versions_are_refused(self):
         old = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -342,12 +368,14 @@ class Limits(Served):
         return s
 
     def test_a_chunked_body_and_a_body_too_large_are_refused(self):
-        s = self.raw(b"POST /api/my-lands HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+        s = self.raw(f"POST /api/my-lands HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: {self.own()}\r\n".encode()
+                     + b"Content-Type: application/json\r\n"
                      b"Transfer-Encoding: chunked\r\n\r\n5\r\n{}{}{\r\n0\r\n\r\n")
         self.assertIn(b" 411 ", s.recv(4096))
         self.assertEqual(self.ask("POST", "/api/my-lands", "x" * 70000, JSON)[0], 413)
         self.assertEqual(self.ask("POST", "/api/districts/session", "x" * 10, {**JSON, "Content-Length": "-4"})[0], 400)
-        big = self.raw(b"POST /api/districts/session HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+        big = self.raw(f"POST /api/districts/session HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: {self.own()}\r\n".encode()
+                       + b"Content-Type: application/json\r\n"
                        b"Content-Length: 99999999999\r\n\r\n")
         self.assertIn(b" 413 ", big.recv(4096))
 

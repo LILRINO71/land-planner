@@ -53,8 +53,13 @@ EXPORT_SETTING = {"viewer_partner": "partner_export", "viewer_city": "city_expor
 ITERATIONS = 240_000
 MIN_PASSCODE = 8
 MAX_TRIES, TRY_WINDOW = 5, 15 * 60
+MAX_CALLER_TRIES = 20         # wrong tries from one caller, whatever the names, in the same window
+MAX_NAME_TRIES = 100          # wrong tries for one name from everyone together (a spread-out guessing run)
+MAX_TRY_KEYS = 20000
+NAME_LIMIT = 80               # a user's name is at most this long; a longer one is cut before it is used
 DEFAULT_SETTINGS = {
     "google_client_id": "",
+    "bootstrapped_at": None,      # set once, at the first sign-in: after it an empty user directory is damage
     "landing": None,
     "idle_minutes": 30,
     "nda_version": 1,
@@ -96,6 +101,18 @@ def hash_passcode(passcode, salt=None, iterations=None):
     return f"pbkdf2_sha256${n}${salt}${digest}"
 
 
+_DUMMY = {}
+
+
+def dummy_check(passcode):
+    """The same work as checking a real passcode, for a name that does not exist (no timing difference)."""
+    n = ITERATIONS
+    if n not in _DUMMY:
+        _DUMMY[n] = hash_passcode("not-a-passcode", "00" * 16, n)
+    check_passcode(_DUMMY[n], passcode)
+    return False
+
+
 def check_passcode(stored, passcode):
     try:
         kind, n, salt, digest = str(stored).split("$")
@@ -129,6 +146,15 @@ class Settings:
             out["idle_minutes"] = 30
         out["google_client_id"] = str(out.get("google_client_id") or "").strip()
         return out
+
+    def mark_bootstrapped(self, when):
+        """Record that the first administrator exists (once; later calls keep the first time)."""
+        with self._guard:
+            current = self.get()
+            if not current.get("bootstrapped_at"):
+                current["bootstrapped_at"] = when
+                _write(self.path, current)
+            return current
 
     def update(self, changes):
         if not isinstance(changes, dict):
@@ -200,10 +226,24 @@ class Directory:
         self.clock = clock
         self._guard = threading.RLock()
 
+    def exists(self):
+        return self.path.is_file()
+
     def users(self):
         box = _read(self.path, {"version": 1, "users": []})
         rows = box.get("users") if isinstance(box, dict) else None
-        return [u for u in rows or [] if isinstance(u, dict) and u.get("id")]
+        if not isinstance(rows, list):
+            raise Problem(500, "unreadable", "district-users.json is not a user directory. Nobody can sign in until "
+                                             "it is mended or restored from a copy.")
+        return [u for u in rows if isinstance(u, dict) and u.get("id")]
+
+    def bootstrap(self, data):
+        """The first administrator, made only while the directory is empty, checked and written under one lock (so
+        people signing in at the same moment cannot all become administrators). None when it is not empty."""
+        with self._guard:
+            if self.users():
+                return None
+            return self.save_user({**data, "role": "administrator", "status": "ACTIVE", "projects": ["*"]}, None)
 
     def _save(self, users):
         _write(self.path, {"version": 1, "users": users})
@@ -460,9 +500,11 @@ class Sessions:
                 self._save()
             return gone
 
-    def end_user(self, uid):
+    def end_user(self, uid, keep=None):
+        """End every session of this user, except the one with the token `keep` (the one changing its passcode)."""
+        spare = self._key(keep) if keep else None
         with self._guard:
-            keys = [k for k, s in self._live.items() if s["user"] == uid]
+            keys = [k for k, s in self._live.items() if s["user"] == uid and k != spare]
             for k in keys:
                 del self._live[k]
             if keys:
@@ -495,21 +537,54 @@ class Sessions:
 
     # -- wrong tries
 
-    def locked(self, name):
-        key = str(name or "").strip().lower()
-        with self._guard:
-            recent = [t for t in self._tries.get(key, []) if self.clock() - t < TRY_WINDOW]
+    def _recent(self, key, now):
+        recent = [t for t in self._tries.get(key, []) if now - t < TRY_WINDOW]
+        if recent:
             self._tries[key] = recent
-            return len(recent) >= MAX_TRIES
+        else:
+            self._tries.pop(key, None)
+        return recent
 
-    def failed(self, name):
-        key = str(name or "").strip().lower()
-        with self._guard:
-            self._tries.setdefault(key, []).append(self.clock())
+    @staticmethod
+    def _keys(name, client):
+        """(this name from this caller, this caller, this name from everyone). This computer (and a reverse proxy
+        on it, through which everyone comes) is not held back as a caller, only per name: else one person's wrong
+        tries would lock out everyone who signs in on it."""
+        n = str(name or "").strip().lower()[:NAME_LIMIT]
+        c = str(client or "local")[:64]
+        try:
+            import ipaddress
+            local = client is None or ipaddress.ip_address(c.split("%")[0]).is_loopback
+        except ValueError:
+            local = False
+        return ("n", n, c), (None if local else ("c", c)), ("all", n)
 
-    def cleared(self, name):
+    def locked(self, name, client=None):
+        """True when this caller made too many wrong tries for this name, or for any names, or when everyone together
+        made far too many for this name. One caller cannot lock the right passcode out for the others."""
+        per, caller, everyone = self._keys(name, client)
+        now = self.clock()
         with self._guard:
-            self._tries.pop(str(name or "").strip().lower(), None)
+            return (len(self._recent(per, now)) >= MAX_TRIES
+                    or (caller is not None and len(self._recent(caller, now)) >= MAX_CALLER_TRIES)
+                    or len(self._recent(everyone, now)) >= MAX_NAME_TRIES)
+
+    def failed(self, name, client=None):
+        now = self.clock()
+        with self._guard:
+            if len(self._tries) > MAX_TRY_KEYS:          # never grows without end: drop what has run out first
+                for k in list(self._tries):
+                    self._recent(k, now)
+                while len(self._tries) > MAX_TRY_KEYS:
+                    self._tries.pop(next(iter(self._tries)))
+            for key in self._keys(name, client):
+                if key is not None:
+                    self._tries.setdefault(key, []).append(now)
+
+    def cleared(self, name, client=None):
+        per, _, _ = self._keys(name, client)
+        with self._guard:
+            self._tries.pop(per, None)
 
 
 # ---------------------------------------------------------------- permissions
@@ -633,6 +708,12 @@ def filter_content(content, audience):
             if set(r.get("cites") or []) & removed:
                 continue
             rec = {k: v for k, v in r.items() if not (field_tags(name, k) & deny)}
+            if not r.get("city_safe"):
+                # free text fails closed: a note never goes, and any other text that names a denied subject is left out
+                # (a section's rows and items are read one by one in _filter_section)
+                rec = {k: v for k, v in rec.items() if k != "note" and (
+                    k in _REFERENCE_FIELDS or (name == "sections" and k in ("rows", "items"))
+                    or not _value_denied(v, deny))}
             if name == "sections":
                 rec = _filter_section(rec, deny, removed)
             keep.append(rec)
@@ -640,10 +721,32 @@ def filter_content(content, audience):
     return scrub({**content, "entities": out}, audience)
 
 
+# fields that hold ids and tag names, not words: they are never read for denied subjects
+_REFERENCE_FIELDS = frozenset({"id", "tags", "cites", "assumption", "assumptions", "parts", "total", "module", "use",
+                               "phase", "parcel", "parcels", "apn", "apns", "entity", "format", "unit", "kind",
+                               "column_tags", "city_safe", "provenance", "status"})
+
+
+def _strings(v):
+    if isinstance(v, str):
+        yield v
+    elif isinstance(v, dict):
+        for x in v.values():
+            yield from _strings(x)
+    elif isinstance(v, (list, tuple)):
+        for x in v:
+            yield from _strings(x)
+
+
+def _value_denied(v, deny):
+    return any(word_tags(t) & deny for t in _strings(v))
+
+
 def _filter_section(s, deny, removed):
+    safe = bool(s.get("city_safe"))
     if isinstance(s.get("items"), list):
         s["items"] = [i for i in s["items"] if isinstance(i, dict) and not _record_denied(i, deny)
-                      and not (set(i.get("cites") or []) & removed)]
+                      and not (set(i.get("cites") or []) & removed) and (safe or not _value_denied(i, deny))]
     cols = s.get("columns")
     if isinstance(cols, list):
         tags = s.get("column_tags") if isinstance(s.get("column_tags"), list) else []
@@ -657,7 +760,67 @@ def _filter_section(s, deny, removed):
                              for row in s["rows"]]
             if tags:
                 s["column_tags"] = [t for i, t in enumerate(tags) if i not in drop]
+    if isinstance(s.get("rows"), list) and not safe:
+        s["rows"] = [row for row in s["rows"] if not _value_denied(row, deny)]
     return s
+
+
+# ---------------------------------------------------------------- site facts and GIS properties outside the team
+
+# Site facts and GIS properties have no schema, so outside the internal audience only keys that name public facts go
+# (an allow-list): acres, parcels and APNs, zoning and plan designations, the place. A key that also names a price, a
+# basis, a target, the retained core, releases or a mandate never goes, whatever else it names.
+_PUBLIC_KEY = re.compile(r"(^|_)(location|place|address|street|road|freeway|corridor|city|county|jurisdiction|"
+                         r"zoning|zone|general|plan|designation|apns?|parcels?|details|acres?|area|efficiency|site|"
+                         r"flags|grading|topography|homes|units|label|name|geoid|tract|class|land|use|kind|type|"
+                         r"differs?|document|id)(_|$)")
+_NEVER_KEY = re.compile(r"(^|_)(retained|core|saleable|release|releases|paced|basis|price|prices|usd|cost|costs|value|"
+                        r"values|target|targets|mandate|proceeds|disposition|assumption|ids|strategy|hold|sell|sale|"
+                        r"floor|return|returns|irr|rlv|residual|budget|fund|funding|equity|loan|debt|asking|walk|"
+                        r"away|offer|minimum|stretch|premium|upside|margin|profit|notes?|comment)(_|$)")
+_RANGE_KEY = re.compile(r"low|high|min|max|[0-9][0-9 \-]*")
+
+
+def _key_words(key):
+    return re.sub(r"([a-z])([A-Z])", r"\1_\2", str(key)).lower().replace("-", "_").replace(" ", "_")
+
+
+def public_key(key):
+    k = _key_words(key)
+    return bool(_PUBLIC_KEY.search(k)) and not _NEVER_KEY.search(k) and not key_tags(key)
+
+
+def public_facts(obj, audience, allowed=None):
+    """Only the public facts of a free-form object, for an audience outside the team. `allowed`, when given, is the
+    list of keys an administrator chose (it replaces the built-in list). Text naming a denied subject is left out."""
+    deny = AUDIENCE_DENY.get(audience, AUDIENCE_DENY["city"])
+    if audience == "internal":
+        return copy.deepcopy(obj)
+    chosen = None if allowed is None else {str(k) for k in allowed}
+
+    def ok(k, under_public):
+        if chosen is not None:
+            return str(k) in chosen
+        return public_key(k) or (under_public and bool(_RANGE_KEY.fullmatch(str(k))))
+
+    def walk(x, under_public):
+        if isinstance(x, dict):
+            return {k: walk(v, True) for k, v in x.items() if ok(k, under_public) and not (deny and _value_denied(v, deny))}
+        if isinstance(x, list):
+            return [walk(v, under_public) for v in x if not (deny and _value_denied(v, deny))]
+        return x
+    return walk(obj, False)
+
+
+def public_layer(fc, audience, allowed=None):
+    """A GeoJSON layer for an audience outside the team: geometry as it is, properties limited to public facts."""
+    if audience == "internal" or not isinstance(fc, dict):
+        return copy.deepcopy(fc)
+    out = copy.deepcopy(fc)
+    for f in out.get("features") or []:
+        if isinstance(f, dict) and isinstance(f.get("properties"), dict):
+            f["properties"] = public_facts(f["properties"], audience, allowed)
+    return scrub(out, audience)
 
 
 def filter_modules(modules, audience, content=None):

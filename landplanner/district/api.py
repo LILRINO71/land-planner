@@ -54,19 +54,29 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class DistrictAPI:
-    def __init__(self, data_dir, clock=time.time, tokeninfo=None, secure=False, cookie_path=COOKIE_PATH):
+    def __init__(self, data_dir, clock=time.time, tokeninfo=None, secure=False, cookie_path=COOKIE_PATH,
+                 cookie_name=None):
         """secure: the app is served over HTTPS, so the cookie carries Secure. cookie_path: "/api" in network mode,
-        where the app's other routes need the session too."""
+        where the app's other routes need the session too. cookie_name: the server gives one per port on plain HTTP
+        (cookies do not keep ports apart, so two copies on one computer would sign each other out), and
+        __Host-lp_district on HTTPS (Secure, Path=/, no Domain: no other site or port can set or read it)."""
         self.data_dir = Path(data_dir)
         self.clock = clock
         self.secure = bool(secure)
-        self.cookie_path = cookie_path
+        self.cookie_name = cookie_name or COOKIE
+        self.cookie_path = "/" if self.cookie_name.startswith("__Host-") else cookie_path
+        self._reads = {}
         self.store = Store(self.data_dir, clock)
         self.users = A.Directory(self.data_dir, clock)
         self.settings = A.Settings(self.data_dir)
         self.sessions = A.Sessions(clock, self.data_dir / "district-sessions.json")
         self.audit = Audit(self.data_dir, clock)
         self.tokeninfo = tokeninfo or A.fetch_tokeninfo
+        try:      # a directory made before the first-run marker existed: it was set up, so mark it now
+            if not self.settings.get().get("bootstrapped_at") and not self.users.empty():
+                self.settings.mark_bootstrapped(self._now())
+        except Problem:
+            pass
 
     # ---------------------------------------------------------------- the entry point
 
@@ -90,7 +100,7 @@ class DistrictAPI:
         """For tests and other modules: (status, answer or bytes, headers)."""
         headers = {}
         if token:
-            headers["Cookie"] = f"{COOKIE}={token}"
+            headers["Cookie"] = f"{self.cookie_name}={token}"
         if raw is not None:
             headers["Content-Type"] = kind or "application/octet-stream"
             data = raw
@@ -107,22 +117,60 @@ class DistrictAPI:
 
     # ---------------------------------------------------------------- helpers
 
-    @staticmethod
-    def _token(headers):
+    def _token(self, headers):
         raw = headers.get("Cookie") or ""
         try:
             c = SimpleCookie()
             c.load(raw)
-            return c[COOKIE].value if COOKIE in c else None
+            return c[self.cookie_name].value if self.cookie_name in c else None
         except Exception:  # noqa: BLE001 - an unreadable cookie is no cookie
             return None
 
     def _cookie(self, token):
-        return f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path={self.cookie_path}" + ("; Secure" if self.secure else "")
+        return (f"{self.cookie_name}={token}; HttpOnly; SameSite=Strict; Path={self.cookie_path}"
+                + ("; Secure" if self.secure else ""))
 
     def _clear(self):
-        return (f"{COOKIE}=; HttpOnly; SameSite=Strict; Path={self.cookie_path}; Max-Age=0"
+        return (f"{self.cookie_name}=; HttpOnly; SameSite=Strict; Path={self.cookie_path}; Max-Age=0"
                 + ("; Secure" if self.secure else ""))
+
+    @staticmethod
+    def _here(req):
+        """True when the caller is this computer, by its address and by the name it asked for (behind a reverse
+        proxy every caller comes from 127.0.0.1, but asks for the public name)."""
+        client = req.get("client")
+        host = str((req.get("headers") or {}).get("Host") or "").strip().lower()
+        if host.startswith("["):
+            host = host[1:host.index("]")] if "]" in host else ""
+        elif host.count(":") == 1:
+            host = host.rsplit(":", 1)[0]
+        local_host = host in ("", "127.0.0.1", "localhost", "::1")
+        if client is None:
+            return local_host                 # called in-process (tests, other modules)
+        try:
+            import ipaddress
+            return ipaddress.ip_address(str(client).split("%")[0]).is_loopback and local_host
+        except ValueError:
+            return False
+
+    def _first_run(self, req):
+        """The first-run sign-in is open: nobody was ever made administrator here, the directory is empty, and the
+        caller is this computer."""
+        return not self.settings.get().get("bootstrapped_at") and self.users.empty() and self._here(req)
+
+    def _logged_read(self, ctx, project, what, **detail):
+        """A viewer's or consultant's read of data (a dataset, a map layer, a figure), in the audit log at most once
+        per ten minutes for the same thing."""
+        if ctx["user"].get("role") in A.INTERNAL:
+            return
+        key = (ctx["user"]["id"], project["id"], what, tuple(sorted(detail.items())))
+        now = self.clock()
+        if now - self._reads.get(key, -10 ** 9) < 600:
+            return
+        if len(self._reads) > 5000:
+            self._reads.clear()
+        self._reads[key] = now
+        self.audit.log("read", ctx["user"], "ok", project["id"], what=what, **detail)
 
     def _body(self, req):
         if req["method"] != "POST":
@@ -167,9 +215,9 @@ class DistrictAPI:
                 "nda": {"required": user.get("nda_version") != s["nda_version"], "version": s["nda_version"],
                         "text": s["nda_text"]}, "idle_minutes": s["idle_minutes"]}
 
-    def _signed_out_view(self):
+    def _signed_out_view(self, req=None):
         s = self.settings.get()
-        return {"signed_in": False, "bootstrap": self.users.empty(),
+        return {"signed_in": False, "bootstrap": self._first_run(req or {}),
                 "google": {"enabled": bool(s["google_client_id"]), "client_id": s["google_client_id"] or None}}
 
     def _current(self, req, need_nda=True):
@@ -209,7 +257,37 @@ class DistrictAPI:
         return meta, resolved, self.store.content(project["id"], did, v)
 
     def _visible_datasets(self, ctx, pid):
-        return [m for m in self.store.datasets(pid) if A.versions_visible(ctx["user"], m)]
+        return [self._meta_for(ctx, m) for m in self.store.datasets(pid) if A.versions_visible(ctx["user"], m)]
+
+    @staticmethod
+    def _meta_for(ctx, meta):
+        """A dataset's meta as a caller outside the team sees it: what it is and its versions, without the publish
+        notes, reasons and who did what (internal working words)."""
+        if ctx["user"].get("role") in A.INTERNAL:
+            return meta
+        out = {k: meta.get(k) for k in ("id", "kind", "label", "owner", "current", "created_at") if k in meta}
+        if meta.get("owner") == ctx["user"]["id"]:
+            out.update({k: meta.get(k) for k in ("draft_updated_at", "draft_updated_by") if k in meta})
+        out["published"] = [{k: p.get(k) for k in ("version", "at", "from_version") if k in p}
+                            for p in meta.get("published") or [] if isinstance(p, dict)]
+        return out
+
+    def _notes_for(self, ctx, pid, notes):
+        """The notes this caller may read: those on a dataset it can open (a note with no dataset is on the
+        baseline). Notes on drafts, scenarios and other firms' submissions stay with whoever may open those."""
+        if ctx["user"].get("role") in A.INTERNAL:
+            return notes
+        metas, out = {}, []
+        for n in notes:
+            did = (n.get("target") or {}).get("dataset") or "baseline"
+            if did not in metas:
+                try:
+                    metas[did] = self.store.dataset(pid, check_slug(did, "dataset id"))
+                except Problem:
+                    metas[did] = None
+            if metas[did] is not None and A.versions_visible(ctx["user"], metas[did]):
+                out.append(n)
+        return out
 
     def _modules_for(self, ctx, project, audience):
         mods = self.store.modules(project["id"])
@@ -236,7 +314,7 @@ class DistrictAPI:
                 except Problem as e:
                     if e.code == "session-expired":
                         raise
-                    return _json(200, self._signed_out_view())
+                    return _json(200, self._signed_out_view(req))
                 # in network mode the cookie must reach every /api route: one set by the one-computer mode (Path=
                 # /api/districts) is widened here, so the app's other pages do not ask for a sign-in again
                 widen = {"Set-Cookie": self._cookie(ctx["token"])} if self.cookie_path != COOKIE_PATH else None
@@ -248,7 +326,7 @@ class DistrictAPI:
                 if state == "ok":
                     self.sessions.end(req["token"])
                     self.audit.log("sign-out", self.users.get(uid) or {"id": uid})
-                return _json(200, self._signed_out_view(), {"Set-Cookie": self._clear()})
+                return _json(200, self._signed_out_view(req), {"Set-Cookie": self._clear()})
         if p == ["session", "nda"] and m == "POST":
             ctx = self._current(req, need_nda=False)
             if self._body(req).get("accept") is not True:
@@ -260,7 +338,20 @@ class DistrictAPI:
         if p == ["session", "passcode"] and m == "POST":
             ctx = self._current(req, need_nda=False)
             b = self._body(req)
-            self.users.set_passcode(ctx["user"]["id"], b.get("old"), b.get("new"))
+            name, client = ctx["user"].get("name"), req.get("client")
+            if self.sessions.locked(name, client):
+                self.audit.log("user-change", ctx["user"], "denied", target=ctx["user"]["id"], change="own passcode",
+                               why="too many tries")
+                raise Problem(429, "too-many-tries", "Too many wrong tries for that name. Wait 15 minutes.")
+            try:
+                self.users.set_passcode(ctx["user"]["id"], b.get("old"), b.get("new"))
+            except Problem as e:
+                if e.status == 403:           # a wrong current passcode counts as a wrong try
+                    self.sessions.failed(name, client)
+                    self.audit.log("user-change", ctx["user"], "denied", target=ctx["user"]["id"],
+                                   change="own passcode", why="wrong current passcode")
+                raise
+            self.sessions.end_user(ctx["user"]["id"], keep=ctx["token"])     # every other session ends
             self.audit.log("user-change", ctx["user"], target=ctx["user"]["id"], change="own passcode")
             return _json(200, {"ok": True})
 
@@ -303,7 +394,7 @@ class DistrictAPI:
             except Problem:
                 feats[name] = False
         uid, state = self.sessions.find(req["token"], s["idle_minutes"]) if req["token"] else (None, "none")
-        out = {"available": True, "signed_in": state == "ok", "bootstrap": self.users.empty(),
+        out = {"available": True, "signed_in": state == "ok", "bootstrap": self._first_run(req),
                "google": {"enabled": bool(s["google_client_id"]), "client_id": s["google_client_id"] or None},
                "features": feats, "idle_minutes": s["idle_minutes"]}
         landing = self._landing(s)
@@ -341,8 +432,25 @@ class DistrictAPI:
         self.audit.log("sign-in", user, method=how)
         return _json(200, self._session_view(user), {"Set-Cookie": self._cookie(token)})
 
+    def _no_directory(self, req):
+        """None when signing in can go on as usual; else the answer for an empty user directory: the first run (on
+        this computer only), or damage when an administrator was made here before."""
+        if not self.users.empty():
+            return None
+        if self.settings.get().get("bootstrapped_at"):
+            raise Problem(500, "unreadable", "The user directory (district-users.json) is missing or empty, but people "
+                                             "were signed in here before. Nobody can sign in until it is restored "
+                                             "from a copy.")
+        if not self._here(req or {}):
+            raise Problem(403, "first-run-here", "The first sign-in, which makes the administrator, must be done on "
+                                                 "the computer that runs Land Planner (open http://127.0.0.1 there).")
+        return True
+
     def _bootstrap(self, data, how, req=None):
-        user = self.users.save_user({**data, "role": "administrator", "status": "ACTIVE", "projects": ["*"]}, None)
+        user = self.users.bootstrap(data)
+        if user is None:           # someone else became the first administrator a moment ago: sign in as usual
+            return None
+        self.settings.mark_bootstrapped(self._now())
         self.audit.log("user-add", user, target=user["id"], role="administrator", why="first sign-in (bootstrap)")
         try:
             S.install(self.store, user, replace=False)
@@ -354,23 +462,30 @@ class DistrictAPI:
     def _sign_in(self, b, req=None):
         how = b.get("method")
         if how == "passcode":
-            name, passcode = str(b.get("name") or "").strip(), str(b.get("passcode") or "")
+            # a name longer than any user's is cut before it is used, looked up or written to the audit log
+            name = str(b.get("name") or "").strip()[:A.NAME_LIMIT]
+            passcode = str(b.get("passcode") or "")[:1000]
+            client = (req or {}).get("client")
             if not name or not passcode:
                 raise Problem(400, "bad-request", "Enter your name and passcode.")
-            if self.sessions.locked(name):
-                self.audit.log("sign-in", {"name": name}, "denied", method="passcode", why="too many tries")
+            if self.sessions.locked(name, client):
+                self.audit.log("sign-in", {"name": name}, "denied", method="passcode", why="too many tries",
+                               client=client)
                 raise Problem(429, "too-many-tries", "Too many wrong tries for that name. Wait 15 minutes.")
-            if self.users.empty():
-                return self._bootstrap({"name": name, "passcode": passcode}, "passcode", req)
+            if self._no_directory(req):
+                started = self._bootstrap({"name": name, "passcode": passcode}, "passcode", req)
+                if started is not None:
+                    return started
             user = self.users.by_name(name)
-            ok = bool(user and user.get("status") == "ACTIVE" and user.get("passcode")
-                      and A.check_passcode(user["passcode"], passcode))
+            usable = bool(user and user.get("status") == "ACTIVE" and user.get("passcode"))
+            # the same work whether or not the name exists, so the time taken does not tell
+            ok = A.check_passcode(user["passcode"], passcode) if usable else A.dummy_check(passcode)
             if not ok:
-                self.sessions.failed(name)
+                self.sessions.failed(name, client)
                 why = "unknown name" if not user else "inactive" if user.get("status") != "ACTIVE" else "wrong passcode"
-                self.audit.log("sign-in", user or {"name": name}, "denied", method="passcode", why=why)
+                self.audit.log("sign-in", user or {"name": name}, "denied", method="passcode", why=why, client=client)
                 raise Problem(401, "sign-in-refused", "That name and passcode do not match an active user.")
-            self.sessions.cleared(name)
+            self.sessions.cleared(name, client)
             return self._start(user, "passcode", req)
         if how == "google":
             s = self.settings.get()
@@ -379,8 +494,10 @@ class DistrictAPI:
             except Problem as e:
                 self.audit.log("sign-in", None, "denied", method="google", why=e.code)
                 raise
-            if self.users.empty():
-                return self._bootstrap({"name": email, "email": email}, "google", req)
+            if self._no_directory(req):
+                started = self._bootstrap({"name": email[:A.NAME_LIMIT], "email": email}, "google", req)
+                if started is not None:
+                    return started
             user = self.users.by_email(email)
             if not user or user.get("status") != "ACTIVE":
                 self.audit.log("sign-in", user or {"name": email}, "denied", method="google",
@@ -400,7 +517,13 @@ class DistrictAPI:
         if p == ["users"] and m == "POST":
             b = self._body(req)
             before = self.users.get(b.get("id")) if b.get("id") else None
-            user = self.users.save_user(b, ctx["user"])
+            try:
+                user = self.users.save_user(b, ctx["user"])
+            except Problem as e:
+                if e.code == "last-admin":
+                    self.audit.log("user-change", ctx["user"], "denied", target=b.get("id"), why="last administrator",
+                                   **{k: b[k] for k in ("role", "status") if k in b})
+                raise
             changes = {k: b[k] for k in ("name", "email", "role", "status", "projects") if k in b}
             if "passcode" in b:
                 changes["passcode"] = "set"
@@ -409,7 +532,12 @@ class DistrictAPI:
                 self.sessions.end_user(user["id"])
             return _json(200, {"user": A.public(user)})
         if len(p) == 2 and m == "DELETE":
-            old = self.users.remove(p[1])
+            try:
+                old = self.users.remove(p[1])
+            except Problem as e:
+                if e.code == "last-admin":
+                    self.audit.log("user-remove", ctx["user"], "denied", target=p[1], why="last administrator")
+                raise
             self.sessions.end_user(old["id"])
             self.audit.log("user-remove", ctx["user"], target=old["id"], name_removed=old.get("name"))
             return _json(200, {"removed": True})
@@ -506,6 +634,8 @@ class DistrictAPI:
             can = {a: A.can(user, a, project) for a in A.PERMISSIONS}
             shown = dict(project) if A.can(user, "project.edit", project) else \
                 {k: v for k, v in project.items() if k != "settings"}
+            if audience != "internal" and isinstance(shown.get("site"), dict):
+                shown["site"] = A.public_facts(shown["site"], audience)     # public facts only (an allow-list)
             return _json(200, {"project": A.scrub(shown, audience), "is_sample": bool(project.get("sample")),
                                "datasets": self._visible_datasets(ctx, pid), "audience": audience,
                                "modules": self._modules_for(ctx, project, audience), "can": can})
@@ -597,7 +727,8 @@ class DistrictAPI:
         rest = p[1:]
         if rest == [] and m == "GET":
             meta, v, content = self._dataset(ctx, project, did, _q(q, "version") or None)
-            return _json(200, {"dataset": meta, "version": v, "audience": audience,
+            self._logged_read(ctx, project, "dataset", dataset=did, version=str(v), audience=audience)
+            return _json(200, {"dataset": self._meta_for(ctx, meta), "version": v, "audience": audience,
                                "as_of": self.store.as_of(pid, did, v),
                                "content": A.filter_content(content, audience)})
         if rest == ["versions"] and m == "GET":
@@ -606,7 +737,8 @@ class DistrictAPI:
             vis = A.versions_visible(user, meta)
             return _json(200, {"draft": {"updated_at": meta.get("draft_updated_at"),
                                          "updated_by": meta.get("draft_updated_by")} if vis == "all" else None,
-                               "published": meta.get("published", []), "current": meta.get("current")})
+                               "published": self._meta_for(ctx, meta).get("published", []),
+                               "current": meta.get("current")})
         meta = self.store.dataset(pid, did)
         if rest == ["records"] and m == "POST":
             self._need(ctx, "dataset.edit", project, meta)
@@ -652,8 +784,9 @@ class DistrictAPI:
             aid = check_id(rest[1], "assumption id")
             entry = R.figure(shown, aid)
             mods = self._modules_for(ctx, project, audience)
-            notes = [n for n in self.store.notes(pid, entity="assumptions", rid=aid)] \
+            notes = self._notes_for(ctx, pid, self.store.notes(pid, entity="assumptions", rid=aid)) \
                 if A.can(user, "notes.read", project) else []
+            self._logged_read(ctx, project, "figure", dataset=did, id=aid)
             return _json(200, {"found": entry is not None,
                                "figure": {**entry, "display": R.display(entry)} if entry else None,
                                "used_by": R.used_by(shown, mods, aid) if entry else [], "notes": notes,
@@ -712,11 +845,22 @@ class DistrictAPI:
         return audience in (item.get("audiences") or []) or item.get("created_by") == user["id"] \
             or item.get("uploaded_by") == user["id"]
 
+    @staticmethod
+    def _doc_for(ctx, doc):
+        """A library entry for a caller outside the team: the upload notes of other people's versions stay inside."""
+        if ctx["user"].get("role") in A.INTERNAL:
+            return doc
+        out = dict(doc)
+        out["versions"] = [v if v.get("uploaded_by") == ctx["user"]["id"] else {k: x for k, x in v.items() if k != "note"}
+                           for v in doc.get("versions") or [] if isinstance(v, dict)]
+        return out
+
     def _documents(self, ctx, req, project, p, audience):
         m, user, q, pid = req["method"], ctx["user"], req["query"], project["id"]
         if p == [] and m == "GET":
             self._need(ctx, "documents.read", project)
-            return _json(200, {"documents": [d for d in self.store.documents(pid) if self._sees(user, audience, d)]})
+            return _json(200, {"documents": [self._doc_for(ctx, d) for d in self.store.documents(pid)
+                                             if self._sees(user, audience, d)]})
         if p == [] and m == "POST":
             self._need(ctx, "documents.upload", project)
             data = self._bytes(req)
@@ -725,7 +869,11 @@ class DistrictAPI:
                 old = next((d for d in self.store.documents(pid) if d["id"] == doc_id), None)
                 if old is None or not self._sees(user, audience, old):
                     raise Problem(404, "not-found", "There is no such document to add a version to.")
-            auds = ["internal", "consultant"] if user["role"] == "consultant" else ["internal"]
+                # a new version of someone else's document (perhaps shared with the city) is the team's to add
+                if user["role"] not in A.INTERNAL and old.get("created_by") != user["id"]:
+                    self._deny(ctx, project, "documents.new_version")
+            # an upload from outside the team is seen by the team and by its uploader, not by other firms
+            auds = ["internal"]
             doc = self.store.add_document(pid, _q(q, "name"), data, user, _q(q, "title"), _q(q, "task"), doc_id,
                                           _q(q, "note"), auds)
             self.audit.log("upload-document", user, project=pid, document=doc["id"], version=len(doc["versions"]),
@@ -761,25 +909,37 @@ class DistrictAPI:
             kind = _q(q, "kind") or "other"
             if kind not in ("trade_area", "competitors", "parcels", "other"):
                 raise Problem(400, "bad-request", "A layer's kind is trade_area, competitors, parcels or other.")
+            # the team's layers start shared with consultants; a consultant's own upload is seen by the team and them
+            auds = ["internal", "consultant"] if user["role"] in A.INTERNAL else ["internal"]
             layer = self.store.add_layer(pid, fc, {"label": _q(q, "label") or _q(q, "name") or "Layer", "kind": kind,
-                                                   "source_name": _q(q, "name"), **info,
-                                                   "audiences": ["internal", "consultant"]}, user)
+                                                   "source_name": _q(q, "name"), **info, "audiences": auds}, user)
             self.audit.log("upload-gis", user, project=pid, layer=layer["id"], features=info["features"])
             return _json(200, {"layer": layer, "warnings": info["warnings"]})
         if len(p) == 2 and p[1] == "share" and m == "POST":
             self._need(ctx, "documents.share", project)
-            auds = self._body(req).get("audiences")
+            b = self._body(req)
+            auds = b.get("audiences")
             if not isinstance(auds, list) or any(a not in AUDIENCES for a in auds):
                 raise Problem(400, "bad-request", f"Audiences are some of: {', '.join(AUDIENCES)}.")
-            layer = self.store.share_layer(pid, p[0], auds)
-            self.audit.log("share-gis", user, project=pid, layer=layer["id"], audiences=layer["audiences"])
+            props = b.get("public_properties")
+            if props is not None and (not isinstance(props, list) or len(props) > 500
+                                      or any(not isinstance(x, str) or not 0 < len(x) <= 120 for x in props)):
+                raise Problem(400, "bad-request", "public_properties is a list of property names.")
+            layer = self.store.share_layer(pid, p[0], auds, props)
+            self.audit.log("share-gis", user, project=pid, layer=layer["id"], audiences=layer["audiences"],
+                           public_properties=props)
             return _json(200, {"layer": layer})
         if len(p) == 1 and m == "GET":
             self._need(ctx, "gis.read", project)
             meta, fc = self.store.layer(pid, p[0])
             if not self._sees(user, audience, meta):
                 self._deny(ctx, project)
-            return _json(200, A.scrub(fc, audience))
+            self._logged_read(ctx, project, "layer", layer=meta["id"], audience=audience)
+            if audience == "internal" or meta.get("uploaded_by") == user["id"]:
+                return _json(200, A.scrub(fc, audience))
+            # outside the team: geometry, and only the properties that are public facts (or those the administrator
+            # chose when sharing it)
+            return _json(200, A.public_layer(fc, audience, meta.get("public_properties")))
         if len(p) == 1 and m == "DELETE":
             self._need(ctx, "gis.remove", project)
             self.store.remove_layer(pid, p[0], user)
@@ -793,16 +953,22 @@ class DistrictAPI:
         m, user, q, pid = req["method"], ctx["user"], req["query"], project["id"]
         if p == [] and m == "GET":
             self._need(ctx, "notes.read", project)
-            return _json(200, {"notes": self.store.notes(pid, _q(q, "status") or None, _q(q, "entity") or None,
-                                                         _q(q, "id") or None)})
+            return _json(200, {"notes": self._notes_for(ctx, pid, self.store.notes(
+                pid, _q(q, "status") or None, _q(q, "entity") or None, _q(q, "id") or None))})
         if p == [] and m == "POST":
             self._need(ctx, "notes.write", project)
             b = self._body(req)
-            note = self.store.add_note(pid, b.get("target"), b.get("text"), user)
+            target = b.get("target")
+            if isinstance(target, dict) and user["role"] not in A.INTERNAL:
+                # a note goes only on a dataset the writer can open
+                self._dataset(ctx, project, str(target.get("dataset") or "baseline"), None)
+            note = self.store.add_note(pid, target, b.get("text"), user)
             self.audit.log("note", user, project=pid, note=note["id"], target=note["target"])
             return _json(200, {"note": note})
         if len(p) == 2 and p[1] == "replies" and m == "POST":
             self._need(ctx, "notes.write", project)
+            if not any(n.get("id") == p[0] for n in self._notes_for(ctx, pid, self.store.notes(pid))):
+                raise Problem(404, "not-found", "There is no such note.")
             note = self.store.reply_note(pid, p[0], self._body(req).get("text"), user)
             self.audit.log("note", user, project=pid, note=p[0], reply=True)
             return _json(200, {"note": note})

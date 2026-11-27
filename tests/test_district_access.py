@@ -589,9 +589,12 @@ class RealServer(unittest.TestCase):
         self.port = self.server.server_address[1]
 
     def ask(self, method, path, body=None, headers=None):
+        headers = dict(headers or {})
+        if method in ("POST", "DELETE"):
+            headers.setdefault("Origin", f"http://127.0.0.1:{self.port}")     # as the app's own pages send it
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         try:
-            c.request(method, path, body=body, headers=headers or {})
+            c.request(method, path, body=body, headers=headers)
             r = c.getresponse()
             return r.status, r.read(), dict(r.getheaders())
         finally:

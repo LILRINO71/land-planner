@@ -7,6 +7,27 @@ from pathlib import Path
 from . import chain, stamp
 
 
+TEXT_LIMIT = 500        # any one string in an entry's detail
+LIST_LIMIT = 100        # items of a list in the detail
+
+
+def _cut(v, n):
+    return v[:n] + "…" if isinstance(v, str) and len(v) > n else v
+
+
+def _small(x, depth=0):
+    """The detail with every string, list and nesting kept small: whatever a caller sends, an entry stays a line."""
+    if isinstance(x, str):
+        return _cut(x, TEXT_LIMIT)
+    if depth > 4:
+        return "…"
+    if isinstance(x, dict):
+        return {_cut(str(k), 80): _small(v, depth + 1) for k, v in list(x.items())[:LIST_LIMIT]}
+    if isinstance(x, (list, tuple)):
+        return [_small(v, depth + 1) for v in list(x)[:LIST_LIMIT]]
+    return x
+
+
 class Audit:
     def __init__(self, data_dir, clock=time.time):
         self.path = Path(data_dir) / "district-audit.jsonl"
@@ -14,9 +35,9 @@ class Audit:
 
     def log(self, action, user=None, outcome="ok", project=None, **detail):
         user = user or {}
-        return chain.append(self.path, {"at": stamp(self.clock()), "ts": self.clock(), "user": user.get("id"),
-                                        "name": user.get("name"), "role": user.get("role"), "action": action,
-                                        "outcome": outcome, "project": project, "detail": detail})
+        return chain.append(self.path, {"at": stamp(self.clock()), "ts": self.clock(), "user": _cut(user.get("id"), 80),
+                                        "name": _cut(user.get("name"), 80), "role": user.get("role"), "action": action,
+                                        "outcome": outcome, "project": project, "detail": _small(detail)})
 
     def search(self, q="", action="", user="", outcome="", project="", limit=200, offset=0):
         rows = chain.read(self.path)

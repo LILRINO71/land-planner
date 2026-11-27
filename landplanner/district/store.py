@@ -584,13 +584,17 @@ class Store:
             raise Problem(404, "not-found", "There is no such layer.")
         return meta, _read(self._dir(pid) / "gis" / f"{lid}.geojson", {"type": "FeatureCollection", "features": []})
 
-    def share_layer(self, pid, lid, audiences):
+    def share_layer(self, pid, lid, audiences, public_properties=None):
+        """Who sees a layer. public_properties, when given, are the property names an audience outside the team
+        receives (in place of the built-in list of public facts); an empty list sends geometry only."""
         with _WRITE:
             path = self._dir(pid) / "gis" / "layers.json"
             box = _read(path, {"layers": []})
             for x in box["layers"]:
                 if x["id"] == lid and not x.get("removed"):
                     x["audiences"] = sorted(set(audiences) | {"internal"})
+                    if public_properties is not None:
+                        x["public_properties"] = sorted({str(k) for k in public_properties})
                     _write(path, box)
                     return x
         raise Problem(404, "not-found", "There is no such layer.")

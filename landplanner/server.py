@@ -290,13 +290,17 @@ def make_handler(planner, web=WEB, verbose=False, secure=False, require_sign_in=
     districts = {}
     districts_guard = threading.Lock()
 
-    def district_api():
+    def district_api(server=None):
         """The district projects' API, made on first use (its data lives in the same data folder)."""
         with districts_guard:
             if "api" not in districts:
-                from .district.api import COOKIE_PATH, DistrictAPI
+                from .district.api import COOKIE, COOKIE_PATH, DistrictAPI
+                port = getattr(server, "server_address", (None, None))[1]
+                # cookies do not keep ports apart: on plain HTTP the port is in the name, so two copies of the app on
+                # one computer do not sign each other out; on HTTPS the __Host- name, which only this origin can set
+                name = "__Host-" + COOKIE if secure else f"{COOKIE}_{port}" if port else COOKIE
                 # in network mode the session cookie must reach the app's other /api routes too
-                districts["api"] = DistrictAPI(planner.data_dir, secure=secure,
+                districts["api"] = DistrictAPI(planner.data_dir, secure=secure, cookie_name=name,
                                                cookie_path="/api" if require_sign_in else COOKIE_PATH)
             return districts["api"]
 
@@ -377,14 +381,23 @@ def make_handler(planner, web=WEB, verbose=False, secure=False, require_sign_in=
             return False
 
         def _from_here(self):
-            """A change must come from this server's own pages: an Origin or Referer, when sent, is its own address."""
-            for name in ("Origin", "Referer"):
-                value = self.headers.get(name)
-                if value is not None and not self.server.own_origin(value):
-                    self.close_connection = True
-                    self._problem(403, "not-local", "Changes must come from Land Planner's own pages.")
-                    return False
-            return True
+            """A change must come from this server's own pages. Its Origin (scheme, host and port) is this server's
+            own; with no Origin, the browser's Sec-Fetch-Site says same-origin. A request with neither is refused:
+            every browser sends at least one of them with a POST or DELETE, so only a page elsewhere could be
+            hiding where it came from. A Referer, when sent, must be this server's too."""
+            origin, fetch_site = self.headers.get("Origin"), self.headers.get("Sec-Fetch-Site")
+            ok = (self.server.own_origin(origin) if origin is not None
+                  else str(fetch_site or "").strip().lower() == "same-origin")
+            if ok and fetch_site is not None and str(fetch_site).strip().lower() not in ("same-origin", "none"):
+                ok = False                        # the browser says it came from another site or port
+            referer = self.headers.get("Referer")
+            if ok and referer is not None and not self.server.own_origin(referer):
+                ok = False
+            if not ok:
+                self.close_connection = True
+                self._problem(403, "not-local", "Changes must come from Land Planner's own pages (send the Origin "
+                                                "header of this server's address).")
+            return ok
 
         def _same_site(self):
             """Changes to My lands must come from the app's own pages."""
@@ -400,6 +413,10 @@ def make_handler(planner, web=WEB, verbose=False, secure=False, require_sign_in=
             if self.headers.get("Transfer-Encoding"):
                 self.close_connection = True
                 self._problem(411, "bad-request", "Send the body with a Content-Length.")
+                return None
+            if len(self.headers.get_all("Content-Length") or []) > 1:
+                self.close_connection = True       # two lengths: a proxy and this server could read different bodies
+                self._problem(400, "bad-request", "Send one Content-Length.")
                 return None
             try:
                 length = int(self.headers.get("Content-Length") or 0)
@@ -421,7 +438,7 @@ def make_handler(planner, web=WEB, verbose=False, secure=False, require_sign_in=
             if not require_sign_in:
                 return True
             from .district import Problem as DistrictProblem
-            api = district_api()
+            api = district_api(self.server)
             try:
                 user = api.signed_in_user(self.headers, self.client_address[0])
             except DistrictProblem as e:
@@ -473,7 +490,7 @@ def make_handler(planner, web=WEB, verbose=False, secure=False, require_sign_in=
             url = urllib.parse.urlsplit(self.path)
             try:
                 method = "GET" if self.command == "HEAD" else self.command
-                reply = district_api().handle(method, url.path, urllib.parse.parse_qs(url.query), self.headers, body,
+                reply = district_api(self.server).handle(method, url.path, urllib.parse.parse_qs(url.query), self.headers, body,
                                               client=self.client_address[0])
                 self._send(reply.status, reply.body, reply.kind, reply.headers)
             except Exception:  # noqa: BLE001 - never show a stack trace in the browser
@@ -491,7 +508,10 @@ def make_handler(planner, web=WEB, verbose=False, secure=False, require_sign_in=
             length = self._length(limit)
             if length is None:
                 return
-            if length and "application/json" not in kind and "application/octet-stream" not in kind:
+            # every POST, even one with no body, carries a type a form or a plain fetch from another page cannot send
+            # without the browser asking first (JSON, a file's bytes, or the app's own X-Land-Planner header)
+            needs_type = length or (self.command == "POST" and not self.headers.get("X-Land-Planner"))
+            if needs_type and "application/json" not in kind and "application/octet-stream" not in kind:
                 self.close_connection = True
                 return self._problem(415, "bad-request", "Send JSON, or a file as application/octet-stream.")
             self._drained = True

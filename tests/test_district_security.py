@@ -56,7 +56,7 @@ class Base(unittest.TestCase):
             self.add_user(role.title(), role, ["sample-district"])
             self.tokens[role] = self.sign_in(role.title(), f"pass-{role}-1")
 
-    def call(self, method, path, token=None, query=None, body=None, raw=None, kind=None, headers=None):
+    def call(self, method, path, token=None, query=None, body=None, raw=None, kind=None, headers=None, client=None):
         h = dict(headers or {})
         if token:
             h["Cookie"] = f"lp_district={token}"
@@ -65,7 +65,7 @@ class Base(unittest.TestCase):
             h["Content-Type"], data = kind or "application/octet-stream", raw
         elif body is not None:
             h["Content-Type"], data = "application/json", json.dumps(body).encode()
-        r = self.api.handle(method, path, {k: [str(v)] for k, v in (query or {}).items()}, h, data)
+        r = self.api.handle(method, path, {k: [str(v)] for k, v in (query or {}).items()}, h, data, client=client)
         if r.kind.startswith("application/json"):
             return r.status, json.loads(r.body.decode("utf-8")), r.headers
         return r.status, r.body, r.headers
@@ -323,38 +323,77 @@ class ChainHead(unittest.TestCase):
         self.assertFalse(chain.verify(log)["ok"])
 
 
-# ---------------------------------------------------------------- part 2: still open in api.py / access.py / server.py
+# ---------------------------------------------------------------- F02: the first run
 
-PART2 = "part 2: fixed in api.py / access.py / server.py after the network worker lands"
+def _sign_in_raw(api, name, passcode, client=None, host=None):
+    headers = {"Content-Type": "application/json", **({"Host": host} if host else {})}
+    r = api.handle("POST", "/api/districts/session", {}, headers,
+                   json.dumps({"method": "passcode", "name": name, "passcode": passcode}).encode(), client=client)
+    return r.status, json.loads(r.body.decode("utf-8"))
 
 
-class StillOpen(Base):
-    @unittest.expectedFailure
-    def test_f02_an_emptied_users_file_does_not_reopen_the_first_run(self):
-        (self.data / "district-users.json").write_text('{"version": 1, "users": []}', encoding="utf-8")
-        s, b, _ = self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Intruder",
-                                                                    "passcode": "intruder-pass"})
-        self.assertNotEqual((s, (b.get("user") or {}).get("role")), (200, "administrator"))
+class FirstRun(Base):
+    def test_an_emptied_or_deleted_users_file_does_not_reopen_the_first_run(self):
+        users = self.data / "district-users.json"
+        for damage in ('{"version": 1, "users": []}', None, '{"users": [{"name": "no id"}]}'):
+            with self.subTest(damage=damage):
+                if damage is None:
+                    users.unlink(missing_ok=True)
+                else:
+                    users.write_text(damage, encoding="utf-8")
+                s, b = _sign_in_raw(self.api, "Intruder", "intruder-pass")
+                self.assertEqual((s, b["error"]["code"]), (500, "unreadable"), b)
+                status = json.loads(self.api.handle("GET", "/api/districts", {}, {}, b"").body)
+                self.assertFalse(status["bootstrap"])
+        for shape in ("null", "[]", '{"users": "nobody"}'):
+            users.write_text(shape, encoding="utf-8")
+            self.assertEqual(_sign_in_raw(self.api, "Intruder", "intruder-pass")[0], 500, shape)
 
-    @unittest.expectedFailure
-    def test_f02_first_run_makes_one_administrator_however_many_sign_in_at_once(self):
+    def test_first_run_makes_one_administrator_however_many_sign_in_at_once(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         api = DistrictAPI(folder.name, Clock())
-        gate = threading.Barrier(4)
+        gate, answers = threading.Barrier(6), []
 
         def go(i):
             gate.wait()
-            api.handle("POST", "/api/districts/session", {}, {"Content-Type": "application/json"},
-                       json.dumps({"method": "passcode", "name": f"Person {i}", "passcode": "first-pass-1"}).encode())
-        threads = [threading.Thread(target=go, args=(i,)) for i in range(4)]
+            answers.append(_sign_in_raw(api, f"Person {i}", "first-pass-1")[0])
+        threads = [threading.Thread(target=go, args=(i,)) for i in range(6)]
         [t.start() for t in threads]
         [t.join() for t in threads]
         users = json.loads((Path(folder.name) / "district-users.json").read_text(encoding="utf-8"))["users"]
-        self.assertEqual(len([u for u in users if u["role"] == "administrator"]), 1)
+        self.assertEqual(len(users), 1)
+        self.assertEqual(sorted(answers), [200] + [401] * 5)
 
-    @unittest.expectedFailure
-    def test_f04_a_parcel_note_naming_a_price_floor_is_not_sent_to_the_city(self):
+    def test_the_first_run_is_only_on_this_computer(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        api = DistrictAPI(folder.name, Clock())
+        far = api.handle("GET", "/api/districts", {}, {"Host": "planner.example.org"}, b"", client="203.0.113.9")
+        self.assertFalse(json.loads(far.body)["bootstrap"])
+        self.assertEqual(_sign_in_raw(api, "Far", "far-pass-12", client="203.0.113.9")[1]["error"]["code"],
+                         "first-run-here")
+        # behind a reverse proxy the caller is 127.0.0.1 but asks for the public name
+        self.assertEqual(_sign_in_raw(api, "Proxied", "proxied-pass", client="127.0.0.1",
+                                      host="planner.example.org")[0], 403)
+        near = api.handle("GET", "/api/districts", {}, {"Host": "127.0.0.1:8777"}, b"", client="127.0.0.1")
+        self.assertTrue(json.loads(near.body)["bootstrap"])
+        s, b = _sign_in_raw(api, "Owner", "owner-pass-1", client="127.0.0.1", host="127.0.0.1:8777")
+        self.assertEqual((s, b["user"]["role"]), (200, "administrator"))
+
+    def test_a_directory_made_before_the_marker_is_marked(self):
+        settings = self.data / "district-settings.json"
+        box = json.loads(settings.read_text(encoding="utf-8"))
+        box.pop("bootstrapped_at")
+        settings.write_text(json.dumps(box), encoding="utf-8")
+        api = DistrictAPI(self.folder.name, Clock())
+        self.assertTrue(api.settings.get()["bootstrapped_at"])
+
+
+# ---------------------------------------------------------------- F04 and the site facts: what the city may read
+
+class CityText(Base):
+    def test_a_note_or_publish_note_naming_a_price_floor_is_not_sent_to_the_city(self):
         a = self.tokens["administrator"]
         _, d, _ = self.call("GET", P + "/datasets/baseline", a, query={"version": "draft"})
         parcel = d["content"]["entities"]["parcels"][0]
@@ -363,79 +402,272 @@ class StillOpen(Base):
         self.call("POST", P + "/datasets/baseline/publish", a, body={"note": "Target price raised (invented)"})
         _, city, _ = self.call("GET", P + "/datasets/baseline", self.tokens["viewer_city"])
         self.assertNotIn("Price floor", json.dumps(city))
-        _, metas, _ = self.call("GET", P + "/datasets", self.tokens["viewer_city"])
-        self.assertNotIn("Target price", json.dumps(metas))
+        self.assertTrue(city["content"]["entities"]["parcels"])
+        for who in ("viewer_city", "viewer_partner", "consultant"):
+            _, metas, _ = self.call("GET", P + "/datasets", self.tokens[who])
+            self.assertNotIn("Target price", json.dumps(metas), who)
+        _, inside, _ = self.call("GET", P + "/datasets", a)
+        self.assertIn("Target price", json.dumps(inside))
 
-    @unittest.expectedFailure
-    def test_f04_gis_properties_shared_with_the_city_are_filtered_by_meaning(self):
+    def test_a_table_row_naming_a_denied_subject_is_left_out_for_the_city(self):
+        content = Store(self.data).content("sample-district", "baseline", "published")
+        content["entities"]["sections"].append({"id": "s-x", "module": "overview", "heading": "Sites",
+                                                "columns": ["Site", "Comment"],
+                                                "rows": [["A", "good access"], ["B", "residual land value 9 (invented)"]]})
+        shown = next(x for x in access.filter_content(content, "city")["entities"]["sections"] if x["id"] == "s-x")
+        self.assertEqual(shown["rows"], [["A", "good access"]])
+
+    def test_gis_properties_go_outside_the_team_by_an_allow_list(self):
         a = self.tokens["administrator"]
         fc = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {
-            "apn": "1", "asking_price": 5, "ResidualValue": 9, "notes": "IRR 22% (invented)"},
+            "apn": "1", "zoning": "C-1", "gross_acres": 4, "asking_price": 5, "ResidualValue": 9, "walk_away": 3,
+            "notes": "IRR 22% (invented)", "label": "Price floor parcel"},
             "geometry": {"type": "Point", "coordinates": [-117.1, 33.6]}}]}
         s, b, _ = self.call("POST", P + "/gis", a, raw=json.dumps(fc).encode(), query={"name": "deal.geojson"})
-        self.call("POST", P + f"/gis/{b['layer']['id']}/share", a, body={"audiences": ["city"]})
-        _, layer, _ = self.call("GET", P + f"/gis/{b['layer']['id']}", self.tokens["viewer_city"])
-        props = layer["features"][0]["properties"]
-        self.assertFalse({"asking_price", "ResidualValue"} & set(props) or "IRR" in json.dumps(props))
+        lid = b["layer"]["id"]
+        self.call("POST", P + f"/gis/{lid}/share", a, body={"audiences": ["city", "partner"]})
+        _, layer, _ = self.call("GET", P + f"/gis/{lid}", self.tokens["viewer_city"])
+        self.assertEqual(layer["features"][0]["properties"], {"apn": "1", "zoning": "C-1", "gross_acres": 4})
+        self.assertEqual(layer["features"][0]["geometry"]["type"], "Point")
+        self.call("POST", P + f"/gis/{lid}/share", a, body={"audiences": ["city"], "public_properties": ["apn"]})
+        _, layer, _ = self.call("GET", P + f"/gis/{lid}", self.tokens["viewer_city"])
+        self.assertEqual(layer["features"][0]["properties"], {"apn": "1"})
+        _, inside, _ = self.call("GET", P + f"/gis/{lid}", a)
+        self.assertIn("asking_price", inside["features"][0]["properties"])
 
-    @unittest.expectedFailure
-    def test_f05_a_consultant_does_not_read_notes_on_drafts_they_cannot_open(self):
+    def test_the_project_site_goes_outside_the_team_by_an_allow_list(self):
+        a = self.tokens["administrator"]
+        site = {"gross_acres": 120, "location": "Sample place", "zoning": "SP", "apns": ["1"],
+                "pre_development_basis_usd": {"land_acquisition": 1, "total": 2}, "core_retained_net_acres": 30,
+                "paced_release": "5 acres every 2 years", "mandate": "keep the core",
+                "assumption_ids": {"basis": "A-1", "retained_core": "A-2"},
+                "parcel_details": {"111-222-333": {"parcel": "Parcel 1", "gross_acres": 10, "price_note": "x"}}}
+        self.assertEqual(self.call("POST", P, a, body={"site": site})[0], 200)
+        for who in ("viewer_city", "viewer_partner", "consultant"):
+            _, b, _ = self.call("GET", P, self.tokens[who])
+            self.assertEqual(b["project"]["site"], {"gross_acres": 120, "location": "Sample place", "zoning": "SP",
+                                                    "apns": ["1"], "parcel_details": {"111-222-333": {
+                                                        "parcel": "Parcel 1", "gross_acres": 10}}}, who)
+        _, b, _ = self.call("GET", P, a)
+        self.assertEqual(b["project"]["site"]["core_retained_net_acres"], 30)
+
+
+# ---------------------------------------------------------------- F05, F06, F07: notes and uploads between firms
+
+class NotesAndUploads(Base):
+    def test_a_consultant_does_not_read_notes_on_drafts_they_cannot_open(self):
         _, sc, _ = self.call("POST", P + "/datasets", self.tokens["analyst"], body={"kind": "scenario", "label": "S"})
+        sid = sc["dataset"]["id"]
+        _, n, _ = self.call("POST", P + "/notes", self.tokens["analyst"],
+                            body={"target": {"dataset": sid, "entity": "assumptions", "id": "A-RET-GLA"},
+                                  "text": "internal walk-away figure (invented)"})
         self.call("POST", P + "/notes", self.tokens["analyst"],
-                  body={"target": {"dataset": sc["dataset"]["id"], "entity": "assumptions", "id": "A-RET-GLA"},
-                        "text": "internal walk-away figure (invented)"})
+                  body={"target": {"entity": "assumptions", "id": "A-RET-GLA"}, "text": "on the baseline"})
         _, notes, _ = self.call("GET", P + "/notes", self.tokens["consultant"])
-        self.assertNotIn("walk-away", json.dumps(notes))
+        self.assertEqual([x["text"] for x in notes["notes"]], ["on the baseline"])
+        _, fig, _ = self.call("GET", P + "/datasets/baseline/figures/A-RET-GLA", self.tokens["consultant"])
+        self.assertNotIn("walk-away", json.dumps(fig))
+        self.assertEqual(self.call("POST", P + f"/notes/{n['note']['id']}/replies", self.tokens["consultant"],
+                                   body={"text": "hi"})[0], 404)
+        self.assertEqual(self.call("POST", P + "/notes", self.tokens["consultant"],
+                                   body={"target": {"dataset": sid, "entity": "assumptions", "id": "A-RET-GLA"},
+                                         "text": "x"})[0], 403)
+        _, inside, _ = self.call("GET", P + "/notes", self.tokens["analyst"])
+        self.assertEqual(len(inside["notes"]), 2)
 
-    @unittest.expectedFailure
-    def test_f06_a_consultant_cannot_replace_a_document_shared_with_the_city(self):
+    def test_a_consultant_cannot_replace_a_document_shared_with_the_city(self):
         a = self.tokens["administrator"]
         _, b, _ = self.call("POST", P + "/documents", a, raw=b"%PDF-1.4 official\n", query={"name": "b.pdf"})
         doc = b["document"]["id"]
         self.call("POST", P + f"/documents/{doc}/share", a, body={"audiences": ["consultant", "city"]})
-        self.call("POST", P + "/documents", self.tokens["consultant"], raw=b"%PDF-1.4 replaced\n",
-                  query={"name": "b.pdf", "document": doc})
+        s, _, _ = self.call("POST", P + "/documents", self.tokens["consultant"], raw=b"%PDF-1.4 replaced\n",
+                            query={"name": "b.pdf", "document": doc, "title": "Final"})
+        self.assertEqual(s, 403)
         _, body, _ = self.call("GET", P + f"/documents/{doc}/latest", self.tokens["viewer_city"])
         self.assertEqual(body, b"%PDF-1.4 official\n")
+        # a consultant still adds versions to their own document
+        _, mine, _ = self.call("POST", P + "/documents", self.tokens["consultant"], raw=b"%PDF-1.4 v1\n",
+                               query={"name": "m.pdf"})
+        s, b, _ = self.call("POST", P + "/documents", self.tokens["consultant"], raw=b"%PDF-1.4 v2\n",
+                            query={"name": "m.pdf", "document": mine["document"]["id"]})
+        self.assertEqual((s, len(b["document"]["versions"])), (200, 2))
 
-    @unittest.expectedFailure
-    def test_f07_one_consultant_firm_does_not_see_another_firms_uploads(self):
+    def test_one_consultant_firm_does_not_see_another_firms_uploads(self):
         self.add_user("Second Firm", "consultant", ["sample-district"])
         other = self.sign_in("Second Firm", "pass-consultant-1")
-        self.call("POST", P + "/documents", self.tokens["consultant"], raw=b"%PDF-1.4\n",
-                  query={"name": "fee.pdf", "title": "Firm A fee proposal"})
+        mine = self.tokens["consultant"]
+        _, d, _ = self.call("POST", P + "/documents", mine, raw=b"%PDF-1.4\n",
+                            query={"name": "fee.pdf", "title": "Firm A fee proposal"})
+        fc = {"type": "FeatureCollection", "features": []}
+        _, g, _ = self.call("POST", P + "/gis", mine, raw=json.dumps(fc).encode(), query={"name": "firm-a.geojson"})
         _, docs, _ = self.call("GET", P + "/documents", other)
         self.assertNotIn("Firm A fee proposal", json.dumps(docs))
+        self.assertEqual(self.call("GET", P + f"/documents/{d['document']['id']}/latest", other)[0], 403)
+        self.assertEqual(self.call("GET", P + f"/gis/{g['layer']['id']}", other)[0], 403)
+        self.assertEqual(self.call("GET", P + f"/documents/{d['document']['id']}/latest", mine)[0], 200)
+        self.assertEqual(self.call("GET", P + f"/gis/{g['layer']['id']}", mine)[0], 200)
+        _, inside, _ = self.call("GET", P + "/documents", self.tokens["analyst"])
+        self.assertIn("Firm A fee proposal", json.dumps(inside))
 
-    @unittest.expectedFailure
-    def test_f10_a_stranger_cannot_lock_out_the_right_passcode(self):
-        for _ in range(6):
+
+# ---------------------------------------------------------------- F10 to F13: signing in
+
+class SigningIn(Base):
+    def test_a_stranger_cannot_lock_out_the_right_passcode(self):
+        for _ in range(8):
             self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Admin", "passcode": "no"},
-                      headers={"X-Client": "stranger"})
-        s, b, _ = self.call("POST", "/api/districts/session",
-                            body={"method": "passcode", "name": "Admin", "passcode": "admin-pass-1"})
+                      client="198.51.100.7")
+        s, b, _ = self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Admin",
+                                                                    "passcode": "admin-pass-1"}, client="198.51.100.7")
+        self.assertEqual(s, 429, "the guessing caller is held back")
+        s, b, _ = self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Admin",
+                                                                    "passcode": "admin-pass-1"}, client="192.0.2.10")
         self.assertEqual(s, 200, b)
 
-    @unittest.expectedFailure
-    def test_f11_a_huge_sign_in_name_is_not_written_to_the_audit_log(self):
+    def test_one_caller_guessing_many_names_is_held_back(self):
+        for i in range(25):
+            self.call("POST", "/api/districts/session", body={"method": "passcode", "name": f"Name {i}",
+                                                              "passcode": "x"}, client="198.51.100.8")
+        s, _, _ = self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Admin",
+                                                                    "passcode": "admin-pass-1"}, client="198.51.100.8")
+        self.assertEqual(s, 429)
+
+    def test_a_huge_sign_in_name_is_not_written_to_the_audit_log(self):
         log = self.data / "district-audit.jsonl"
         before = log.stat().st_size
         self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "N" * 200_000, "passcode": "x"})
-        self.assertLess(log.stat().st_size - before, 10_000)
+        self.assertLess(log.stat().st_size - before, 5_000)
+        self.api.audit.log("note", None, detail_text="x" * 100_000, many=list(range(10_000)))
+        self.assertLess(log.stat().st_size - before, 15_000)
 
-    @unittest.expectedFailure
-    def test_f13_changing_a_passcode_ends_the_other_sessions(self):
+    def test_an_unknown_name_costs_the_same_passcode_work(self):
+        from unittest import mock
+        with mock.patch.object(access, "dummy_check", wraps=access.dummy_check) as dummy:
+            self.call("POST", "/api/districts/session", body={"method": "passcode", "name": "Nobody", "passcode": "x"})
+        self.assertEqual(dummy.call_count, 1)
+
+    def test_changing_a_passcode_ends_the_other_sessions(self):
         first = self.tokens["viewer_partner"]
         second = self.sign_in("Viewer_Partner", "pass-viewer_partner-1")
-        self.call("POST", "/api/districts/session/passcode", second, body={"old": "pass-viewer_partner-1",
-                                                                         "new": "new-pass-partner-2"})
+        s, b, _ = self.call("POST", "/api/districts/session/passcode", second,
+                            body={"old": "pass-viewer_partner-1", "new": "new-pass-partner-2"})
+        self.assertEqual(s, 200, b)
         self.assertEqual(self.call("GET", "/api/districts/projects", first)[0], 401)
+        self.assertEqual(self.call("GET", "/api/districts/projects", second)[0], 200)
 
-    @unittest.expectedFailure
-    def test_f15_viewers_dataset_reads_are_in_the_audit_log(self):
-        self.call("GET", P + "/datasets/baseline", self.tokens["viewer_city"])
-        _, log, _ = self.call("GET", "/api/districts/audit", self.tokens["administrator"], query={"user": "Viewer_City"})
-        self.assertIn("read", {e["action"] for e in log["entries"]})
+    def test_wrong_current_passcodes_count_as_wrong_tries(self):
+        t = self.tokens["viewer_partner"]
+        for _ in range(5):
+            self.assertEqual(self.call("POST", "/api/districts/session/passcode", t,
+                                       body={"old": "wrong-one-1", "new": "new-pass-partner-2"})[0], 403)
+        self.assertEqual(self.call("POST", "/api/districts/session/passcode", t,
+                                   body={"old": "pass-viewer_partner-1", "new": "new-pass-partner-2"})[0], 429)
+
+
+# ---------------------------------------------------------------- the audit log: reads and refusals
+
+class AuditMore(Base):
+    def audit(self, **query):
+        return self.call("GET", "/api/districts/audit", self.tokens["administrator"], query=query)[1]["entries"]
+
+    def test_viewers_reads_of_data_are_in_the_audit_log(self):
+        city = self.tokens["viewer_city"]
+        self.call("GET", P + "/datasets/baseline", city)
+        self.call("GET", P + "/datasets/baseline", city)          # the same read soon after is not logged again
+        layers = self.call("GET", P + "/gis", self.tokens["consultant"])[1]["layers"]
+        self.call("GET", P + f"/gis/{layers[0]['id']}", self.tokens["consultant"])
+        self.call("GET", P + "/datasets/baseline", self.tokens["administrator"])
+        reads = self.audit(action="read")
+        self.assertEqual(sorted((e["name"], e["detail"]["what"]) for e in reads),
+                         [("Consultant", "layer"), ("Viewer_City", "dataset")])
+
+    def test_a_refused_last_administrator_change_is_logged(self):
+        a = self.tokens["administrator"]
+        admin = next(u for u in self.call("GET", "/api/districts/users", a)[1]["users"] if u["role"] == "administrator")
+        self.assertEqual(self.call("POST", "/api/districts/users", a, body={"id": admin["id"], "role": "analyst"})[0], 409)
+        self.assertEqual(self.call("POST", "/api/districts/users", a, body={"id": admin["id"], "status": "INACTIVE"})[0],
+                         409)
+        self.assertEqual(self.call("DELETE", f"/api/districts/users/{admin['id']}", a)[0], 409)
+        refused = [e for e in self.audit(outcome="denied") if e["detail"].get("why") == "last administrator"]
+        self.assertEqual(sorted(e["action"] for e in refused), ["user-change", "user-change", "user-remove"])
+
+
+# ---------------------------------------------------------------- F09, F14 and the cookie name: through the HTTP server
+
+class ThroughTheServer(unittest.TestCase):
+    def setUp(self):
+        from landplanner.planner import LandPlanner
+        from landplanner.server import make_server
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.server = make_server(LandPlanner({}, self.folder.name), 0)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.port = self.server.server_address[1]
+        self.own = f"http://127.0.0.1:{self.port}"
+        s, _, h = self.ask("POST", "/api/districts/session", b'{"method":"passcode","name":"Owner","passcode":"owner-pass-1"}',
+                           {"Content-Type": "application/json", "Origin": self.own})
+        self.assertEqual(s, 200)
+        self.cookie = h["Set-Cookie"]
+        self.jar = {"Cookie": self.cookie.split(";")[0]}
+        self.ask("POST", "/api/districts/session/nda", b'{"accept":true}',
+                 {**self.jar, "Content-Type": "application/json", "Origin": self.own})
+
+    def ask(self, method, path, body=None, headers=None, raw_headers=None):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            c.putrequest(method, path, skip_accept_encoding=True)
+            for k, v in (headers or {}).items():
+                c.putheader(k, v)
+            for k, v in raw_headers or ():
+                c.putheader(k, v)
+            if body is not None and not any(k.lower() == "content-length" for k, _ in raw_headers or ()):
+                c.putheader("Content-Length", str(len(body)))
+            c.endheaders(body)
+            r = c.getresponse()
+            return r.status, r.read(), dict(r.getheaders())
+        finally:
+            c.close()
+
+    def test_the_cookie_name_holds_the_port_on_plain_http(self):
+        self.assertTrue(self.cookie.startswith(f"lp_district_{self.port}="), self.cookie)
+        self.assertEqual(self.ask("GET", "/api/districts/projects", headers=self.jar)[0], 200)
+        other = {"Cookie": f"lp_district_{self.port + 1}=" + self.cookie.split(";")[0].split("=", 1)[1]}
+        self.assertEqual(self.ask("GET", "/api/districts/projects", headers=other)[0], 401)
+
+    def test_an_empty_post_from_another_local_port_is_refused(self):
+        backups = "/api/districts/projects/sample-district/backups"
+        other = f"http://127.0.0.1:{self.port + 1}"
+        for headers in ({**self.jar, "Origin": other}, {**self.jar}, {**self.jar, "Sec-Fetch-Site": "same-site"},
+                        {**self.jar, "Origin": self.own, "Sec-Fetch-Site": "same-site"}):
+            self.assertEqual(self.ask("POST", backups, b"", headers)[0], 403, headers)
+        # this server's own page: no body still needs a type a plain fetch cannot send unasked
+        self.assertEqual(self.ask("POST", backups, b"", {**self.jar, "Origin": self.own})[0], 415)
+        self.assertEqual(self.ask("POST", backups, b"", {**self.jar, "Origin": self.own, "X-Land-Planner": "1"})[0], 200)
+        self.assertEqual(self.ask("POST", backups, b"", {**self.jar, "Sec-Fetch-Site": "same-origin",
+                                                         "Content-Type": "application/json"})[0], 200)
+        self.assertEqual(self.ask("DELETE", "/api/districts/session", None, {**self.jar})[0], 403)
+
+    def test_two_content_lengths_are_refused(self):
+        s, _, _ = self.ask("POST", "/api/districts/session", b"{}", {"Content-Type": "application/json",
+                                                                     "Origin": self.own},
+                           raw_headers=[("Content-Length", "2"), ("Content-Length", "0")])
+        self.assertEqual(s, 400)
+
+    def test_a_silent_connection_is_closed_and_others_are_served(self):
+        import socket
+        self.server.request_timeout = 1
+        s = socket.create_connection(("127.0.0.1", self.port))
+        self.addCleanup(s.close)
+        s.sendall(b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+        self.assertEqual(self.ask("GET", "/api/health")[0], 200)
+        s.settimeout(5)
+        try:
+            self.assertEqual(s.recv(100), b"")
+        except ConnectionError:
+            pass
 
 
 if __name__ == "__main__":

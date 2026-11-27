@@ -43,7 +43,8 @@ const seg = (s) => encodeURIComponent(String(s));
 
 async function send(method, path, { body, file, params, blob } = {}) {
   let res;
-  const init = { method, credentials: "same-origin", headers: {} };
+  // the server refuses a POST with no body unless it carries this header (a page elsewhere cannot send it unasked)
+  const init = { method, credentials: "same-origin", headers: { "X-Land-Planner": "1" } };
   if (file) { init.headers["Content-Type"] = "application/octet-stream"; init.body = file; }
   else if (body !== undefined) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(body); }
   try { res = await fetch(BASE + path + query(params), init); }
