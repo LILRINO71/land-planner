@@ -27,6 +27,9 @@ from another website, are refused.
     POST   /api/my-lands            {"city": "menifee", "apn": "372100001"}
     DELETE /api/my-lands/<city>/<apn>
 
+Everything under /api/districts (district projects: sign-in, roles, datasets, imports, exports) is answered by
+landplanner/district/api.py; see docs/district-data-contract.md. The routes above stay open without signing in.
+
 Add &fresh=1 to a GET to ask the public service again instead of using the saved copy.
 HEAD on an /api route answers like GET without the body. Any other method (PUT, PATCH, OPTIONS, ...) is a JSON 405,
 and every error, including the library's own, is JSON. A parcel number is digits with dashes or spaces: a letter is
@@ -36,6 +39,7 @@ import json
 import mimetypes
 import re
 import sys
+import threading
 import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -151,7 +155,26 @@ def route(planner, method, path, query=None, body=None):
     raise Problem(404, "not-found", "Nothing here.")
 
 
+DISTRICT_JSON_LIMIT = 2 * 1024 * 1024
+DISTRICT_FILE_LIMIT = 64 * 1024 * 1024
+
+
+def _is_district(path):
+    return path == "/api/districts" or path.startswith("/api/districts/")
+
+
 def make_handler(planner, web=WEB, verbose=False):
+    districts = {}
+    districts_guard = threading.Lock()
+
+    def district_api():
+        """The district projects' API, made on first use (its data lives in the same data folder)."""
+        with districts_guard:
+            if "api" not in districts:
+                from .district.api import DistrictAPI
+                districts["api"] = DistrictAPI(planner.data_dir)
+            return districts["api"]
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "LandPlanner/" + VERSION
         protocol_version = "HTTP/1.1"
@@ -232,10 +255,43 @@ def make_handler(planner, web=WEB, verbose=False):
             kind = TYPES.get(target.suffix.lower()) or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
             self._send(200, target.read_bytes(), kind)
 
+        def _district(self, body=b""):
+            url = urllib.parse.urlsplit(self.path)
+            try:
+                method = "GET" if self.command == "HEAD" else self.command
+                reply = district_api().handle(method, url.path, urllib.parse.parse_qs(url.query), self.headers, body)
+                self._send(reply.status, reply.body, reply.kind, reply.headers)
+            except Exception:  # noqa: BLE001 - never show a stack trace in the browser
+                traceback.print_exc()
+                self._problem(500, "internal", "Something went wrong inside Land Planner. Try again; if it keeps "
+                                               "happening, close and restart it.")
+
+        def _district_change(self):
+            """District changes: JSON, or a file's bytes as application/octet-stream (which a form on another
+            site cannot send without the browser asking first). The session cookie is SameSite=Strict too."""
+            origin = self.headers.get("Origin")
+            if origin and (urllib.parse.urlsplit(origin).hostname or "").lower() not in ("127.0.0.1", "localhost", "::1"):
+                return self._problem(403, "not-local", "Land Planner only answers on this computer.")
+            kind = (self.headers.get("Content-Type") or "").lower()
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            limit = DISTRICT_FILE_LIMIT if "application/octet-stream" in kind else DISTRICT_JSON_LIMIT
+            if length < 0 or length > limit:
+                self.close_connection = True
+                return self._problem(413, "too-large", "Too much data.")
+            if length and "application/json" not in kind and "application/octet-stream" not in kind:
+                self.close_connection = True
+                return self._problem(415, "bad-request", "Send JSON, or a file as application/octet-stream.")
+            self._district(self.rfile.read(length) if length else b"")
+
         def do_GET(self):
             if not self._local():
                 return
             api = urllib.parse.urlsplit(self.path).path
+            if _is_district(api):
+                return self._district()
             if api == "/api" or api.startswith("/api/"):
                 return self._api()
             self._static()
@@ -243,6 +299,8 @@ def make_handler(planner, web=WEB, verbose=False):
         do_HEAD = do_GET
 
         def _change(self):
+            if _is_district(urllib.parse.urlsplit(self.path).path):
+                return self._district_change() if self._local() else None
             if not self._local() or not self._same_site():
                 return
             body = None
