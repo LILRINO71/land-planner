@@ -91,7 +91,7 @@ export function side(route) {
     html += group("Tools", TOOLS.map(([id, label]) => item(link([nav.id, "tool", id]), label, here === "tool/" + id)));
     const modsIn = (g) => nav.modules.filter((m) => groupOf(m) === g).map((m) => item(link([nav.id, "m", m.id]), m.label || m.id, here === "m/" + m.id));
     html += group("Data", modsIn("Data").concat(DATA_PARTS.filter((d) => !d[2] || nav.can[d[2]]).map(([id, label]) => item(link([nav.id, "data", id]), label, here === "data/" + id))));
-    html += group("Requirements", [item(link([nav.id, "requirements"]), "Requirements checklist", here === "requirements")].concat(modsIn("Requirements")));
+    if (nav.checklist) html += group("Requirements", [item(link([nav.id, "requirements"]), "Requirements checklist", here === "requirements")].concat(modsIn("Requirements")));
     if (nav.can["users.manage"]) html += group("Admin", ADMIN_PARTS.map(([id, label]) => item(link([nav.id, "admin", id]), label, here === "admin/" + id)));
     html += `<a class="nav sub dz-all" href="#/districts"><span>All projects</span></a></div>`;
   }
@@ -178,7 +178,9 @@ async function context(p, route) {
     go: (parts, extra) => go([p].concat(parts || []), extra), link: (parts, extra) => link([p].concat(parts || []), extra),
     refresh: () => { forget(p); window.dispatchEvent(new HashChangeEvent("hashchange")); },
   };
-  S.nav = { id: p, name: ctx.project.name || p, place: ctx.project.place, modules: sorted.filter((m) => m.id !== "requirements"), can };
+  S.nav = { id: p, name: ctx.project.name || p, place: ctx.project.place, modules: sorted.filter((m) => m.id !== "requirements"), can,
+    // the checklist is for the team: shown when this audience gets its page, or to internal users
+    checklist: sorted.some((m) => m.id === "requirements") || ctx.audience === "internal" };
   return ctx;
 }
 
